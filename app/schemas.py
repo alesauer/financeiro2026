@@ -21,6 +21,14 @@ class TransacaoSchema(Schema):
     descricao = fields.Str(required=True)
     valor = fields.Decimal(required=True, as_string=True)
     forma_pagamento = fields.Str(required=True)
+    # Campo extra: nome da categoria
+    categoria_nome = fields.Method("get_categoria_nome", dump_only=True)
+
+    def get_categoria_nome(self, obj):
+        # obj é uma instância de Transacao
+        if hasattr(obj, "categoria") and obj.categoria:
+            return obj.categoria.nome
+        return None
 
     # --- Campos com default ---
     data_transacao = fields.Date(load_default=date.today)

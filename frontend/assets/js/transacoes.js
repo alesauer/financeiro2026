@@ -1,3 +1,150 @@
+// Função para abrir modal de edição (definida globalmente, sem duplicidade)
+function abrirModalEdicao(dados) {
+  var old = document.getElementById('modal-edicao-transacao');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'modal-edicao-transacao';
+  modal.style.position = 'fixed';
+  modal.style.top = '0';
+  modal.style.left = '0';
+  modal.style.width = '100vw';
+  modal.style.height = '100vh';
+  modal.style.background = 'rgba(0,0,0,0.3)';
+  modal.style.zIndex = '9999';
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
+
+  const campos = [
+    { nome: 'descricao', label: 'Descrição', tipo: 'text' },
+    { nome: 'tipo', label: 'Tipo', tipo: 'select', opcoes: ['Receita','Despesa','Investimento'] },
+    { nome: 'categoria_id', label: 'Categoria', tipo: 'select-categoria' },
+    { nome: 'valor', label: 'Valor (R$)', tipo: 'number', step: '0.01' },
+    { nome: 'data_transacao', label: 'Data', tipo: 'date' },
+    { nome: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'select', opcoes: ['Dinheiro','Cartão de Crédito','Cartão de Débito','Pix','Boleto','Transferência'] },
+    { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] }
+  ];
+
+  let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
+    <h4 style="margin-bottom:16px;">${dados ? 'Editar' : 'Nova'} Transação</h4>`;
+  let categorias = [];
+  let tipoSelecionado = dados && dados.tipo ? dados.tipo : 'Receita';
+
+  // Busca categorias do tipo informado e renderiza campos
+  function buscarECampos(tipoCat) {
+    fetch(`http://127.0.0.1:5000/api/categorias?tipo=${encodeURIComponent(tipoCat)}`)
+      .then(resp => resp.json())
+      .then(arr => {
+        categorias = arr;
+        document.getElementById('campos-modal-transacao').innerHTML = renderCampos();
+        adicionarListeners();
+      })
+      .catch(() => {
+        categorias = [];
+        document.getElementById('campos-modal-transacao').innerHTML = renderCampos();
+        adicionarListeners();
+      });
+  }
+
+  function renderCampos() {
+    let camposHtml = '';
+    campos.forEach(c => {
+      camposHtml += `<div style="margin-bottom:12px;">
+        <label style="font-weight:600;">${c.label}</label><br/>`;
+      if (c.tipo === 'select') {
+        camposHtml += `<select name="${c.nome}" style="width:100%;padding:6px;">`;
+        c.opcoes.forEach(op => {
+          let sel = '';
+          if (c.nome === 'tipo' && op === tipoSelecionado) sel = 'selected';
+          else if (dados && dados[c.nome] === op) sel = 'selected';
+          camposHtml += `<option value="${op}" ${sel}>${op}</option>`;
+        });
+        camposHtml += `</select>`;
+      } else if (c.tipo === 'select-categoria') {
+        camposHtml += `<select name="categoria_id" style="width:100%;padding:6px;">`;
+        categorias.forEach(cat => {
+          const sel = (dados && dados.categoria_id == cat.id) ? 'selected' : '';
+          camposHtml += `<option value="${cat.id}" ${sel}>${cat.nome}</option>`;
+        });
+        camposHtml += `</select>`;
+      } else if (c.tipo === 'date') {
+        let val = dados && dados[c.nome] ? dados[c.nome] : '';
+        if (val && val.length >= 10) val = val.slice(0,10);
+        camposHtml += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:6px;" />`;
+      } else {
+        camposHtml += `<input type="${c.tipo}" name="${c.nome}" value="${dados ? (dados[c.nome]||'') : ''}" style="width:100%;padding:6px;" step="${c.step||''}" />`;
+      }
+      camposHtml += `</div>`;
+    });
+    return camposHtml;
+  }
+
+  html += `<div id="campos-modal-transacao"></div>`;
+  html += `<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+    <button type="button" id="btn-cancelar-edicao" class="btn btn-secondary">Cancelar</button>
+    <button type="submit" class="btn btn-primary">Salvar</button>
+  </div>
+  </form>`;
+
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+
+  function adicionarListeners() {
+    document.getElementById('btn-cancelar-edicao').onclick = () => {
+      modal.remove();
+    };
+    document.getElementById('form-edicao-transacao').onsubmit = async function(ev) {
+      ev.preventDefault();
+      const fd = new FormData(ev.target);
+      const payload = {};
+      campos.forEach(c => {
+        let v = fd.get(c.nome);
+        if (c.tipo === 'number') v = v ? parseFloat(v) : null;
+        if (c.nome === 'categoria_id') v = v ? parseInt(v) : null;
+        payload[c.nome] = v;
+      });
+      try {
+        let resp;
+        if (dados && dados.id) {
+          resp = await fetch(`${apiUrl}/${dados.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        } else {
+          resp = await fetch(`${apiUrl}/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+        }
+        if (!resp.ok) {
+          const err = await resp.json();
+          alert('Erro ao salvar: ' + (err.error || JSON.stringify(err)));
+          return;
+        }
+        alert(dados && dados.id ? 'Transação atualizada com sucesso.' : 'Transação criada com sucesso.');
+        modal.remove();
+        reloadGrid();
+        fetchAndRenderSummary();
+      } catch (err) {
+        alert('Erro de rede ao salvar.');
+      }
+    };
+    // Listener para o campo tipo
+    const tipoSelect = document.querySelector('select[name="tipo"]');
+    if (tipoSelect) {
+      tipoSelect.onchange = function() {
+        tipoSelecionado = this.value;
+        buscarECampos(tipoSelecionado);
+      };
+    }
+  }
+
+  // Inicialização: busca categorias do tipo inicial
+  buscarECampos(tipoSelecionado);
+}
 // assets/js/transacoes.js
 // Grid.js frontend with month/year navigation, server-side filtering by mes/ano,
 // pagination and formatting for date and currency.
@@ -75,9 +222,10 @@ function createGrid(){
         sort: false,
         formatter: () => gridjs.html('')
       },
-      { id: 'data_transacao', name: 'Data', sort: true },
-      { id: 'descricao', name: 'Descrição', sort: true },
-      { id: 'forma_pagamento', name: 'Forma Pagamento', sort: true },
+  { id: 'data_transacao', name: 'Data', sort: true },
+  { id: 'descricao', name: 'Descrição', sort: true },
+  { id: 'categoria_nome', name: 'Categoria', sort: true },
+  { id: 'forma_pagamento', name: 'Forma Pagamento', sort: true },
       {
         id: 'status',
         name: 'Status',
@@ -157,9 +305,10 @@ function createGrid(){
         });
 
         return items.map(row => [
-      row.id,
+          row.id,
           formatDate(row.data_transacao || row.data || row.data_transacao),
           row.descricao || '',
+          row.categoria_nome || '',
           row.forma_pagamento || '',
           row.status || '',
           row.tipo || '',
@@ -251,6 +400,21 @@ function reloadGrid(){
 }
 
 document.addEventListener('DOMContentLoaded', function(){
+  // Garante que abrirModalEdicao está definida antes de criar o botão
+  setTimeout(function() {
+    if (typeof window.abrirModalEdicao === 'function') {
+      const gridContainer = document.getElementById('grid');
+      if (gridContainer && !document.getElementById('btn-nova-transacao')) {
+        const btn = document.createElement('button');
+        btn.textContent = 'Nova Transação';
+        btn.className = 'btn btn-success mb-3';
+        btn.id = 'btn-nova-transacao';
+        btn.style.float = 'right';
+        btn.onclick = function(){ window.abrirModalEdicao(null); };
+        gridContainer.parentNode.insertBefore(btn, gridContainer);
+      }
+    }
+  }, 100);
   // initialize label and input
   updateLabel();
 
@@ -294,7 +458,17 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   });
 });
-
+  // Adiciona botão Nova Transação acima da grid
+  const gridContainer = document.getElementById('grid');
+  if (gridContainer && !document.getElementById('btn-nova-transacao')) {
+    const btn = document.createElement('button');
+    btn.textContent = 'Nova Transação';
+    btn.className = 'btn btn-success mb-3';
+    btn.id = 'btn-nova-transacao';
+    btn.style.float = 'right';
+    btn.onclick = function(){ abrirModalEdicao(null); };
+    gridContainer.parentNode.insertBefore(btn, gridContainer);
+  }
 // CLICK LISTENER: toggle status Pago <-> Pendente
 
 document.getElementById('grid').addEventListener('click', async function(e){
@@ -380,102 +554,112 @@ document.getElementById('grid').addEventListener('click', async function(e){
       }
       return;
     }
-// Função para abrir modal de edição
-function abrirModalEdicao(dados) {
+// Função para abrir modal de edição (definida no escopo global)
+window.abrirModalEdicao = function(dados) {
   // Remove modal anterior se existir
-  const old = document.getElementById('modal-edicao-transacao');
+  var old = document.getElementById('modal-edicao-transacao');
   if (old) old.remove();
 
   // Cria modal
-  const modal = document.createElement('div');
-  modal.id = 'modal-edicao-transacao';
-  modal.style.position = 'fixed';
-  modal.style.top = '0';
-  modal.style.left = '0';
-  modal.style.width = '100vw';
-  modal.style.height = '100vh';
-  modal.style.background = 'rgba(0,0,0,0.3)';
-  modal.style.zIndex = '9999';
-  modal.style.display = 'flex';
-  modal.style.alignItems = 'center';
-  modal.style.justifyContent = 'center';
+  var modal = document.createElement('div');
+    modal.id = 'modal-edicao-transacao';
+    modal.style.position = 'fixed';
+    modal.style.top = '0';
+    modal.style.left = '0';
+    modal.style.width = '100vw';
+    modal.style.height = '100vh';
+    modal.style.background = 'rgba(0,0,0,0.3)';
+    modal.style.zIndex = '9999';
+    modal.style.display = 'flex';
+    modal.style.alignItems = 'center';
+    modal.style.justifyContent = 'center';
 
-  // Campos editáveis
-  const campos = [
-    { nome: 'descricao', label: 'Descrição', tipo: 'text' },
-    { nome: 'valor', label: 'Valor (R$)', tipo: 'number', step: '0.01' },
-    { nome: 'data_transacao', label: 'Data', tipo: 'date' },
-    { nome: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'select', opcoes: ['Dinheiro','Cartão de Crédito','Cartão de Débito','Pix','Boleto','Transferência'] },
-    { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] },
-    { nome: 'tipo', label: 'Tipo', tipo: 'select', opcoes: ['Receita','Despesa','Investimento'] }
-  ];
+    // Campos editáveis
+    const campos = [
+        { nome: 'descricao', label: 'Descrição', tipo: 'text' },
+        { nome: 'valor', label: 'Valor (R$)', tipo: 'number', step: '0.01' },
+        { nome: 'data_transacao', label: 'Data', tipo: 'date' },
+        { nome: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'select', opcoes: ['Dinheiro','Cartão de Crédito','Cartão de Débito','Pix','Boleto','Transferência'] },
+        { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] },
+        { nome: 'tipo', label: 'Tipo', tipo: 'select', opcoes: ['Receita','Despesa','Investimento'] }
+    ];
 
-  // Monta formulário
-  let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
-    <h4 style="margin-bottom:16px;">Editar Transação</h4>`;
-  campos.forEach(c => {
-    html += `<div style="margin-bottom:12px;">
-      <label style="font-weight:600;">${c.label}</label><br/>`;
-    if (c.tipo === 'select') {
-      html += `<select name="${c.nome}" style="width:100%;padding:6px;">`;
-      c.opcoes.forEach(op => {
-        const sel = (dados[c.nome] === op) ? 'selected' : '';
-        html += `<option value="${op}" ${sel}>${op}</option>`;
-      });
-      html += `</select>`;
-    } else if (c.tipo === 'date') {
-      let val = dados[c.nome];
-      if (val && val.length >= 10) val = val.slice(0,10);
-      html += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:6px;" />`;
-    } else {
-      html += `<input type="${c.tipo}" name="${c.nome}" value="${dados[c.nome]||''}" style="width:100%;padding:6px;" step="${c.step||''}" />`;
-    }
-    html += `</div>`;
-  });
-  html += `<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
-    <button type="button" id="btn-cancelar-edicao" class="btn btn-secondary">Cancelar</button>
-    <button type="submit" class="btn btn-primary">Salvar</button>
-  </div>
-  </form>`;
-
-  modal.innerHTML = html;
-  document.body.appendChild(modal);
-
-  // Cancelar
-  document.getElementById('btn-cancelar-edicao').onclick = () => {
-    modal.remove();
-  };
-
-  // Salvar
-  document.getElementById('form-edicao-transacao').onsubmit = async function(ev) {
-    ev.preventDefault();
-    const fd = new FormData(ev.target);
-    const payload = {};
+    // Monta formulário
+    let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
+        <h4 style="margin-bottom:16px;">${dados ? 'Editar' : 'Nova'} Transação</h4>`;
     campos.forEach(c => {
-      let v = fd.get(c.nome);
-      if (c.tipo === 'number') v = v ? parseFloat(v) : null;
-      payload[c.nome] = v;
+        html += `<div style="margin-bottom:12px;">
+            <label style="font-weight:600;">${c.label}</label><br/>`;
+        if (c.tipo === 'select') {
+            html += `<select name="${c.nome}" style="width:100%;padding:6px;">`;
+            c.opcoes.forEach(op => {
+                const sel = (dados && dados[c.nome] === op) ? 'selected' : '';
+                html += `<option value="${op}" ${sel}>${op}</option>`;
+            });
+            html += `</select>`;
+        } else if (c.tipo === 'date') {
+            let val = dados && dados[c.nome] ? dados[c.nome] : '';
+            if (val && val.length >= 10) val = val.slice(0,10);
+            html += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:6px;" />`;
+        } else {
+            html += `<input type="${c.tipo}" name="${c.nome}" value="${dados ? (dados[c.nome]||'') : ''}" style="width:100%;padding:6px;" step="${c.step||''}" />`;
+        }
+        html += `</div>`;
     });
-    // PATCH/PUT para backend
-    try {
-      const resp = await fetch(`${apiUrl}/${dados.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      if (!resp.ok) {
-        const err = await resp.json();
-        alert('Erro ao salvar: ' + (err.error || JSON.stringify(err)));
-        return;
-      }
-      alert('Transação atualizada com sucesso.');
-      modal.remove();
-      reloadGrid();
-      fetchAndRenderSummary();
-    } catch (err) {
-      alert('Erro de rede ao salvar.');
-    }
-  };
+    html += `<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+        <button type="button" id="btn-cancelar-edicao" class="btn btn-secondary">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Salvar</button>
+    </div>
+    </form>`;
+
+    modal.innerHTML = html;
+    document.body.appendChild(modal);
+
+    // Cancelar
+    document.getElementById('btn-cancelar-edicao').onclick = () => {
+        modal.remove();
+    };
+
+    // Salvar
+    document.getElementById('form-edicao-transacao').onsubmit = async function(ev) {
+        ev.preventDefault();
+        const fd = new FormData(ev.target);
+        const payload = {};
+        campos.forEach(c => {
+            let v = fd.get(c.nome);
+            if (c.tipo === 'number') v = v ? parseFloat(v) : null;
+            payload[c.nome] = v;
+        });
+        try {
+            let resp;
+            if (dados && dados.id) {
+                // PUT para editar
+                resp = await fetch(`${apiUrl}/${dados.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            } else {
+                // POST para criar
+                resp = await fetch(`${apiUrl}/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+            }
+            if (!resp.ok) {
+                const err = await resp.json();
+                alert('Erro ao salvar: ' + (err.error || JSON.stringify(err)));
+                return;
+            }
+            alert(dados && dados.id ? 'Transação atualizada com sucesso.' : 'Transação criada com sucesso.');
+            modal.remove();
+            reloadGrid();
+            fetchAndRenderSummary();
+        } catch (err) {
+            alert('Erro de rede ao salvar.');
+        }
+    };
 }
 });
 
