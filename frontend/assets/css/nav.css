@@ -1,0 +1,66 @@
+/* Navbar com cinza claro */
+.navbar {
+  background-color: #f1f1f1 !important;
+}
+
+/* Cor dos textos */
+.navbar .nav-link,
+.navbar .navbar-brand {
+  color: #333 !important;
+}
+
+/* Hover */
+.navbar .nav-link:hover {
+  background-color: rgba(0,0,0,0.05);
+  color: #000 !important;
+}
+
+/* Reduzir altura */
+.navbar {
+  padding-top: 0.25rem !important;
+  padding-bottom: 0.25rem !important;
+}
+
+.navbar .nav-link {
+  padding-top: 0.2rem !important;
+  padding-bottom: 0.2rem !important;
+  font-size: 0.9rem !important;
+}
+
+/* submenu */
+.has-sub { position: relative; }
+.sub-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 180px;
+  background: #ffffff;
+  color: #333;
+  border-radius: 6px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+  display: none;
+  padding: 6px 0;
+  z-index: 1200;
+  list-style: none;
+}
+.sub-menu .dropdown-item {
+  padding: 8px 14px;
+}
+.sub-menu .dropdown-item:hover {
+  background: #f2f4f8;
+}
+
+/* show submenu */
+.has-sub.open > .sub-menu {
+  display: block;
+}
+
+/* mobile behavior */
+@media (max-width: 767px) {
+  .sub-menu {
+    position: relative;
+    box-shadow: none;
+    background: #f8f9fb;
+    margin: 0;
+  }
+}

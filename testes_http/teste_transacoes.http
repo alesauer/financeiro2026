@@ -1,0 +1,80 @@
+### Criar nova transação
+POST http://localhost:5000/api/transacoes
+Content-Type: application/json
+
+{
+"tipo": "Receita",
+"categoria_id": 39,
+"descricao": "Salário",
+"valor": 1500.00,
+"forma_pagamento": "Transferência",
+"data_transacao": "2025-09-17",
+"recorrente": true,
+"frequencia": "Mensal"
+}
+
+
+
+### Criar nova transação parcelada
+POST http://localhost:5000/api/transacoes
+Content-Type: application/json
+
+{
+  "tipo": "Despesa",
+  "categoria_id": 2,
+  "descricao": "Compra de Notebook",
+  "valor": 2500.00,
+  "forma_pagamento": "Cartão de Crédito",
+  "parcelado": true,
+  "total_parcelas": 10
+}
+
+
+### Listar todas as transações
+GET http://localhost:5000/api/transacoes
+
+
+### Listar transações por tipo (Despesa)
+GET http://localhost:5000/api/transacoes?tipo=Receita
+
+
+### Listar transações em um período
+GET http://localhost:5000/api/transacoes?inicio=2025-09-01&fim=2025-09-30
+
+
+### Listar transações por categoria
+GET http://localhost:5000/api/transacoes?categoria_id=13
+
+
+### Listar transações por forma de pagamento
+GET http://localhost:5000/api/transacoes?forma_pagamento=Pix
+
+
+### Listar transações por status
+GET http://localhost:5000/api/transacoes?status=Pendente
+
+
+### Listar transações recorrentes
+GET http://localhost:5000/api/transacoes?recorrente=true
+
+
+### Listar transações parceladas
+GET http://localhost:5000/api/transacoes?parcelado=true
+
+
+### Obter uma transação por ID
+GET http://localhost:5000/api/transacoes/1
+
+
+### Atualizar uma transação por ID
+PUT http://localhost:5000/api/transacoes/1
+Content-Type: application/json
+
+{
+  "valor": 1600.00,
+  "status": "Pendente"
+}
+
+
+### Deletar uma transação por ID
+DELETE http://localhost:5000/api/transacoes/2

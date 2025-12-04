@@ -1,0 +1,28 @@
+### Criar nova categoria
+POST http://localhost:5000/api/categorias/
+Content-Type: application/json
+
+{
+  "nome": "Salario Mensal",
+  "tipo": "Receita"
+}
+
+### Listar todas as categorias
+GET http://localhost:5000/api/categorias/
+
+### Listar categorias por tipo (Receita)
+GET http://localhost:5000/api/categorias/?tipo=Receita
+
+### Obter uma categoria por ID
+GET http://localhost:5000/api/categorias/5
+
+### Atualizar uma categoria por ID
+PUT http://localhost:5000/api/categorias/4
+Content-Type: application/json
+
+{
+  "nome": "Habitação"
+}
+
+### Deletar uma categoria por ID
+DELETE http://localhost:5000/api/categorias/3

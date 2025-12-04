@@ -1,0 +1,28 @@
+# Ambiente virtual
+venv/
+ENV/
+env/
+# Arquivos de configuração sensíveis
+.env
+# Cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+# Arquivos de log
+*.log
+# Diretórios de migração (recriados pelo Alembic/Flask-Migrate)
+migrations/
+# IDEs / Editores
+.vscode/
+.idea/
+*.swp
+# Arquivos temporários do sistema
+.DS_Store
+Thumbs.db
+# Builds do frontend
+node_modules/
+build/
+dist/

@@ -1,0 +1,100 @@
+### Ping
+GET http://localhost:5000/api/ping
+Content-Type: application/json
+
+
+### Criar categoria
+POST http://localhost:5000/api/categorias/
+Content-Type: application/json
+
+{
+  "nome": "Viagem",
+  "tipo": "Despesa"
+}
+
+
+### Listar categorias
+GET http://localhost:5000/api/categorias/
+Content-Type: application/json
+
+
+### Filtrar categorias por tipo
+GET http://localhost:5000/api/categorias?tipo=Despesa
+Content-Type: application/json
+
+
+### Atualizar categoria
+PUT http://localhost:5000/api/categorias/1
+Content-Type: application/json
+
+{
+  "nome": "Alimentação",
+  "tipo": "Despesa"
+}
+
+
+### Deletar categoria
+DELETE http://localhost:5000/api/categorias/1
+Content-Type: application/json
+
+
+### Criar transação
+POST http://localhost:5000/api/transacoes/
+Content-Type: application/json
+
+{
+  "tipo": "Despesa",
+  "categoria_id": 5,
+  "descricao": "Epa Supermercado",
+  "valor": 250.00,
+  "data_transacao": "2025-09-16",
+  "forma_pagamento": "Cartão de Crédito",
+  "status": "Pago",
+  "parcelado": false,
+  "recorrente": false
+}
+
+
+### Listar todas as transações
+GET http://localhost:5000/api/transacoes/
+Content-Type: application/json
+
+
+### Filtrar transações por tipo (Receita, Despesa, Investimento)
+GET http://localhost:5000/api/transacoes?tipo=Despesa
+Content-Type: application/json
+
+
+### Filtrar transações por período
+GET http://localhost:5000/api/transacoes?inicio=2025-09-01&fim=2025-09-30
+Content-Type: application/json
+
+
+### Buscar transação por ID
+GET http://localhost:5000/api/transacoes/1
+Content-Type: application/json
+
+
+### Atualizar transação
+PUT http://localhost:5000/api/transacoes/1
+Content-Type: application/json
+
+{
+  "descricao": "Supermercado do mês",
+  "valor": 300.00
+}
+
+
+### Deletar transação
+DELETE http://localhost:5000/api/transacoes/1
+Content-Type: application/json
+
+
+### Relatório - totais por tipo em período
+GET http://localhost:5000/api/relatorios/totais?inicio=2025-09-01&fim=2025-09-30
+Content-Type: application/json
+
+
+### Relatório - totais por categoria em período
+GET http://localhost:5000/api/relatorios/categorias?inicio=2025-09-01&fim=2025-09-30
+Content-Type: application/json
