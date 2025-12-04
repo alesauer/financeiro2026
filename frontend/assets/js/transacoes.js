@@ -71,7 +71,7 @@ function createGrid(){
     columns: [
       {
         id: 'id',
-        name: 'ID',
+        name: '', // manter o id nos dados, mas ocultar visualmente a coluna
         sort: false,
         formatter: () => gridjs.html('')
       },
@@ -184,6 +184,17 @@ function createGrid(){
     sort: true,
     width: '100%'
   });
+
+  // Injetar CSS para esconder a primeira coluna (ID) visualmente,
+  // mantendo o valor no dataset dos rows para ações e badges.
+  // Isso evita mudanças na estrutura de dados enviada ao Grid.js.
+  const cssId = 'hide-grid-id-column-style';
+  if (!document.getElementById(cssId)) {
+    const style = document.createElement('style');
+    style.id = cssId;
+    style.innerHTML = `#grid .gridjs-table th:nth-child(1), #grid .gridjs-table td:nth-child(1) { display: none; }`;
+    document.head.appendChild(style);
+  }
 
   grid.render(document.getElementById('grid'));
 }
