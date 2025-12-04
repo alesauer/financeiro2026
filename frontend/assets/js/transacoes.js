@@ -296,51 +296,187 @@ document.addEventListener('DOMContentLoaded', function(){
 });
 
 // CLICK LISTENER: toggle status Pago <-> Pendente
+
 document.getElementById('grid').addEventListener('click', async function(e){
-  const el = e.target.closest('.status-badge');
-  if (!el) return;
+  // Handler para status badge (toggle Pago/Pendente)
+  const statusEl = e.target.closest('.status-badge');
+  if (statusEl) {
+    const id = statusEl.getAttribute('data-id');
+    const current = statusEl.getAttribute('data-status');
+    if (!id || !current) return;
+    const novoStatus = (current.toLowerCase() === 'pago') ? 'Pendente' : 'Pago';
+    try {
+      const resp = await fetch(`${apiUrl}/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: novoStatus })
+      });
+      if (!resp.ok) {
+        alert('Erro ao atualizar status.');
+        return;
+      }
+      const updated = await resp.json();
+      const finalStatus = updated.status || novoStatus;
+      statusEl.setAttribute('data-status', finalStatus);
+      statusEl.textContent = finalStatus;
+      if (finalStatus.toLowerCase() === 'pago') {
+        statusEl.style.background = '#198754';
+        statusEl.style.color = '#fff';
+      } else if (finalStatus.toLowerCase() === 'pendente') {
+        statusEl.style.background = '#dc3545';
+        statusEl.style.color = '#fff';
+      } else {
+        statusEl.style.background = '';
+        statusEl.style.color = '';
+      }
+      fetchAndRenderSummary();
+    } catch (err) {
+      alert('Erro de rede ao atualizar status.');
+    }
+    return;
+  }
 
-  const id = el.getAttribute('data-id');
-  const current = el.getAttribute('data-status');
-  if (!id || !current) return;
+  // Handler para botão de exclusão
+  const deleteBtn = e.target.closest('.delete-btn');
+  if (deleteBtn) {
+    const id = deleteBtn.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Deseja realmente excluir esta transação? Esta ação não pode ser desfeita.')) return;
+    try {
+      const resp = await fetch(`${apiUrl}/${id}`, {
+        method: 'DELETE'
+      });
+      if (!resp.ok) {
+        alert('Erro ao excluir transação.');
+        return;
+      }
+      const result = await resp.json();
+      alert(result.message || 'Transação excluída com sucesso.');
+      reloadGrid();
+      fetchAndRenderSummary();
+    } catch (err) {
+      alert('Erro de rede ao excluir transação.');
+    }
+    return;
+  }
 
-  const novoStatus = (current.toLowerCase() === 'pago') ? 'Pendente' : 'Pago';
+    // Handler para botão de edição
+    const editBtn = e.target.closest('.edit-btn');
+    if (editBtn) {
+      const id = editBtn.getAttribute('data-id');
+      if (!id) return;
 
-  try {
-    const resp = await fetch(`${apiUrl}/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: novoStatus })
-    });
-
-    if (!resp.ok) {
-      alert('Erro ao atualizar status.');
+      // Buscar dados da transação
+      try {
+        const resp = await fetch(`${apiUrl}/${id}`);
+        if (!resp.ok) {
+          alert('Erro ao buscar dados da transação.');
+          return;
+        }
+        const dados = await resp.json();
+        abrirModalEdicao(dados);
+      } catch (err) {
+        alert('Erro de rede ao buscar dados da transação.');
+      }
       return;
     }
+// Função para abrir modal de edição
+function abrirModalEdicao(dados) {
+  // Remove modal anterior se existir
+  const old = document.getElementById('modal-edicao-transacao');
+  if (old) old.remove();
 
-    const updated = await resp.json();
-    const finalStatus = updated.status || novoStatus;
+  // Cria modal
+  const modal = document.createElement('div');
+  modal.id = 'modal-edicao-transacao';
+  modal.style.position = 'fixed';
+  modal.style.top = '0';
+  modal.style.left = '0';
+  modal.style.width = '100vw';
+  modal.style.height = '100vh';
+  modal.style.background = 'rgba(0,0,0,0.3)';
+  modal.style.zIndex = '9999';
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
 
-    el.setAttribute('data-status', finalStatus);
-    el.textContent = finalStatus;
+  // Campos editáveis
+  const campos = [
+    { nome: 'descricao', label: 'Descrição', tipo: 'text' },
+    { nome: 'valor', label: 'Valor (R$)', tipo: 'number', step: '0.01' },
+    { nome: 'data_transacao', label: 'Data', tipo: 'date' },
+    { nome: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'select', opcoes: ['Dinheiro','Cartão de Crédito','Cartão de Débito','Pix','Boleto','Transferência'] },
+    { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] },
+    { nome: 'tipo', label: 'Tipo', tipo: 'select', opcoes: ['Receita','Despesa','Investimento'] }
+  ];
 
-    if (finalStatus.toLowerCase() === 'pago') {
-      el.style.background = '#198754';
-      el.style.color = '#fff';
-    } else if (finalStatus.toLowerCase() === 'pendente') {
-      el.style.background = '#dc3545';
-      el.style.color = '#fff';
+  // Monta formulário
+  let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
+    <h4 style="margin-bottom:16px;">Editar Transação</h4>`;
+  campos.forEach(c => {
+    html += `<div style="margin-bottom:12px;">
+      <label style="font-weight:600;">${c.label}</label><br/>`;
+    if (c.tipo === 'select') {
+      html += `<select name="${c.nome}" style="width:100%;padding:6px;">`;
+      c.opcoes.forEach(op => {
+        const sel = (dados[c.nome] === op) ? 'selected' : '';
+        html += `<option value="${op}" ${sel}>${op}</option>`;
+      });
+      html += `</select>`;
+    } else if (c.tipo === 'date') {
+      let val = dados[c.nome];
+      if (val && val.length >= 10) val = val.slice(0,10);
+      html += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:6px;" />`;
     } else {
-      el.style.background = '';
-      el.style.color = '';
+      html += `<input type="${c.tipo}" name="${c.nome}" value="${dados[c.nome]||''}" style="width:100%;padding:6px;" step="${c.step||''}" />`;
     }
+    html += `</div>`;
+  });
+  html += `<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+    <button type="button" id="btn-cancelar-edicao" class="btn btn-secondary">Cancelar</button>
+    <button type="submit" class="btn btn-primary">Salvar</button>
+  </div>
+  </form>`;
 
-    // refresh summary because status might affect totals
-    fetchAndRenderSummary();
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
 
-  } catch (err) {
-    alert('Erro de rede ao atualizar status.');
-  }
+  // Cancelar
+  document.getElementById('btn-cancelar-edicao').onclick = () => {
+    modal.remove();
+  };
+
+  // Salvar
+  document.getElementById('form-edicao-transacao').onsubmit = async function(ev) {
+    ev.preventDefault();
+    const fd = new FormData(ev.target);
+    const payload = {};
+    campos.forEach(c => {
+      let v = fd.get(c.nome);
+      if (c.tipo === 'number') v = v ? parseFloat(v) : null;
+      payload[c.nome] = v;
+    });
+    // PATCH/PUT para backend
+    try {
+      const resp = await fetch(`${apiUrl}/${dados.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (!resp.ok) {
+        const err = await resp.json();
+        alert('Erro ao salvar: ' + (err.error || JSON.stringify(err)));
+        return;
+      }
+      alert('Transação atualizada com sucesso.');
+      modal.remove();
+      reloadGrid();
+      fetchAndRenderSummary();
+    } catch (err) {
+      alert('Erro de rede ao salvar.');
+    }
+  };
+}
 });
 
 
