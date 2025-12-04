@@ -1,4 +1,4 @@
-# Finanças — Scripts em Python
+# Finanças 2026
 
 Descrição
 - Conjunto de scripts em Python para automação de tarefas financeiras: importação e limpeza de transações, categorização, geração de relatórios e gráficos, e apoio a orçamentos.
