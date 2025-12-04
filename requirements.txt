@@ -1,7 +1,8 @@
-flask
-flask-sqlalchemy
-flask-migrate
-flask-cors
-mysqlclient
-python-dotenv
-marshmallow
+Flask>=2.2
+Flask-SQLAlchemy>=3.0
+Flask-Migrate>=4.0
+Flask-Cors>=4.0
+python-dotenv>=1.0
+marshmallow>=3.0
+mysqlclient>=2.0    # optional: may require compiling native extensions on Windows
+PyMySQL>=1.0        # recommended on Windows
