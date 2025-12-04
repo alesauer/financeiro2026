@@ -177,9 +177,14 @@ function formatDate(value){
 
 
 function formatCurrency(value){
-  if (value === null || value === undefined) return '';
-  const num = Number(value);
-  if (isNaN(num)) return value;
+  if (value === null || value === undefined || value === '') return 'R$ 0,00';
+  let num = value;
+  if (typeof num === 'string') {
+    // Remove tudo que não for número, ponto ou vírgula
+    num = num.replace(/[^\d.,-]/g, '').replace(',', '.');
+  }
+  num = Number(num);
+  if (isNaN(num)) return 'R$ 0,00';
   return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
@@ -246,7 +251,18 @@ function createGrid(){
           return gridjs.html(`<span class="status-badge" data-id="${id}" data-status="${txt}" style="${baseStyle}">${txt}</span>`);
         }
       },
-      { id: 'tipo', name: 'Tipo', sort: true },
+      {
+        id: 'tipo',
+        name: 'Tipo',
+        sort: true,
+        formatter: (cell) => {
+          let color = '';
+          if (cell === 'Receita') color = 'green';
+          else if (cell === 'Despesa') color = 'red';
+          else if (cell === 'Investimento') color = 'goldenrod';
+          return gridjs.html(`<span style="color:${color};font-weight:bold;">${cell}</span>`);
+        }
+      },
       {
         id: 'valor',
         name: 'Valor',
@@ -374,9 +390,10 @@ function reloadGrid(){
         });
 
         return items.map(row => [
-      row.id,
+          row.id,
           formatDate(row.data_transacao || row.data || row.data_transacao),
           row.descricao || '',
+          row.categoria_nome || '',
           row.forma_pagamento || '',
           row.status || '',
           row.tipo || '',
