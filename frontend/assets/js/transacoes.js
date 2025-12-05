@@ -23,7 +23,10 @@ function abrirModalEdicao(dados) {
     { nome: 'valor', label: 'Valor (R$)', tipo: 'number', step: '0.01' },
     { nome: 'data_transacao', label: 'Data', tipo: 'date' },
     { nome: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'select', opcoes: ['Dinheiro','Cartão de Crédito','Cartão de Débito','Pix','Boleto','Transferência'] },
-    { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] }
+    { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] },
+    { nome: 'recorrente', label: 'Recorrente', tipo: 'checkbox' },
+    { nome: 'frequencia', label: 'Frequência', tipo: 'select-frequencia', opcoes: ['Mensal'] },
+    { nome: 'data_fim', label: 'Data Fim', tipo: 'date' }
   ];
 
   let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
@@ -31,7 +34,7 @@ function abrirModalEdicao(dados) {
   let categorias = [];
   let tipoSelecionado = dados && dados.tipo ? dados.tipo : 'Receita';
 
-  // Busca categorias do tipo informado e renderiza campos
+  // Busca categorias do tipo informado e renderiza campos SEMPRE que abrir o modal
   function buscarECampos(tipoCat) {
     fetch(`http://127.0.0.1:5000/api/categorias?tipo=${encodeURIComponent(tipoCat)}`)
       .then(resp => resp.json())
@@ -47,12 +50,40 @@ function abrirModalEdicao(dados) {
       });
   }
 
+  // Sempre buscar categorias ao abrir o modal, inclusive para Nova Transação
+  setTimeout(() => buscarECampos(tipoSelecionado), 0);
+
   function renderCampos() {
     let camposHtml = '';
     campos.forEach(c => {
-      camposHtml += `<div style="margin-bottom:12px;">
-        <label style="font-weight:600;">${c.label}</label><br/>`;
+      // Recorrente: checkbox
+      if (c.tipo === 'checkbox') {
+        const checked = dados && dados.recorrente ? 'checked' : '';
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;"><input type="checkbox" name="recorrente" ${checked}/> Recorrente</label></div>`;
+        return;
+      }
+      // Frequência: só aparece se recorrente marcado
+      if (c.tipo === 'select-frequencia') {
+        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-frequencia"><label style="font-weight:600;">${c.label}</label><br/>`;
+        camposHtml += `<select name="frequencia" style="width:100%;padding:6px;">`;
+        c.opcoes.forEach(op => {
+          let sel = dados && dados.frequencia === op ? 'selected' : '';
+          camposHtml += `<option value="${op}" ${sel}>${op}</option>`;
+        });
+        camposHtml += `</select></div>`;
+        return;
+      }
+      // Data Fim: só aparece se recorrente marcado
+      if (c.nome === 'data_fim') {
+        let val = dados && dados.data_fim ? dados.data_fim : '';
+        if (val && val.length >= 10) val = val.slice(0,10);
+        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-data-fim"><label style="font-weight:600;">${c.label}</label><br/>`;
+        camposHtml += `<input type="date" name="data_fim" value="${val||''}" style="width:100%;padding:6px;" /></div>`;
+        return;
+      }
+      // ...restante igual
       if (c.tipo === 'select') {
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;">${c.label}</label><br/>`;
         camposHtml += `<select name="${c.nome}" style="width:100%;padding:6px;">`;
         c.opcoes.forEach(op => {
           let sel = '';
@@ -60,22 +91,24 @@ function abrirModalEdicao(dados) {
           else if (dados && dados[c.nome] === op) sel = 'selected';
           camposHtml += `<option value="${op}" ${sel}>${op}</option>`;
         });
-        camposHtml += `</select>`;
+        camposHtml += `</select></div>`;
       } else if (c.tipo === 'select-categoria') {
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;">${c.label}</label><br/>`;
         camposHtml += `<select name="categoria_id" style="width:100%;padding:6px;">`;
         categorias.forEach(cat => {
           const sel = (dados && dados.categoria_id == cat.id) ? 'selected' : '';
           camposHtml += `<option value="${cat.id}" ${sel}>${cat.nome}</option>`;
         });
-        camposHtml += `</select>`;
+        camposHtml += `</select></div>`;
       } else if (c.tipo === 'date') {
         let val = dados && dados[c.nome] ? dados[c.nome] : '';
         if (val && val.length >= 10) val = val.slice(0,10);
-        camposHtml += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:6px;" />`;
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;">${c.label}</label><br/>`;
+        camposHtml += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:6px;" /></div>`;
       } else {
-        camposHtml += `<input type="${c.tipo}" name="${c.nome}" value="${dados ? (dados[c.nome]||'') : ''}" style="width:100%;padding:6px;" step="${c.step||''}" />`;
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;">${c.label}</label><br/>`;
+        camposHtml += `<input type="${c.tipo}" name="${c.nome}" value="${dados ? (dados[c.nome]||'') : ''}" style="width:100%;padding:6px;" step="${c.step||''}" /></div>`;
       }
-      camposHtml += `</div>`;
     });
     return camposHtml;
   }
@@ -94,6 +127,24 @@ function abrirModalEdicao(dados) {
     document.getElementById('btn-cancelar-edicao').onclick = () => {
       modal.remove();
     };
+    // Exibir/ocultar campos de recorrência assim que renderiza os campos
+    const recorrenteCheckbox = document.querySelector('input[name="recorrente"]');
+    const divFrequencia = document.getElementById('div-frequencia');
+    const divDataFim = document.getElementById('div-data-fim');
+    function toggleRecorrenteFields() {
+      if (recorrenteCheckbox && recorrenteCheckbox.checked) {
+        if (divFrequencia) divFrequencia.style.display = '';
+        if (divDataFim) divDataFim.style.display = '';
+      } else {
+        if (divFrequencia) divFrequencia.style.display = 'none';
+        if (divDataFim) divDataFim.style.display = 'none';
+      }
+    }
+    if (recorrenteCheckbox) {
+      recorrenteCheckbox.onchange = toggleRecorrenteFields;
+      toggleRecorrenteFields();
+    }
+
     document.getElementById('form-edicao-transacao').onsubmit = async function(ev) {
       ev.preventDefault();
       const fd = new FormData(ev.target);
@@ -102,6 +153,8 @@ function abrirModalEdicao(dados) {
         let v = fd.get(c.nome);
         if (c.tipo === 'number') v = v ? parseFloat(v) : null;
         if (c.nome === 'categoria_id') v = v ? parseInt(v) : null;
+        // Checkbox recorrente
+        if (c.nome === 'recorrente') v = fd.get('recorrente') ? true : false;
         payload[c.nome] = v;
       });
       try {
