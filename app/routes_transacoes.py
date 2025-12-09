@@ -18,36 +18,13 @@ def criar():
     except ValidationError as err:
         return jsonify(err.messages), 400
 
-    # Lógica de recorrência mensal
-    if validado.get('recorrente') and validado.get('frequencia') == 'Mensal' and validado.get('data_fim'):
-        data_inicio = validado.get('data_transacao')
-        data_fim = validado.get('data_fim')
-        if isinstance(data_inicio, str):
-            data_inicio = datetime.strptime(data_inicio, "%Y-%m-%d").date()
-        if isinstance(data_fim, str):
-            data_fim = datetime.strptime(data_fim, "%Y-%m-%d").date()
-        transacoes = []
-        data_atual = data_inicio
-        while data_atual <= data_fim:
-            t = Transacao(**{**validado, 'data_transacao': data_atual})
-            if t.parcelado and t.total_parcelas:
-                t.valor_parcela = t.valor / t.total_parcelas
-            transacoes.append(t)
-            # Avança 1 mês
-            if data_atual.month == 12:
-                data_atual = data_atual.replace(year=data_atual.year+1, month=1)
-            else:
-                data_atual = data_atual.replace(month=data_atual.month+1)
-        db.session.add_all(transacoes)
-        db.session.commit()
-        return jsonify(schemas.dump(transacoes)), 201
-    else:
-        transacao = Transacao(**validado)
-        if transacao.parcelado and transacao.total_parcelas:
-            transacao.valor_parcela = transacao.valor / transacao.total_parcelas
-        db.session.add(transacao)
-        db.session.commit()
-        return jsonify(schema.dump(transacao)), 201
+    transacao = Transacao(**validado)
+    if transacao.parcelado and transacao.total_parcelas:
+        transacao.valor_parcela = transacao.valor / transacao.total_parcelas
+
+    db.session.add(transacao)
+    db.session.commit()
+    return jsonify(schema.dump(transacao)), 201
 
 @bp_transacoes.route("/", methods=["GET"])
 def listar():

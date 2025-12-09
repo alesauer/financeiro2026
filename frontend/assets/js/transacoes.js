@@ -155,6 +155,13 @@ function abrirModalEdicao(dados) {
         if (c.nome === 'categoria_id') v = v ? parseInt(v) : null;
         // Checkbox recorrente
         if (c.nome === 'recorrente') v = fd.get('recorrente') ? true : false;
+        // Corrige data_fim: se vazio, não envia ou envia como null
+        if (c.nome === 'data_fim') {
+          if (!v || v === "") {
+            // Pode remover ou enviar como null, aqui removendo:
+            return;
+          }
+        }
         payload[c.nome] = v;
       });
       try {
@@ -759,9 +766,28 @@ async function fetchAndRenderSummary() {
     const elR = document.getElementById('card-receitas');
     const elD = document.getElementById('card-despesas');
     const elS = document.getElementById('card-saldo');
+    const elC = document.getElementById('card-cartao');
     if (elR) elR.textContent = formatMoeda(data.receitas || 0);
     if (elD) elD.textContent = formatMoeda(data.despesas || 0);
     if (elS) elS.textContent = formatMoeda(data.saldo || 0);
+    // Soma despesas de cartão de crédito
+    if (elC) {
+      // Se o backend não retorna data.transacoes, buscar manualmente
+      let totalCartao = 0;
+      try {
+        const respCartao = await fetch(`http://127.0.0.1:5000/api/transacoes?inicio=${inicio}&fim=${fim}`);
+        if (respCartao.ok) {
+          const dataCartao = await respCartao.json();
+          const arr = dataCartao.items || dataCartao.rows || [];
+          arr.forEach(t => {
+            if (t.tipo === 'Despesa' && t.forma_pagamento === 'Cartão de Crédito') {
+              totalCartao += Number(t.valor) || 0;
+            }
+          });
+        }
+      } catch {}
+      elC.textContent = formatMoeda(totalCartao);
+    }
 
   } catch (err) {
     console.error('Erro fetch summary', err);
