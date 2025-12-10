@@ -7,3 +7,4 @@ marshmallow>=3.0
 mysqlclient>=2.0    # optional: may require compiling native extensions on Windows
 PyMySQL>=1.0        # recommended on Windows
 python-dateutil>=2.8
+openai

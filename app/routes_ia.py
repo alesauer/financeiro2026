@@ -1,6 +1,9 @@
+
 from flask import Blueprint, request, jsonify
 import openai
 import os
+from app.models import Categoria
+from app import db
 
 bp_ia = Blueprint("ia", __name__)
 
@@ -16,8 +19,15 @@ def classificar_categoria():
     if not openai.api_key:
         print("[ERRO] OPENAI_API_KEY não definida.")
         return jsonify({"categorias": [], "erro": "OPENAI_API_KEY não definida."}), 500
+    # Busca as categorias cadastradas no banco
+    categorias_db = db.session.query(Categoria.nome).all()
+    lista_categorias = [c[0] for c in categorias_db]
+    categorias_str = ', '.join(lista_categorias)
     for desc in descricoes:
-        prompt = f"Classifique a transação '{desc}' em uma categoria financeira (ex: Alimentação, Transporte, Lazer, Saúde, Compras, Serviços, etc). Responda apenas com o nome da categoria."
+        prompt = (
+            f"Classifique a transação '{desc}' em uma das seguintes categorias financeiras já cadastradas: {categorias_str}. "
+            "Responda apenas com o nome exato da categoria da lista acima. Se não souber, responda 'Indefinida'."
+        )
         try:
             client = openai.OpenAI(api_key=openai.api_key)
             response = client.chat.completions.create(
