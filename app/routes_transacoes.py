@@ -18,13 +18,48 @@ def criar():
     except ValidationError as err:
         return jsonify(err.messages), 400
 
-    transacao = Transacao(**validado)
-    if transacao.parcelado and transacao.total_parcelas:
-        transacao.valor_parcela = transacao.valor / transacao.total_parcelas
+    from dateutil.relativedelta import relativedelta
 
-    db.session.add(transacao)
-    db.session.commit()
-    return jsonify(schema.dump(transacao)), 201
+    transacoes_geradas = []
+    recorrente = validado.get('recorrente', False)
+    frequencia = validado.get('frequencia')
+    data_fim = validado.get('data_fim')
+    data_inicial = validado.get('data_transacao')
+
+    # Se for recorrente e tiver frequência e data_fim, gera múltiplas transações
+    if recorrente and frequencia and data_fim and data_inicial:
+        data_atual = data_inicial
+        while data_atual <= data_fim:
+            dados_nova = dict(validado)
+            dados_nova['data_transacao'] = data_atual
+            # Remove data_transacao duplicado se existir
+            if 'data_transacao' in dados_nova and dados_nova['data_transacao'] != data_atual:
+                dados_nova['data_transacao'] = data_atual
+            nova = Transacao(**dados_nova)
+            if nova.parcelado and nova.total_parcelas:
+                nova.valor_parcela = nova.valor / nova.total_parcelas
+            transacoes_geradas.append(nova)
+            # Avança para próxima recorrência
+            if frequencia == "Mensal":
+                data_atual += relativedelta(months=1)
+            elif frequencia == "Semanal":
+                data_atual += relativedelta(weeks=1)
+            elif frequencia == "Diária":
+                data_atual += relativedelta(days=1)
+            elif frequencia == "Anual":
+                data_atual += relativedelta(years=1)
+            else:
+                break
+        db.session.add_all(transacoes_geradas)
+        db.session.commit()
+        return jsonify(schemas.dump(transacoes_geradas)), 201
+    else:
+        transacao = Transacao(**validado)
+        if transacao.parcelado and transacao.total_parcelas:
+            transacao.valor_parcela = transacao.valor / transacao.total_parcelas
+        db.session.add(transacao)
+        db.session.commit()
+        return jsonify(schema.dump(transacao)), 201
 
 @bp_transacoes.route("/", methods=["GET"])
 def listar():
