@@ -23,7 +23,11 @@
         <button type="submit" class="btn btn-primary">Visualizar</button>
       </form>
     </div>
-    <div id="progress-container" class="mb-3" style="display:none;">
+    <div id="progress-container" class="mb-3" style="display:none;"></div>
+    <div id="import-errors"></div>
+    <div id="import-confirm" style="display:none;">
+      <button id="btn-importar" class="btn btn-success">Importar registros válidos</button>
+    </div>
       <label class="form-label">Progresso da categorização:</label>
       <div class="progress">
         <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;">0%</div>
@@ -37,6 +41,18 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
   <script>
+    // Carrega categorias do backend
+    let categoriasBanco = [];
+    async function carregarCategoriasBanco() {
+      try {
+        const resp = await fetch('http://127.0.0.1:5000/api/categorias/');
+        if (resp.ok) {
+          categoriasBanco = await resp.json();
+        }
+      } catch {}
+    }
+    carregarCategoriasBanco();
+
     document.getElementById('form-import-csv').addEventListener('submit', async function(ev) {
       ev.preventDefault();
       const input = document.getElementById('arquivoCartao');
@@ -91,25 +107,107 @@
           alert.role = 'alert';
           alert.innerText = `Categorização concluída! ${descricoes.length} registros processados.`;
           alertsDiv.appendChild(alert);
-          // Esconde barra de progresso após alguns segundos
           setTimeout(() => { progressContainer.style.display = 'none'; }, 3000);
-          // Monta os dados para Grid.js
-          const columns = [
-            { id: 'date', name: 'Data' },
-            { id: 'title', name: 'Descrição' },
-            { id: 'amount', name: 'Valor', formatter: v => `R$ ${parseFloat(v).toFixed(2)}` },
-            { id: 'categoria', name: 'Categoria Sugerida' }
-          ];
-          const rows = results.data.map((row, idx) => [row.date, row.title, row.amount, categorias[idx] || 'Indefinida']);
-          // Renderiza a grid
+
+          // Validação dos dados
+          const errosDiv = document.getElementById('import-errors');
+          errosDiv.innerHTML = '';
+          let validos = [];
+          let invalidos = [];
+          const rows = results.data.map((row, idx) => {
+            validos.push({ ...row, categoria: categorias[idx] });
+            return [row.date, row.title, row.amount, categorias[idx] || 'Indefinida'];
+          });
+
+          // Exibe erros
+          if (invalidos.length > 0) {
+            const erroAlert = document.createElement('div');
+            erroAlert.className = 'alert alert-danger';
+            erroAlert.role = 'alert';
+            erroAlert.innerText = `${invalidos.length} registros inválidos encontrados. Revise os erros na grid antes de importar.`;
+            errosDiv.appendChild(erroAlert);
+          }
+
+          // Renderiza a grid sem coluna de erro
+          if (!categoriasBanco.length) {
+            await carregarCategoriasBanco();
+          }
+          function selectCategoriaHTML(sugerida, idx) {
+            let html = `<select class='form-select form-select-sm categoria-select' data-idx='${idx}'>`;
+            html += `<option value=''>Selecione</option>`;
+            categoriasBanco.forEach(cat => {
+              const selected = cat.nome === sugerida ? 'selected' : '';
+              html += `<option value='${cat.nome}' ${selected}>${cat.nome}</option>`;
+            });
+            html += `</select>`;
+            return html;
+          }
+          const gridRows = results.data.map((row, idx) => [
+            row.date,
+            row.title,
+            row.amount,
+            categorias[idx] || 'Indefinida',
+            selectCategoriaHTML(categorias[idx], idx)
+          ]);
           new gridjs.Grid({
-            columns: columns,
-            data: rows,
+            columns: [
+              { id: 'date', name: 'Data' },
+              { id: 'title', name: 'Descrição' },
+              { id: 'amount', name: 'Valor', formatter: v => `R$ ${parseFloat(v).toFixed(2)}` },
+              { id: 'categoria_sugerida', name: 'Categoria Sugerida' },
+              { id: 'categoria_select', name: 'Categoria (Editar)', formatter: cell => gridjs.html(cell) }
+            ],
+            data: gridRows,
             pagination: { enabled: true, limit: 20 },
             sort: true,
             search: true,
             width: '100%'
           }).render(document.getElementById('grid'));
+
+          // Exibe botão de importação se houver registros válidos
+          const importConfirm = document.getElementById('import-confirm');
+          if (validos.length > 0) {
+            importConfirm.style.display = 'block';
+            document.getElementById('btn-importar').onclick = async function() {
+              // Atualiza categoria de cada registro conforme select
+              const selects = document.querySelectorAll('.categoria-select');
+              selects.forEach(sel => {
+                const idx = parseInt(sel.getAttribute('data-idx'));
+                if (validos[idx]) {
+                  validos[idx].categoria = sel.value || validos[idx].categoria;
+                }
+              });
+              // Envia os registros válidos para o backend
+              try {
+                const resp = await fetch('http://127.0.0.1:5000/api/importar_transacoes', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ transacoes: validos })
+                });
+                if (resp.ok) {
+                  const data = await resp.json();
+                  // Esconde grid, barra de progresso, erros e controles
+                  document.getElementById('grid').innerHTML = '';
+                  document.getElementById('progress-container').style.display = 'none';
+                  document.getElementById('import-errors').innerHTML = '';
+                  importConfirm.style.display = 'none';
+                  // Exibe alert-success e mantém o formulário de upload visível
+                  alertsDiv.innerHTML = '';
+                  const alert = document.createElement('div');
+                  alert.className = 'alert alert-success';
+                  alert.role = 'alert';
+                  alert.innerText = `Importação realizada com sucesso! ${data.sucesso} registro(s) importado(s).`;
+                  alertsDiv.appendChild(alert);
+                } else {
+                  alert('Erro ao importar registros.');
+                }
+              } catch {
+                alert('Erro de conexão ao importar registros.');
+              }
+            };
+          } else {
+            importConfirm.style.display = 'none';
+          }
         }
       });
     });
