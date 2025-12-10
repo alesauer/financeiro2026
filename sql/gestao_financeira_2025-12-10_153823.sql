@@ -65,6 +65,7 @@ INSERT INTO `categorias` VALUES (4,'Férias Prêmio','Receita'),(5,'Alimentaçã
 DROP TABLE IF EXISTS `transacoes`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
+
 CREATE TABLE `transacoes` (
   `id` int NOT NULL AUTO_INCREMENT,
   `tipo` enum('Receita','Despesa','Investimento') COLLATE utf8mb4_unicode_ci NOT NULL,
