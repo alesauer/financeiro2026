@@ -18,29 +18,41 @@ def criar():
     except ValidationError as err:
         return jsonify(err.messages), 400
 
-    # Lógica de recorrência mensal
-    if validado.get('recorrente') and validado.get('frequencia') == 'Mensal' and validado.get('data_fim'):
-        data_inicio = validado.get('data_transacao')
-        data_fim = validado.get('data_fim')
-        if isinstance(data_inicio, str):
-            data_inicio = datetime.strptime(data_inicio, "%Y-%m-%d").date()
-        if isinstance(data_fim, str):
-            data_fim = datetime.strptime(data_fim, "%Y-%m-%d").date()
-        transacoes = []
-        data_atual = data_inicio
+    from dateutil.relativedelta import relativedelta
+
+    transacoes_geradas = []
+    recorrente = validado.get('recorrente', False)
+    frequencia = validado.get('frequencia')
+    data_fim = validado.get('data_fim')
+    data_inicial = validado.get('data_transacao')
+
+    # Se for recorrente e tiver frequência e data_fim, gera múltiplas transações
+    if recorrente and frequencia and data_fim and data_inicial:
+        data_atual = data_inicial
         while data_atual <= data_fim:
-            t = Transacao(**{**validado, 'data_transacao': data_atual})
-            if t.parcelado and t.total_parcelas:
-                t.valor_parcela = t.valor / t.total_parcelas
-            transacoes.append(t)
-            # Avança 1 mês
-            if data_atual.month == 12:
-                data_atual = data_atual.replace(year=data_atual.year+1, month=1)
+            dados_nova = dict(validado)
+            dados_nova['data_transacao'] = data_atual
+            # Remove data_transacao duplicado se existir
+            if 'data_transacao' in dados_nova and dados_nova['data_transacao'] != data_atual:
+                dados_nova['data_transacao'] = data_atual
+            nova = Transacao(**dados_nova)
+            if nova.parcelado and nova.total_parcelas:
+                nova.valor_parcela = nova.valor / nova.total_parcelas
+            transacoes_geradas.append(nova)
+            # Avança para próxima recorrência
+            if frequencia == "Mensal":
+                data_atual += relativedelta(months=1)
+            elif frequencia == "Semanal":
+                data_atual += relativedelta(weeks=1)
+            elif frequencia == "Diária":
+                data_atual += relativedelta(days=1)
+            elif frequencia == "Anual":
+                data_atual += relativedelta(years=1)
             else:
-                data_atual = data_atual.replace(month=data_atual.month+1)
-        db.session.add_all(transacoes)
+                break
+        db.session.add_all(transacoes_geradas)
         db.session.commit()
-        return jsonify(schemas.dump(transacoes)), 201
+        return jsonify(schemas.dump(transacoes_geradas)), 201
     else:
         transacao = Transacao(**validado)
         if transacao.parcelado and transacao.total_parcelas:
