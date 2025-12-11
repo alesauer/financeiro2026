@@ -1,4 +1,3 @@
-
 # Sistema de Gestão Financeira Pessoal
 
 ## Visão Geral
@@ -208,3 +207,23 @@ Licença
 
 Suporte
 - Abra uma issue no repositório para bugs ou pedidos de melhoria
+
+---
+
+## Deploy no GitHub
+
+1. Faça commit de todas as alterações:
+   ```bash
+   git add .
+   git commit -m "Atualiza README e requirements para deploy"
+   git push origin master
+   ```
+2. Não suba arquivos sensíveis (.env com credenciais reais). Use o `.env.example` como modelo.
+3. O arquivo `requirements.txt` já está pronto para deploy em ambientes como Heroku, Railway, etc.
+4. Para rodar localmente após clonar:
+   - Crie e ative o ambiente virtual
+   - Instale as dependências
+   - Copie `.env.example` para `.env` e ajuste as variáveis
+   - Execute as migrações e rode o backend normalmente
+
+---
