@@ -132,11 +132,36 @@
       </div>
     </div>
     <!-- Espaço para gráficos e widgets futuros -->
-    <div class="row">
-      <div class="col-12">
-        <div class="card mb-4">
-          <div class="card-body text-center text-muted">
-            <em>Gráficos e relatórios serão exibidos aqui.</em>
+    <div class="row mb-4">
+      <div class="col-md-6 mb-4">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Receita x Despesa por Mês</h6>
+            <canvas id="grafico-receita-despesa"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 mb-4">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Saldo Mensal</h6>
+            <canvas id="grafico-saldo-mensal"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 mb-4">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Investimento por Mês</h6>
+            <canvas id="grafico-investimento-mes"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 mb-4">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Acúmulo de Investimentos</h6>
+            <canvas id="grafico-investimento-acumulado"></canvas>
           </div>
         </div>
       </div>
@@ -164,6 +189,112 @@
       }
     }
 
+    // Função para renderizar os gráficos Chart.js
+    function renderizarGraficos(data) {
+      // Destruir gráficos antigos se existirem
+      if (window.graficoReceitaDespesa) window.graficoReceitaDespesa.destroy();
+      if (window.graficoSaldoMensal) window.graficoSaldoMensal.destroy();
+      if (window.graficoInvestimentoMes) window.graficoInvestimentoMes.destroy();
+      if (window.graficoInvestimentoAcumulado) window.graficoInvestimentoAcumulado.destroy();
+
+      // Gráfico 2: Barras Receita x Despesa por mês
+      const ctxRD = document.getElementById('grafico-receita-despesa').getContext('2d');
+      window.graficoReceitaDespesa = new Chart(ctxRD, {
+        type: 'bar',
+        data: {
+          labels: data.meses,
+          datasets: [
+            {
+              label: 'Receita',
+              data: data.receita,
+              backgroundColor: 'rgba(25, 135, 84, 0.7)'
+            },
+            {
+              label: 'Despesa',
+              data: data.despesa,
+              backgroundColor: 'rgba(220, 53, 69, 0.7)'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'top' } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Gráfico 3: Linha de saldo mensal
+      const ctxSaldo = document.getElementById('grafico-saldo-mensal').getContext('2d');
+      window.graficoSaldoMensal = new Chart(ctxSaldo, {
+        type: 'line',
+        data: {
+          labels: data.meses,
+          datasets: [
+            {
+              label: 'Saldo',
+              data: data.sobrou,
+              borderColor: '#0d6efd',
+              backgroundColor: 'rgba(13,110,253,0.1)',
+              fill: true,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Gráfico 5: Barras de investimento por mês
+      const ctxInvMes = document.getElementById('grafico-investimento-mes').getContext('2d');
+      window.graficoInvestimentoMes = new Chart(ctxInvMes, {
+        type: 'bar',
+        data: {
+          labels: data.meses,
+          datasets: [
+            {
+              label: 'Investimento',
+              data: data.investimento,
+              backgroundColor: 'rgba(13, 110, 253, 0.7)'
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+
+      // Gráfico 6: Linha de acúmulo de investimentos
+      const acumulado = [];
+      data.investimento.reduce((acc, val, idx) => acumulado[idx] = acc + val, 0);
+      const ctxInvAcum = document.getElementById('grafico-investimento-acumulado').getContext('2d');
+      window.graficoInvestimentoAcumulado = new Chart(ctxInvAcum, {
+        type: 'line',
+        data: {
+          labels: data.meses,
+          datasets: [
+            {
+              label: 'Acúmulo de Investimentos',
+              data: acumulado,
+              borderColor: '#198754',
+              backgroundColor: 'rgba(25,135,84,0.1)',
+              fill: true,
+              tension: 0.3
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
     // Preencher tabela de sumário anual com dados reais do ano selecionado
     async function preencherTabelaResumo() {
       try {
@@ -186,6 +317,7 @@
         html += '<tr><td class=\"fw-bold\">Total Despesa</td>' + despesa.map(v => `<td>${formatMoeda(v)}</td>`).join('') + `<td>${formatMoeda(data.total_despesa)}</td></tr>`;
         html += '<tr><td class=\"fw-bold\">Saldo</td>' + sobrou.map(v => `<td class=\"${v>=0?'sobrou':'sobrou-neg'}\">${formatMoeda(v)}</td>`).join('') + `<td class=\"${data.total_sobrou>=0?'sobrou':'sobrou-neg'}\">${formatMoeda(data.total_sobrou)}</td></tr>`;
         document.querySelector('#tabela-resumo-anual tbody').innerHTML = html;
+        renderizarGraficos(data);
       }
       catch (err) {
         console.error('Erro ao preencher tabela resumo:', err);
@@ -198,6 +330,7 @@
       document.getElementById('dashboard-ano').addEventListener('change', preencherTabelaResumo);
     });
   </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="assets/js/nav.js"></script>
 </body>
 </html>
