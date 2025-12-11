@@ -54,3 +54,59 @@ def por_categoria():
     query = query.group_by(Categoria.nome).all()
     resultado = [{ "categoria": cat, "total": float(total) } for cat, total in query]
     return jsonify(resultado), 200
+
+# Resumo anual
+@bp_relatorios.route("/sumario_anual", methods=["GET"])
+def sumario_anual():
+    from calendar import monthrange
+    ano = request.args.get("ano", datetime.now().year)
+    try:
+        ano = int(ano)
+    except:
+        ano = datetime.now().year
+    meses = [
+        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+    ]
+    receita = []
+    despesa = []
+    investimento = []
+    sobrou = []
+    for m in range(1, 13):
+        ini = datetime(ano, m, 1)
+        fim = datetime(ano, m, monthrange(ano, m)[1])
+        # Receita
+        r = db.session.query(func.sum(Transacao.valor)).filter(
+            Transacao.tipo == "Receita",
+            Transacao.data_transacao.between(ini, fim)
+        ).scalar() or 0
+        receita.append(float(r))
+        # Despesa
+        d = db.session.query(func.sum(Transacao.valor)).filter(
+            Transacao.tipo == "Despesa",
+            Transacao.data_transacao.between(ini, fim)
+        ).scalar() or 0
+        despesa.append(float(d))
+        # Investimento
+        i = db.session.query(func.sum(Transacao.valor)).filter(
+            Transacao.tipo == "Investimento",
+            Transacao.data_transacao.between(ini, fim)
+        ).scalar() or 0
+        investimento.append(float(i))
+        # Quanto sobrou
+        sobrou.append(float(r) - float(d))
+    total_receita = sum(receita)
+    total_despesa = sum(despesa)
+    total_investimento = sum(investimento)
+    total_sobrou = sum(sobrou)
+    return jsonify({
+        "meses": meses,
+        "receita": receita,
+        "despesa": despesa,
+        "investimento": investimento,
+        "sobrou": sobrou,
+        "total_receita": total_receita,
+        "total_despesa": total_despesa,
+        "total_investimento": total_investimento,
+        "total_sobrou": total_sobrou
+    })
