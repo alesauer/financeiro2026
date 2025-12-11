@@ -8,12 +8,15 @@ bp_categorias = Blueprint("categorias", __name__)
 schema = CategoriaSchema()
 schemas = CategoriaSchema(many=True)
 
+@bp_categorias.route("", methods=["POST"])
 @bp_categorias.route("/", methods=["POST"])
 def criar():
     data = request.get_json()
+    print("[CATEGORIA POST] JSON recebido:", data)
     try:
         validado = schema.load(data)
     except ValidationError as err:
+        print("[CATEGORIA POST] Erro de validação:", err.messages)
         return jsonify(err.messages), 400
 
     categoria = Categoria(**validado)
@@ -21,6 +24,7 @@ def criar():
     db.session.commit()
     return jsonify(schema.dump(categoria)), 201
 
+@bp_categorias.route("", methods=["GET"])
 @bp_categorias.route("/", methods=["GET"])
 def listar():
     tipo = request.args.get("tipo")
@@ -39,9 +43,11 @@ def obter(id):
 def atualizar(id):
     categoria = Categoria.query.get_or_404(id)
     data = request.get_json()
+    print(f"[CATEGORIA PUT] JSON recebido para id={id}:", data)
     try:
         validado = schema.load(data, partial=True)
     except ValidationError as err:
+        print(f"[CATEGORIA PUT] Erro de validação para id={id}:", err.messages)
         return jsonify(err.messages), 400
     for key, value in validado.items():
         setattr(categoria, key, value)
