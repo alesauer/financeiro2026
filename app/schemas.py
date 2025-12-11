@@ -1,4 +1,14 @@
 from marshmallow import Schema, fields, validates, ValidationError
+
+# ======================
+# Usuário
+# ======================
+class UsuarioSchema(Schema):
+    id = fields.Int(dump_only=True)
+    nome = fields.Str(required=True)
+    email = fields.Email(required=True)
+    senha = fields.Str(load_only=True, required=True)
+    data_criacao = fields.DateTime(dump_only=True)
 from datetime import date
 
 # ======================

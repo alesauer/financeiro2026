@@ -1,43 +1,162 @@
-# Finanças 2026
 
-Descrição
-- Conjunto de scripts em Python para automação de tarefas financeiras: importação e limpeza de transações, categorização, geração de relatórios e gráficos, e apoio a orçamentos.
+# Sistema de Gestão Financeira Pessoal
 
-Funcionalidades principais
-- Importar transações de CSV/OFX/JSON
-- Limpeza e normalização de dados
-- Categorização automática por regras
-- Relatórios mensais/anuais (CSV/HTML/PDF)
-- Visualizações básicas (matplotlib/plotly)
-- Exportação para formatos compatíveis com outras ferramentas
+## Visão Geral
+Este projeto é um sistema completo para gestão de finanças pessoais, desenvolvido em Flask (backend) e HTML/JS/Bootstrap (frontend). Permite o controle de categorias, transações, usuários, relatórios e configurações avançadas.
 
-Requisitos
-- Python 3.8+
-- Dependências listadas em `requirements.txt`
+---
 
-Instalação rápida
-1. Clonar o repositório:
-    git clone <repo-url> && cd financas
-2. Criar e ativar ambiente virtual:
-    python -m venv .venv
-    source .venv/bin/activate  # Unix/macOS
-    .venv\Scripts\activate     # Windows
-3. Instalar dependências:
-    pip install -r requirements.txt
+## Funcionalidades
 
-Estrutura sugerida
-- scripts/          — scripts executáveis (ex.: import_transactions.py, categorize.py, report.py)
-- financas/         — package principal (módulos, utils, config)
-- data/             — amostras de entrada/saída
-- notebooks/        — análises exploratórias
-- requirements.txt
-- README.md
+- **Dashboard**: Visão geral das finanças.
+- **Importação CSV**: Importa transações de arquivos CSV.
+- **Classificação automática (IA)**: Sugestão de categorias baseada em inteligência artificial.
+- **CRUD de Categorias**: Criar, listar, editar e excluir categorias.
+- **CRUD de Transações**: Gerenciar receitas e despesas.
+- **CRUD de Usuários**: Cadastro, login, edição e exclusão de usuários.
+- **Relatórios**: Visualização de dados por período, categoria, tipo, etc.
+- **Configurações Avançadas (Outros)**: Página de configurações com layout moderno (Bootstrap), switches, selects e ações administrativas.
 
-Uso (exemplos)
-- Importar transações:
-  python scripts/import_transactions.py --input data/transactions.csv --output data/transactions_clean.csv
-- Gerar relatório mensal:
-  python scripts/report.py --input data/transactions_clean.csv --month 2025-11 --output reports/novembro-2025.pdf
+---
+
+## Estrutura do Projeto
+
+```
+├── app/
+│   ├── __init__.py
+│   ├── config.py
+│   ├── models.py
+│   ├── routes.py
+│   ├── routes_categorias.py
+│   ├── routes_transacoes.py
+│   ├── routes_usuarios.py
+│   ├── routes_relatorios.py
+│   ├── schemas.py
+│   └── ...
+├── frontend/
+│   ├── index.html
+│   ├── categorias.html
+│   ├── transacoes.html
+│   ├── relatorios.html
+│   ├── nav.html
+│   ├── outros.html
+│   └── assets/
+│       ├── css/
+│       ├── js/
+│       └── libs/
+├── migrations/
+│   └── ...
+├── sql/
+│   ├── createDb.sql
+│   └── testeMockup.sql
+├── testes_http/
+│   └── ...
+├── requirements.txt
+├── run.py
+├── README.md
+└── ...
+```
+
+---
+
+## Backend
+
+- **Framework:** Flask
+- **ORM:** SQLAlchemy
+- **Validação:** Marshmallow
+- **Migração:** Flask-Migrate (Alembic)
+- **Banco de Dados:** MySQL
+- **CORS:** Flask-CORS
+
+### Modelos
+- Categoria
+- Transacao
+- Usuario (com senha hash)
+
+### Endpoints REST
+- `/categorias` - CRUD de categorias
+- `/transacoes` - CRUD de transações
+- `/usuarios` - CRUD e login de usuários
+- `/relatorios` - Relatórios financeiros
+
+---
+
+## Frontend
+
+- **HTML5, Bootstrap 5, JavaScript**
+- **AJAX/fetch** para integração com backend
+- Telas: Dashboard, Categorias, Transações, Relatórios, Usuários, Configurações (Outros)
+
+---
+
+## Migração e Banco de Dados
+
+1. Configure o banco MySQL (veja `sql/createDb.sql`).
+2. Ajuste as credenciais em `app/config.py`.
+3. Execute as migrações:
+   ```bash
+   flask db migrate
+   flask db upgrade
+   ```
+
+---
+
+## Instalação e Deploy do Zero
+
+### 1. Clone o repositório
+```bash
+git clone https://github.com/alesauer/financeiro2026.git
+cd financeiro2026
+```
+
+### 2. Crie e ative o ambiente virtual
+```bash
+python -m venv venv
+source venv/Scripts/activate  # Windows
+```
+
+### 3. Instale as dependências
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Configure o banco de dados
+Edite `app/config.py` com suas credenciais MySQL.
+Crie o banco usando o script em `sql/createDb.sql`.
+
+### 5. Execute as migrações
+```bash
+flask db upgrade
+```
+
+### 6. Inicie o backend
+```bash
+python run.py
+```
+
+### 7. Acesse o frontend
+Basta abrir os arquivos HTML da pasta `frontend/` no navegador (recomenda-se usar um servidor local para AJAX funcionar corretamente).
+
+---
+
+## Testes
+
+Testes HTTP disponíveis em `testes_http/` para validação dos endpoints.
+
+---
+
+## Observações
+
+- Para produção, configure variáveis de ambiente e HTTPS.
+- O frontend pode ser adaptado para frameworks modernos (React, Vue, etc).
+- O backend está pronto para deploy em serviços como Heroku, Railway, etc.
+
+---
+
+## Autor
+
+Alexandre Sauer
+https://github.com/alesauer
 - Executar categorização automática:
   python scripts/categorize.py --rules config/rules.yml --input data/transactions_clean.csv
 

@@ -8,9 +8,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
 function carregarCategorias() {
     fetch('http://localhost:5000/api/categorias')
-        .then(res => res.json())
+        .then(async res => {
+            if (!res.ok) {
+                let msg = await res.text();
+                throw new Error('HTTP ' + res.status + ': ' + msg);
+            }
+            return res.json();
+        })
         .then(data => preencherTabela(data))
-        .catch(() => mostrarAlerta('Erro ao carregar categorias', 'danger'));
+        .catch(err => {
+            console.error('Erro ao carregar categorias:', err);
+            mostrarAlerta('Erro ao carregar categorias: ' + err.message, 'danger');
+        });
 }
 
 function preencherTabela(categorias) {
