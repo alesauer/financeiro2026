@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard Financeiro</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="assets/css/nav.css" rel="stylesheet">
+  <style>
+      #tabela-resumo-anual {
+        font-size: 0.92rem;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 2px 12px #0001;
+      }
+      #tabela-resumo-anual th {
+        position: sticky;
+        top: 0;
+        background: #f8f9fa;
+        font-weight: 600;
+        font-size: 0.95rem;
+        z-index: 2;
+      }
+      #tabela-resumo-anual td, #tabela-resumo-anual th {
+        padding: 0.35rem 0.5rem;
+        vertical-align: middle;
+      }
+      #tabela-resumo-anual td {
+        font-size: 0.75rem;
+      }
+      #tabela-resumo-anual tbody tr:nth-child(even) {
+        background: #f4f6fa;
+      }
+      #tabela-resumo-anual tbody tr:nth-child(odd) {
+        background: #fff;
+      }
+      #tabela-resumo-anual .sobrou {
+        color: #198754;
+        background: #eafbe7;
+      }
+      #tabela-resumo-anual .sobrou-neg {
+        color: #dc3545;
+        background: #fbeaea;
+      }
+      #tabela-resumo-anual td.fw-bold {
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+    </style>
+</head>
+<body class="bg-light">
+  <!-- Navbar -->
+  <nav-bar></nav-bar>
+
+  <div class="container py-4">
+    <h2 class="mb-4">Dashboard</h2>
+    <div class="row">
+      <div class="col-md-4">
+        <div class="card text-center mb-4">
+          <div class="card-body">
+            <h5 class="card-title">Receita Anual</h5>
+            <p class="card-text display-6 text-success" id="dashboard-receita-anual">R$ 342.733,00</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-center mb-4">
+          <div class="card-body">
+            <h5 class="card-title">Despesa Anual</h5>
+            <p class="card-text display-6 text-danger" id="dashboard-despesa-anual">R$ 0,00</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-center mb-4">
+          <div class="card-body">
+            <h5 class="card-title">Investimento Anual</h5>
+            <p class="card-text display-6 text-primary" id="dashboard-investimento-anual">R$ 0,00</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Seleção de Ano -->
+    <div class="d-flex align-items-center mb-3">
+      <label for="dashboard-ano" class="me-2 mb-0">Ano:</label>
+      <select id="dashboard-ano" class="form-select form-select-sm w-auto"></select>
+    </div>
+    <!-- Tabela de Resumo Anual -->
+    <div class="row">
+      <div class="col-12">
+        <div class="card mb-4 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title mb-2">Sumário Anual</h5>
+            <div class="table-responsive">
+              <table class="table table-bordered table-sm align-middle text-center" id="tabela-resumo-anual">
+                <thead class="table-light">
+                  <tr>
+                    <th>Sumário</th>
+                    <th>Janeiro</th>
+                    <th>Fevereiro</th>
+                    <th>Março</th>
+                    <th>Abril</th>
+                    <th>Maio</th>
+                    <th>Junho</th>
+                    <th>Julho</th>
+                    <th>Agosto</th>
+                    <th>Setembro</th>
+                    <th>Outubro</th>
+                    <th>Novembro</th>
+                    <th>Dezembro</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="fw-bold">Total receita</td>
+                    <td>R$ 24.201,00</td><td>R$ 24.201,00</td><td>R$ 24.201,00</td><td>R$ 25.026,00</td><td>R$ 25.026,00</td><td>R$ 36.034,00</td><td>R$ 38.124,00</td><td>R$ 27.624,00</td><td>R$ 27.624,00</td><td>R$ 27.624,00</td><td>R$ 27.624,00</td><td>R$ 35.424,00</td><td>R$ 342.733,00</td>
+                  </tr>
+                  <tr>
+                    <td class="fw-bold">Total despesa</td>
+                    <td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td><td>R$ 0,00</td>
+                  </tr>
+                  <tr>
+                    <td class="fw-bold">Saldo</td>
+                    <td class="sobrou">R$ 24.201,00</td><td class="sobrou">R$ 24.201,00</td><td class="sobrou">R$ 24.201,00</td><td class="sobrou">R$ 25.026,00</td><td class="sobrou">R$ 25.026,00</td><td class="sobrou">R$ 36.034,00</td><td class="sobrou">R$ 38.124,00</td><td class="sobrou">R$ 27.624,00</td><td class="sobrou">R$ 27.624,00</td><td class="sobrou">R$ 27.624,00</td><td class="sobrou">R$ 27.624,00</td><td class="sobrou">R$ 35.424,00</td><td class="sobrou">R$ 342.733,00</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Espaço para gráficos e widgets futuros -->
+    <div class="row">
+      <div class="col-12">
+        <div class="card mb-4">
+          <div class="card-body text-center text-muted">
+            <em>Gráficos e relatórios serão exibidos aqui.</em>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ...restante do dashboard... -->
+  </div>
+
+  <script>
+    // Função para formatar moeda
+    function formatMoeda(v) {
+      return 'R$ ' + (Number(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+    }
+
+    // Popular dropdown de ano
+    function popularDropdownAno() {
+      const selectAno = document.getElementById('dashboard-ano');
+      const anoAtual = new Date().getFullYear();
+      selectAno.innerHTML = '';
+      for (let a = anoAtual + 1; a >= 2024; a--) {
+        const opt = document.createElement('option');
+        opt.value = a;
+        opt.textContent = a;
+        if (a === anoAtual) opt.selected = true;
+        selectAno.appendChild(opt);
+      }
+    }
+
+    // Preencher tabela de sumário anual com dados reais do ano selecionado
+    async function preencherTabelaResumo() {
+      try {
+        const ano = document.getElementById('dashboard-ano').value;
+        const resp = await fetch(`http://127.0.0.1:5000/api/relatorios/sumario_anual?ano=${ano}`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const meses = data.meses;
+        const receita = data.receita;
+        const despesa = data.despesa;
+        const investimento = data.investimento;
+        const sobrou = data.sobrou;
+        // Preencher cards
+        document.getElementById('dashboard-receita-anual').textContent = formatMoeda(data.total_receita);
+        document.getElementById('dashboard-despesa-anual').textContent = formatMoeda(data.total_despesa);
+        document.getElementById('dashboard-investimento-anual').textContent = formatMoeda(data.total_investimento);
+        // Preencher tabela
+        let html = '';
+        html += '<tr><td class=\"fw-bold\">Total Receita</td>' + receita.map(v => `<td>${formatMoeda(v)}</td>`).join('') + `<td>${formatMoeda(data.total_receita)}</td></tr>`;
+        html += '<tr><td class=\"fw-bold\">Total Despesa</td>' + despesa.map(v => `<td>${formatMoeda(v)}</td>`).join('') + `<td>${formatMoeda(data.total_despesa)}</td></tr>`;
+        html += '<tr><td class=\"fw-bold\">Saldo</td>' + sobrou.map(v => `<td class=\"${v>=0?'sobrou':'sobrou-neg'}\">${formatMoeda(v)}</td>`).join('') + `<td class=\"${data.total_sobrou>=0?'sobrou':'sobrou-neg'}\">${formatMoeda(data.total_sobrou)}</td></tr>`;
+        document.querySelector('#tabela-resumo-anual tbody').innerHTML = html;
+      }
+      catch (err) {
+        console.error('Erro ao preencher tabela resumo:', err);
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+      popularDropdownAno();
+      preencherTabelaResumo();
+      document.getElementById('dashboard-ano').addEventListener('change', preencherTabelaResumo);
+    });
+  </script>
+  <script src="assets/js/nav.js"></script>
+</body>
+</html>

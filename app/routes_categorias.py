@@ -28,7 +28,6 @@ def criar():
 
 @bp_categorias.route("", methods=["GET"])
 @bp_categorias.route("/", methods=["GET"])
-@jwt_required()
 def listar():
     tipo = request.args.get("tipo")
     query = Categoria.query
