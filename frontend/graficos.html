@@ -13,14 +13,280 @@
 
   <div class="container py-4">
     <h2 class="mb-4">Gráficos</h2>
-    <div class="card mb-4">
-      <div class="card-body text-center text-muted">
-        <em>Em breve você poderá visualizar gráficos financeiros aqui.</em>
+    <div class="row mb-3">
+      <div class="col-auto">
+        <label for="filtro-ano" class="form-label mb-0 me-2">Ano:</label>
+        <select id="filtro-ano" class="form-select form-select-sm d-inline-block w-auto"></select>
+      </div>
+      <div class="col-auto">
+        <label for="filtro-mes" class="form-label mb-0 me-2">Mês:</label>
+        <select id="filtro-mes" class="form-select form-select-sm d-inline-block w-auto">
+          <option value="">Todos</option>
+          <option value="1">Janeiro</option>
+          <option value="2">Fevereiro</option>
+          <option value="3">Março</option>
+          <option value="4">Abril</option>
+          <option value="5">Maio</option>
+          <option value="6">Junho</option>
+          <option value="7">Julho</option>
+          <option value="8">Agosto</option>
+          <option value="9">Setembro</option>
+          <option value="10">Outubro</option>
+          <option value="11">Novembro</option>
+          <option value="12">Dezembro</option>
+        </select>
       </div>
     </div>
-    <!-- Espaço para gráficos, widgets e relatórios visuais -->
+    <!-- Espaço para os gráficos -->
+    <div class="row g-4">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Despesas por Categoria</h6>
+            <canvas id="grafico-despesas-categoria" height="30"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Receita x Despesa</h6>
+            <canvas id="grafico-receita-despesa" height="80"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Saldo</h6>
+            <canvas id="grafico-saldo" height="80"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Receitas por Categoria</h6>
+            <canvas id="grafico-receitas-categoria" height="80"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Investimento por Categoria</h6>
+            <canvas id="grafico-investimento-categoria" height="80"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-body">
+            <h6 class="card-title">Acúmulo de Investimentos</h6>
+            <canvas id="grafico-investimento-acumulado" height="80"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="assets/js/nav.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const API_URL = "http://localhost:5000/api/relatorios";
+    // Popular filtro de ano
+    function popularFiltroAno() {
+      const selectAno = document.getElementById('filtro-ano');
+      const anoAtual = new Date().getFullYear();
+      selectAno.innerHTML = '';
+      for (let a = anoAtual + 1; a >= 2024; a--) {
+        const opt = document.createElement('option');
+        opt.value = a;
+        opt.textContent = a;
+        if (a === anoAtual) opt.selected = true;
+        selectAno.appendChild(opt);
+      }
+    }
+    document.addEventListener('DOMContentLoaded', popularFiltroAno);
+
+    // Função para montar datas de início/fim conforme filtro
+    function getPeriodoSelecionado() {
+      const ano = document.getElementById('filtro-ano').value;
+      const mes = document.getElementById('filtro-mes').value;
+      if (!ano) return {};
+      if (!mes) {
+        // Ano inteiro
+        return {
+          inicio: `${ano}-01-01`,
+          fim: `${ano}-12-31`,
+          tipo: 'ano',
+          ano: ano
+        };
+      } else {
+        const mesStr = String(mes).padStart(2, '0');
+        const lastDay = new Date(ano, mes, 0).getDate();
+        return {
+          inicio: `${ano}-${mesStr}-01`,
+          fim: `${ano}-${mesStr}-${lastDay}`,
+          tipo: 'mes',
+          ano: ano,
+          mes: mes
+        };
+      }
+    }
+
+    // Função para renderizar todos os gráficos
+    async function buscarDadosGraficos() {
+      const periodo = getPeriodoSelecionado();
+      if (!periodo.inicio || !periodo.fim) return;
+      // 1. Despesas por categoria
+      const respDespesas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}`);
+      const dadosDespesas = await respDespesas.json();
+      // 2. Receitas por categoria
+      const respReceitas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}&tipo=Receita`);
+      const dadosReceitas = await respReceitas.json();
+      // 3. Investimentos por categoria
+      const respInvest = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}&tipo=Investimento`);
+      const dadosInvest = await respInvest.json();
+      // 4. Totais por tipo (Receita, Despesa, Investimento)
+      const respTotais = await fetch(`${API_URL}/totais?inicio=${periodo.inicio}&fim=${periodo.fim}`);
+      const dadosTotais = await respTotais.json();
+
+      // 5. Saldo diário/mensal e acúmulo de investimentos
+      let labelsSaldo = [], saldoData = [], labelsAcum = [], acumInvest = [];
+      if (periodo.tipo === 'mes') {
+        // Busca transações do mês agrupadas por dia
+        const respResumo = await fetch(`${API_URL}/resumo?ano=${periodo.ano}&mes=${periodo.mes}`);
+        const dadosResumo = await respResumo.json();
+        labelsSaldo = dadosResumo.dias;
+        saldoData = dadosResumo.saldo;
+        labelsAcum = dadosResumo.dias;
+        acumInvest = dadosResumo.acum_invest;
+      } else {
+        // Busca resumo anual agrupado por mês
+        const respResumo = await fetch(`${API_URL}/sumario_anual?ano=${periodo.ano}`);
+        const dadosResumo = await respResumo.json();
+        labelsSaldo = dadosResumo.meses;
+        saldoData = dadosResumo.sobrou;
+        labelsAcum = dadosResumo.meses;
+        // Acúmulo de investimentos
+        let total = 0;
+        acumInvest = dadosResumo.investimento.map(v => (total += v));
+      }
+
+      // Renderizar gráficos
+      renderizarGraficos({
+        despesasCat: dadosDespesas,
+        receitasCat: dadosReceitas,
+        investimentoCat: dadosInvest,
+        totais: dadosTotais,
+        labelsSaldo,
+        saldoData,
+        labelsAcum,
+        acumInvest
+      });
+    }
+
+    // Função para renderizar todos os gráficos Chart.js
+    function renderizarGraficos(dados) {
+      // Despesas por categoria (pizza)
+      if (window.graficoDespesasCat) window.graficoDespesasCat.destroy();
+      window.graficoDespesasCat = new Chart(document.getElementById('grafico-despesas-categoria'), {
+        type: 'pie',
+        data: {
+          labels: dados.despesasCat.map(d => d.categoria),
+          datasets: [{
+            data: dados.despesasCat.map(d => d.total),
+            backgroundColor: [ '#dc3545', '#ffc107', '#0d6efd', '#198754', '#6f42c1', '#fd7e14', '#20c997', '#6610f2', '#adb5bd', '#343a40' ]
+          }]
+        },
+        options: { plugins: { legend: { position: 'bottom' } } }
+      });
+      // Receitas por categoria (pizza)
+      if (window.graficoReceitasCat) window.graficoReceitasCat.destroy();
+      window.graficoReceitasCat = new Chart(document.getElementById('grafico-receitas-categoria'), {
+        type: 'pie',
+        data: {
+          labels: dados.receitasCat.map(d => d.categoria),
+          datasets: [{
+            data: dados.receitasCat.map(d => d.total),
+            backgroundColor: [ '#0d6efd', '#198754', '#ffc107', '#fd7e14', '#6f42c1', '#20c997', '#6610f2', '#adb5bd', '#343a40', '#dc3545' ]
+          }]
+        },
+        options: { plugins: { legend: { position: 'bottom' } } }
+      });
+      // Investimento por categoria (barras)
+      if (window.graficoInvestCat) window.graficoInvestCat.destroy();
+      window.graficoInvestCat = new Chart(document.getElementById('grafico-investimento-categoria'), {
+        type: 'bar',
+        data: {
+          labels: dados.investimentoCat.map(d => d.categoria),
+          datasets: [{
+            label: 'Investimento',
+            data: dados.investimentoCat.map(d => d.total),
+            backgroundColor: '#0d6efd'
+          }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+      // Receita x Despesa (barras)
+      if (window.graficoReceitaDespesa) window.graficoReceitaDespesa.destroy();
+      window.graficoReceitaDespesa = new Chart(document.getElementById('grafico-receita-despesa'), {
+        type: 'bar',
+        data: {
+          labels: ['Receita', 'Despesa', 'Investimento'],
+          datasets: [{
+            label: 'Total',
+            data: [
+              (dados.totais.find(t => t.tipo === 'Receita')||{total:0}).total,
+              (dados.totais.find(t => t.tipo === 'Despesa')||{total:0}).total,
+              (dados.totais.find(t => t.tipo === 'Investimento')||{total:0}).total
+            ],
+            backgroundColor: [ '#198754', '#dc3545', '#0d6efd' ]
+          }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+      // Saldo (linha)
+      if (window.graficoSaldo) window.graficoSaldo.destroy();
+      window.graficoSaldo = new Chart(document.getElementById('grafico-saldo'), {
+        type: 'line',
+        data: {
+          labels: dados.labelsSaldo,
+          datasets: [{
+            label: 'Saldo',
+            data: dados.saldoData,
+            borderColor: '#0d6efd',
+            backgroundColor: 'rgba(13,110,253,0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+      // Acúmulo de investimentos (linha)
+      if (window.graficoInvestAcum) window.graficoInvestAcum.destroy();
+      window.graficoInvestAcum = new Chart(document.getElementById('grafico-investimento-acumulado'), {
+        type: 'line',
+        data: {
+          labels: dados.labelsAcum,
+          datasets: [{
+            label: 'Acúmulo de Investimentos',
+            data: dados.acumInvest,
+            borderColor: '#198754',
+            backgroundColor: 'rgba(25,135,84,0.1)',
+            fill: true,
+            tension: 0.3
+          }]
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    // Atualizar gráficos ao trocar filtros
+    document.getElementById('filtro-ano').addEventListener('change', buscarDadosGraficos);
+    document.getElementById('filtro-mes').addEventListener('change', buscarDadosGraficos);
+    document.addEventListener('DOMContentLoaded', buscarDadosGraficos);
+  </script>
 </body>
 </html>

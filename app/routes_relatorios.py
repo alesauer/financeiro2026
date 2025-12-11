@@ -3,13 +3,63 @@ from datetime import datetime
 from sqlalchemy import func
 from app import db
 from app.models import Transacao, Categoria
+
+# ...existing code...
+
+# ...existing code...
+
+# ...existing code...
+
+bp_relatorios = Blueprint("relatorios", __name__)
+
+# ...rotas existentes...
+
+# Resumo mensal: saldo diário e acúmulo de investimentos
+@bp_relatorios.route("/resumo", methods=["GET"])
+def resumo_mensal():
+    ano = request.args.get("ano", type=int)
+    mes = request.args.get("mes", type=int)
+    if not ano or not mes:
+        return jsonify({"error": "Informe ano e mes"}), 400
+    from calendar import monthrange
+    dias = [str(d).zfill(2) for d in range(1, monthrange(ano, mes)[1]+1)]
+    saldo = []
+    acum_invest = []
+    total_invest = 0
+    for dia in range(1, monthrange(ano, mes)[1]+1):
+        ini = datetime(ano, mes, dia)
+        fim = datetime(ano, mes, dia)
+        receita = db.session.query(func.sum(Transacao.valor)).filter(
+            Transacao.tipo == "Receita",
+            Transacao.data_transacao.between(ini, fim)
+        ).scalar() or 0
+        despesa = db.session.query(func.sum(Transacao.valor)).filter(
+            Transacao.tipo == "Despesa",
+            Transacao.data_transacao.between(ini, fim)
+        ).scalar() or 0
+        investimento = db.session.query(func.sum(Transacao.valor)).filter(
+            Transacao.tipo == "Investimento",
+            Transacao.data_transacao.between(ini, fim)
+        ).scalar() or 0
+        saldo.append(float(receita) - float(despesa))
+        total_invest += float(investimento)
+        acum_invest.append(total_invest)
+    return jsonify({
+        "dias": dias,
+        "saldo": saldo,
+        "acum_invest": acum_invest
+    })
+from flask import Blueprint, request, jsonify
+from datetime import datetime
+from sqlalchemy import func
+from app import db
+from app.models import Transacao, Categoria
 from flask_jwt_extended import jwt_required
 
 bp_relatorios = Blueprint("relatorios", __name__)
 
 # Totais por tipo em um período
 @bp_relatorios.route("/totais", methods=["GET"])
-@jwt_required()
 def totais():
     inicio = request.args.get("inicio")
     fim = request.args.get("fim")
@@ -33,11 +83,11 @@ def totais():
 
 # Totais por categoria em um período
 @bp_relatorios.route("/categorias", methods=["GET"])
-@jwt_required()
 def por_categoria():
     inicio = request.args.get("inicio")
     fim = request.args.get("fim")
 
+    tipo = request.args.get("tipo")
     query = db.session.query(
         Categoria.nome,
         func.sum(Transacao.valor).label("total")
@@ -50,6 +100,9 @@ def por_categoria():
             query = query.filter(Transacao.data_transacao.between(inicio_dt, fim_dt))
         except ValueError:
             return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+
+    if tipo:
+        query = query.filter(Transacao.tipo == tipo)
 
     query = query.group_by(Categoria.nome).all()
     resultado = [{ "categoria": cat, "total": float(total) } for cat, total in query]
