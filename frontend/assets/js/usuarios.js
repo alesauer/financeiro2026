@@ -6,8 +6,16 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('saveUsuarioBtn').addEventListener('click', salvarUsuario);
 });
 
+function fetchJWT(url, options = {}) {
+    const token = localStorage.getItem('access_token');
+    options.headers = options.headers || {};
+    options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
+    options.headers['Authorization'] = 'Bearer ' + token;
+    return fetch(url, options);
+}
+
 function carregarUsuarios() {
-    fetch('http://localhost:5000/api/usuarios')
+    fetchJWT('http://localhost:5000/api/usuarios')
         .then(async res => {
             if (!res.ok) {
                 let msg = await res.text();
@@ -82,11 +90,11 @@ function salvarUsuario() {
         metodo = 'PUT';
         if (senha) usuario.senha = senha;
     }
-    fetch(url, {
+    let options = {
         method: metodo,
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(usuario)
-    })
+    };
+    fetchJWT(url, options)
     .then(async res => {
         let data = await res.json().catch(() => null);
         if (!res.ok) {
@@ -105,7 +113,10 @@ function salvarUsuario() {
 
 function excluirUsuario(id) {
     if (!confirm('Confirma a exclusão do usuário?')) return;
-    fetch(`http://localhost:5000/api/usuarios/${id}`, { method: 'DELETE' })
+    let options = {
+        method: 'DELETE'
+    };
+    fetchJWT(`http://localhost:5000/api/usuarios/${id}`, options)
         .then(res => {
             if (!res.ok) throw new Error('Erro ao excluir');
             return res.json();

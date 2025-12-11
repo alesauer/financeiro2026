@@ -3,11 +3,13 @@ from datetime import datetime
 from sqlalchemy import func
 from app import db
 from app.models import Transacao, Categoria
+from flask_jwt_extended import jwt_required
 
 bp_relatorios = Blueprint("relatorios", __name__)
 
 # Totais por tipo em um período
 @bp_relatorios.route("/totais", methods=["GET"])
+@jwt_required()
 def totais():
     inicio = request.args.get("inicio")
     fim = request.args.get("fim")
@@ -31,6 +33,7 @@ def totais():
 
 # Totais por categoria em um período
 @bp_relatorios.route("/categorias", methods=["GET"])
+@jwt_required()
 def por_categoria():
     inicio = request.args.get("inicio")
     fim = request.args.get("fim")

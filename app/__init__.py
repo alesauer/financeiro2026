@@ -2,6 +2,7 @@ from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 from .config import Config
 
 db = SQLAlchemy()
@@ -14,7 +15,9 @@ def create_app():
     db.init_app(app)
     migrate.init_app(app, db)
     CORS(app, resources={r"/api/*": {"origins": "*"}}, supports_credentials=True)
-    #from . import models
+
+    # Inicializar JWT
+    jwt = JWTManager(app)
 
     
     # Registrar blueprints

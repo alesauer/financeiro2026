@@ -5,12 +5,14 @@ from app import db
 from app.models import Transacao
 from app.schemas import TransacaoSchema
 from sqlalchemy import exc, func, case
+from flask_jwt_extended import jwt_required
 
 bp_transacoes = Blueprint("transacoes", __name__)
 schema = TransacaoSchema()
 schemas = TransacaoSchema(many=True)
 
 @bp_transacoes.route("/", methods=["POST"])
+@jwt_required()
 def criar():
     data = request.get_json()
     try:
@@ -133,11 +135,13 @@ def listar():
     return jsonify(response), 200
 
 @bp_transacoes.route("/<int:id>", methods=["GET"])
+@jwt_required()
 def obter(id):
     transacao = Transacao.query.get_or_404(id)
     return jsonify(schema.dump(transacao)), 200
 
 @bp_transacoes.route("/<int:id>", methods=["PUT"])
+@jwt_required()
 def atualizar(id):
     transacao = Transacao.query.get_or_404(id)
     data = request.get_json()
@@ -156,6 +160,7 @@ def atualizar(id):
     return jsonify(schema.dump(transacao)), 200
 
 @bp_transacoes.route("/<int:id>", methods=["DELETE"])
+@jwt_required()
 def deletar(id):
     transacao = Transacao.query.get_or_404(id)
     db.session.delete(transacao)
@@ -164,6 +169,7 @@ def deletar(id):
 
 # Novo endpoint: resumo (summary) para um período (inicio/fim)
 @bp_transacoes.route("/summary", methods=["GET"])
+@jwt_required()
 def resumo_mes():
     inicio_str = request.args.get("inicio")
     fim_str = request.args.get("fim")

@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_jwt_extended import create_access_token, jwt_required
 from app import db
 from app.models import Usuario
 from app.schemas import UsuarioSchema
@@ -34,11 +35,15 @@ def login():
     data = request.get_json()
     usuario = Usuario.query.filter_by(email=data.get("email")).first()
     if usuario and check_password_hash(usuario.senha_hash, data.get("senha")):
-        return jsonify(schema.dump(usuario)), 200
+        access_token = create_access_token(identity=str(usuario.id))
+        return jsonify({
+            "usuario": schema.dump(usuario),
+            "access_token": access_token
+        }), 200
     return jsonify({"erro": "E-mail ou senha inválidos"}), 401
 
-@bp_usuarios.route("", methods=["GET"])
 @bp_usuarios.route("/", methods=["GET"])
+@jwt_required()
 def listar_usuarios():
     usuarios = Usuario.query.all()
     return jsonify(schemas.dump(usuarios)), 200

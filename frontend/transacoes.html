@@ -76,6 +76,11 @@
   <div id="grid"></div>
 </div>
 
+<script>
+  if (!localStorage.getItem('access_token')) {
+    window.location.href = 'login.html';
+  }
+</script>
 <script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
 <script src="assets/js/transacoes.js"></script>
 </body>

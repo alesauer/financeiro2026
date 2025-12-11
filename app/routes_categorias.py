@@ -3,6 +3,7 @@ from marshmallow import ValidationError
 from app import db
 from app.models import Categoria
 from app.schemas import CategoriaSchema
+from flask_jwt_extended import jwt_required
 
 bp_categorias = Blueprint("categorias", __name__)
 schema = CategoriaSchema()
@@ -10,6 +11,7 @@ schemas = CategoriaSchema(many=True)
 
 @bp_categorias.route("", methods=["POST"])
 @bp_categorias.route("/", methods=["POST"])
+@jwt_required()
 def criar():
     data = request.get_json()
     print("[CATEGORIA POST] JSON recebido:", data)
@@ -26,6 +28,7 @@ def criar():
 
 @bp_categorias.route("", methods=["GET"])
 @bp_categorias.route("/", methods=["GET"])
+@jwt_required()
 def listar():
     tipo = request.args.get("tipo")
     query = Categoria.query
@@ -35,11 +38,13 @@ def listar():
     return jsonify(schemas.dump(categorias)), 200
 
 @bp_categorias.route("/<int:id>", methods=["GET"])
+@jwt_required()
 def obter(id):
     categoria = Categoria.query.get_or_404(id)
     return jsonify(schema.dump(categoria)), 200
 
 @bp_categorias.route("/<int:id>", methods=["PUT"])
+@jwt_required()
 def atualizar(id):
     categoria = Categoria.query.get_or_404(id)
     data = request.get_json()
@@ -55,6 +60,7 @@ def atualizar(id):
     return jsonify(schema.dump(categoria)), 200
 
 @bp_categorias.route("/<int:id>", methods=["DELETE"])
+@jwt_required()
 def deletar(id):
     categoria = Categoria.query.get_or_404(id)
     db.session.delete(categoria)

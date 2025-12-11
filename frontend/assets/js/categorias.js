@@ -6,8 +6,16 @@ document.addEventListener('DOMContentLoaded', function () {
     document.getElementById('saveCategoriaBtn').addEventListener('click', salvarCategoria);
 });
 
+function fetchJWT(url, options = {}) {
+    const token = localStorage.getItem('access_token');
+    options.headers = options.headers || {};
+    options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
+    options.headers['Authorization'] = 'Bearer ' + token;
+    return fetch(url, options);
+}
+
 function carregarCategorias() {
-    fetch('http://localhost:5000/api/categorias')
+    fetchJWT('http://localhost:5000/api/categorias')
         .then(async res => {
             if (!res.ok) {
                 let msg = await res.text();
@@ -74,11 +82,11 @@ function salvarCategoria() {
         url += `/${id}`;
         metodo = 'PUT';
     }
-    fetch(url, {
+    let options = {
         method: metodo,
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(categoria)
-    })
+    };
+    fetchJWT(url, options)
     .then(async res => {
         let data = await res.json().catch(() => null);
         if (!res.ok) {
@@ -97,7 +105,10 @@ function salvarCategoria() {
 
 function excluirCategoria(id) {
     if (!confirm('Confirma a exclusão da categoria?')) return;
-    fetch(`http://localhost:5000/api/categorias/${id}`, { method: 'DELETE' })
+    let options = {
+        method: 'DELETE'
+    };
+    fetchJWT(`http://localhost:5000/api/categorias/${id}`, options)
         .then(res => {
             if (!res.ok) throw new Error('Erro ao excluir');
             return res.json();

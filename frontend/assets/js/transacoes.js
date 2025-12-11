@@ -36,7 +36,7 @@ function abrirModalEdicao(dados) {
 
   // Busca categorias do tipo informado e renderiza campos SEMPRE que abrir o modal
   function buscarECampos(tipoCat) {
-    fetch(`http://127.0.0.1:5000/api/categorias?tipo=${encodeURIComponent(tipoCat)}`)
+  fetchJWT(`http://127.0.0.1:5000/api/categorias?tipo=${encodeURIComponent(tipoCat)}`)
       .then(resp => resp.json())
       .then(arr => {
         categorias = arr;
@@ -167,15 +167,13 @@ function abrirModalEdicao(dados) {
       try {
         let resp;
         if (dados && dados.id) {
-          resp = await fetch(`${apiUrl}/${dados.id}`, {
+          resp = await fetchJWT(`${apiUrl}/${dados.id}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
         } else {
-          resp = await fetch(`${apiUrl}/`, {
+          resp = await fetchJWT(`${apiUrl}/`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
           });
         }
@@ -364,6 +362,7 @@ function createGrid(){
     // server.url must be a string (base). Use pagination.server.url to build page requests.
     server: {
       url: buildUrl(apiUrl, 1, 10),
+      fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
         const items = data.items || data.rows || [];
         // Custom client-side sort: Receita first, then Despesa
@@ -433,6 +432,7 @@ function reloadGrid(){
   grid.updateConfig({
     server: {
       url: buildUrl(apiUrl, 1, 10),
+      fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
         const items = data.items || data.rows || [];
         // Custom client-side sort: Receita first, then Despesa
@@ -557,9 +557,8 @@ document.getElementById('grid').addEventListener('click', async function(e){
     if (!id || !current) return;
     const novoStatus = (current.toLowerCase() === 'pago') ? 'Pendente' : 'Pago';
     try {
-      const resp = await fetch(`${apiUrl}/${id}`, {
+      const resp = await fetchJWT(`${apiUrl}/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: novoStatus })
       });
       if (!resp.ok) {
@@ -594,7 +593,7 @@ document.getElementById('grid').addEventListener('click', async function(e){
     if (!id) return;
     if (!confirm('Deseja realmente excluir esta transação? Esta ação não pode ser desfeita.')) return;
     try {
-      const resp = await fetch(`${apiUrl}/${id}`, {
+      const resp = await fetchJWT(`${apiUrl}/${id}`, {
         method: 'DELETE'
       });
       if (!resp.ok) {
@@ -619,7 +618,7 @@ document.getElementById('grid').addEventListener('click', async function(e){
 
       // Buscar dados da transação
       try {
-        const resp = await fetch(`${apiUrl}/${id}`);
+  const resp = await fetchJWT(`${apiUrl}/${id}`);
         if (!resp.ok) {
           alert('Erro ao buscar dados da transação.');
           return;
@@ -740,7 +739,6 @@ window.abrirModalEdicao = function(dados) {
 }
 });
 
-
 // -------------------- Summary cards --------------------
 function buildMonthRange(curr) {
   const year = curr.ano;
@@ -754,7 +752,7 @@ function buildMonthRange(curr) {
 async function fetchAndRenderSummary() {
   const { inicio, fim } = buildMonthRange(current);
   try {
-    const resp = await fetch(`http://127.0.0.1:5000/api/transacoes/summary?inicio=${inicio}&fim=${fim}`);
+  const resp = await fetchJWT(`http://127.0.0.1:5000/api/transacoes/summary?inicio=${inicio}&fim=${fim}`);
     if (!resp.ok) {
       console.error('Erro ao obter summary', resp.status);
       return;
@@ -793,3 +791,22 @@ async function fetchAndRenderSummary() {
     console.error('Erro fetch summary', err);
   }
 }
+
+// Função para requisições fetch protegidas com token JWT
+function fetchJWT(url, options = {}) {
+    const token = localStorage.getItem('access_token');
+    options.headers = options.headers || {};
+    options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
+    options.headers['Authorization'] = 'Bearer ' + token;
+    return fetch(url, options);
+}
+
+// Exemplo de uso:
+// fetchJWT('http://127.0.0.1:5000/api/transacoes', { method: 'GET' })
+// fetchJWT(`${apiUrl}/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+// fetchJWT(`${apiUrl}/`, { method: 'POST', body: JSON.stringify(payload) })
+// fetchJWT(`${apiUrl}/${id}`, { method: 'DELETE' })
+// fetchJWT(`${apiUrl}/${id}`)
+// fetchJWT(`http://127.0.0.1:5000/api/categorias?tipo=${encodeURIComponent(tipoCat)}`)
+// fetchJWT(`http://127.0.0.1:5000/api/transacoes/summary?inicio=${inicio}&fim=${fim}`)
+// fetchJWT(`http://127.0.0.1:5000/api/transacoes?inicio=${inicio}&fim=${fim}`)
