@@ -365,9 +365,48 @@ function createGrid(){
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
         const items = data.items || data.rows || [];
+        
+        // Separar transações de cartão de crédito das demais
+        const cartaoCredito = items.filter(t => t.forma_pagamento === 'Cartão de Crédito');
+        const outrasTransacoes = items.filter(t => t.forma_pagamento !== 'Cartão de Crédito');
+        
+        // Criar linha agrupada para cartão de crédito se houver transações
+        let linhaCartao = null;
+        if (cartaoCredito.length > 0) {
+          const totalCartao = cartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+          
+          // Encontrar a data mais recente
+          let dataRecente = null;
+          for (const t of cartaoCredito) {
+            const dt = parseDateOnly(t.data_transacao || t.data);
+            if (dt && (!dataRecente || dt > dataRecente)) {
+              dataRecente = dt;
+            }
+          }
+          
+          // Se não encontrou data válida, usar data atual
+          if (!dataRecente) {
+            dataRecente = new Date();
+          }
+          
+          // Formatar data no formato YYYY-MM-DD
+          const dataStr = dataRecente.toISOString().split('T')[0];
+          
+          linhaCartao = {
+            id: 'CARTAO_AGRUPADO',
+            data_transacao: dataStr,
+            descricao: 'Cartão de Crédito',
+            categoria_nome: 'Mista',
+            forma_pagamento: 'Cartão de Crédito',
+            status: 'Pendente',
+            tipo: 'Despesa',
+            valor: totalCartao
+          };
+        }
+        
         // Custom client-side sort: Receita first, then Despesa
         const orderMap = { 'receita': 0, 'despesa': 1 };
-        items.sort((a, b) => {
+        outrasTransacoes.sort((a, b) => {
           const ta = (a.tipo || '').toString().trim().toLowerCase();
           const tb = (b.tipo || '').toString().trim().toLowerCase();
           const oa = orderMap.hasOwnProperty(ta) ? orderMap[ta] : 2;
@@ -378,8 +417,11 @@ function createGrid(){
           if (da && db) return db - da;
           return 0;
         });
+        
+        // Adicionar linha de cartão agrupado no início se existir
+        const finalItems = linhaCartao ? [linhaCartao, ...outrasTransacoes] : outrasTransacoes;
 
-        return items.map(row => [
+        return finalItems.map(row => [
           row.id,
           formatDate(row.data_transacao || row.data || row.data_transacao),
           row.descricao || '',
@@ -390,7 +432,14 @@ function createGrid(){
           formatCurrency(row.valor)
         ]);
       },
-      total: data => data.total_items || data.total || 0
+      total: data => {
+        // Ajustar total considerando agrupamento de cartão de crédito
+        const total = data.total_items || data.total || 0;
+        const items = data.items || data.rows || [];
+        const numCartao = items.filter(t => t.forma_pagamento === 'Cartão de Crédito').length;
+        // Se há transações de cartão, reduz o total pelo número de transações agrupadas menos 1
+        return numCartao > 0 ? total - numCartao + 1 : total;
+      }
     },
     pagination: {
       enabled: true,
@@ -435,9 +484,48 @@ function reloadGrid(){
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
         const items = data.items || data.rows || [];
+        
+        // Separar transações de cartão de crédito das demais
+        const cartaoCredito = items.filter(t => t.forma_pagamento === 'Cartão de Crédito');
+        const outrasTransacoes = items.filter(t => t.forma_pagamento !== 'Cartão de Crédito');
+        
+        // Criar linha agrupada para cartão de crédito se houver transações
+        let linhaCartao = null;
+        if (cartaoCredito.length > 0) {
+          const totalCartao = cartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+          
+          // Encontrar a data mais recente
+          let dataRecente = null;
+          for (const t of cartaoCredito) {
+            const dt = parseDateOnly(t.data_transacao || t.data);
+            if (dt && (!dataRecente || dt > dataRecente)) {
+              dataRecente = dt;
+            }
+          }
+          
+          // Se não encontrou data válida, usar data atual
+          if (!dataRecente) {
+            dataRecente = new Date();
+          }
+          
+          // Formatar data no formato YYYY-MM-DD
+          const dataStr = dataRecente.toISOString().split('T')[0];
+          
+          linhaCartao = {
+            id: 'CARTAO_AGRUPADO',
+            data_transacao: dataStr,
+            descricao: 'Cartão de Crédito',
+            categoria_nome: 'Mista',
+            forma_pagamento: 'Cartão de Crédito',
+            status: 'Pendente',
+            tipo: 'Despesa',
+            valor: totalCartao
+          };
+        }
+        
         // Custom client-side sort: Receita first, then Despesa
         const orderMap = { 'receita': 0, 'despesa': 1 };
-        items.sort((a, b) => {
+        outrasTransacoes.sort((a, b) => {
           const ta = (a.tipo || '').toString().trim().toLowerCase();
           const tb = (b.tipo || '').toString().trim().toLowerCase();
           const oa = orderMap.hasOwnProperty(ta) ? orderMap[ta] : 2;
@@ -448,8 +536,11 @@ function reloadGrid(){
           if (da && db) return db - da;
           return 0;
         });
+        
+        // Adicionar linha de cartão agrupado no início se existir
+        const finalItems = linhaCartao ? [linhaCartao, ...outrasTransacoes] : outrasTransacoes;
 
-        return items.map(row => [
+        return finalItems.map(row => [
           row.id,
           formatDate(row.data_transacao || row.data || row.data_transacao),
           row.descricao || '',
@@ -460,7 +551,14 @@ function reloadGrid(){
           formatCurrency(row.valor)
         ]);
       },
-      total: data => data.total_items || data.total || 0
+      total: data => {
+        // Ajustar total considerando agrupamento de cartão de crédito
+        const total = data.total_items || data.total || 0;
+        const items = data.items || data.rows || [];
+        const numCartao = items.filter(t => t.forma_pagamento === 'Cartão de Crédito').length;
+        // Se há transações de cartão, reduz o total pelo número de transações agrupadas menos 1
+        return numCartao > 0 ? total - numCartao + 1 : total;
+      }
     },
     pagination: {
       enabled: true,
