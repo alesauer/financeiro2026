@@ -1,7 +1,11 @@
 // Função para abrir modal de edição (definida globalmente)
 window.abrirModalEdicao = function(dados) {
+  console.log('🔵 abrirModalEdicao CHAMADA com dados:', dados);
   var old = document.getElementById('modal-edicao-transacao');
-  if (old) old.remove();
+  if (old) {
+    console.log('⚠️ Modal antigo encontrado, removendo...');
+    old.remove();
+  }
 
   var modal = document.createElement('div');
   modal.id = 'modal-edicao-transacao';
@@ -124,6 +128,9 @@ window.abrirModalEdicao = function(dados) {
   document.body.appendChild(modal);
 
   function adicionarListeners() {
+    console.log('🟢 adicionarListeners CHAMADA');
+    console.log('🟢 Formulário existe?', !!document.getElementById('form-edicao-transacao'));
+    
     document.getElementById('btn-cancelar-edicao').onclick = () => {
       modal.remove();
     };
@@ -145,8 +152,15 @@ window.abrirModalEdicao = function(dados) {
       toggleRecorrenteFields();
     }
 
-    document.getElementById('form-edicao-transacao').onsubmit = async function(ev) {
+    const formElement = document.getElementById('form-edicao-transacao');
+    console.log('🟢 Registrando onsubmit no formulário:', formElement);
+    
+    formElement.onsubmit = async function(ev) {
       ev.preventDefault();
+      console.log('=== INÍCIO DO SUBMIT ===' );
+      console.log('Token no localStorage:', localStorage.getItem('access_token') ? 'PRESENTE' : 'AUSENTE');
+      console.log('Dados da transação:', dados);
+      
       const fd = new FormData(ev.target);
       const payload = {};
       campos.forEach(c => {
@@ -164,21 +178,39 @@ window.abrirModalEdicao = function(dados) {
         }
         payload[c.nome] = v;
       });
+      
+      console.log('Payload:', payload);
+      
       try {
         let resp;
         if (dados && dados.id) {
+          console.log('Atualizando transação ID:', dados.id);
+          console.log('Antes de chamar fetchJWT - Token em localStorage:', localStorage.getItem('access_token') ? 'SIM' : 'NÃO');
           resp = await fetchJWT(`${apiUrl}/${dados.id}`, {
             method: 'PUT',
             body: JSON.stringify(payload)
           });
+          console.log('Resposta recebida do PUT - Status:', resp.status);
         } else {
+          console.log('Criando nova transação');
           resp = await fetchJWT(`${apiUrl}/`, {
             method: 'POST',
             body: JSON.stringify(payload)
           });
+          console.log('Resposta recebida do POST - Status:', resp.status);
         }
         if (!resp.ok) {
           const err = await resp.json();
+          console.error('Erro do servidor (status ' + resp.status + '):', err);
+          
+          // Se for erro de autenticação, redirecionar para login
+          if (resp.status === 401 || resp.status === 422) {
+            alert('Sessão expirada. Você será redirecionado para o login.');
+            localStorage.removeItem('access_token');
+            window.location.href = '/login.html';
+            return;
+          }
+          
           alert('Erro ao salvar: ' + (err.error || JSON.stringify(err)));
           return;
         }
@@ -187,7 +219,8 @@ window.abrirModalEdicao = function(dados) {
         reloadGrid();
         fetchAndRenderSummary();
       } catch (err) {
-        alert('Erro de rede ao salvar.');
+        console.error('Erro no catch do submit:', err);
+        alert('Erro de rede ao salvar: ' + err.message);
       }
     };
     // Listener para o campo tipo
@@ -275,6 +308,9 @@ function buildUrl(base, page, per_page){
 // Create initial grid instance variable so we can update config later
 let grid = null;
 
+// Armazenar transações de cartão de crédito para o modal de detalhes
+let transacoesCartaoCredito = [];
+
 function createGrid(){
   grid = new gridjs.Grid({
 
@@ -340,6 +376,20 @@ function createGrid(){
         formatter: (cell, row) => {
           const idCell = (row && row.cells && row.cells[0]) ? (row.cells[0].data || row.cells[0]) : '';
           const id = idCell || '';
+          
+          // Se for a linha agrupada de cartão, mostrar apenas botão Expandir
+          if (id === 'CARTAO_AGRUPADO') {
+            return gridjs.html(`
+              <button type="button" class="btn btn-sm btn-primary expand-btn" onclick="abrirModalCartaoCredito()" title="Expandir" aria-label="Expandir">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zM2.5 2a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zM1 10.5A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3z"/>
+                </svg>
+                Expandir
+              </button>
+            `);
+          }
+          
+          // Para linhas normais, mostrar botões editar e excluir
           return gridjs.html(`
             <div class="btn-group" role="group" aria-label="Ações">
               <button type="button" class="btn btn-sm btn-outline-primary edit-btn" data-id="${id}" title="Editar" aria-label="Editar">
@@ -350,7 +400,7 @@ function createGrid(){
 
               <button type="button" class="btn btn-sm btn-outline-danger delete-btn ms-1" data-id="${id}" title="Excluir" aria-label="Excluir">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M5.5 5.5A.5.5 0 0 1 6 5h4a.5.5 0 0 1 .5.5v8A1.5 1.5 0 0 1 9 15H7a1.5 1.5 0 0 1-1.5-1.5v-8zM14.5 3a1 1 0 0 1-1 1H13v9.5A2.5 2.5 0 0 1 10.5 16h-5A2.5 2.5 0 0 1 3 13.5V4H2.5a1 1 0 1 1 0-2H5l.5-1h5l.5 1h2.5a1 1 0 0 1 1 1zM6.118 1 5.5 2h5l-.618-1H6.118z"/>
+                  <path d="M5.5 5.5A.5.5 0 0 1 6 5h4a.5.5 0 0 1 .5.5v8A1.5 1.5 0 0 1 9 15H7a1.5 1.5 0 0 1-1.5-1.5v-8zM14.5 3a1 1 0 0 1-1 1H13v9.5A2.5 2.5 0 0 1 10.5 16h-5A2.5 2.5 0 0 1 3 13.5V4H2.5a1 1 0 1 1 0-2H5l.5-1h5l.5 1h2.5a1 1 0 0 1 1 1zM6.118 1L5.5 2h5l-.618-1H6.118z"/>
                 </svg>
               </button>
             </div>
@@ -364,73 +414,92 @@ function createGrid(){
       url: buildUrl(apiUrl, 1, 10),
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
-        const items = data.items || data.rows || [];
-        
-        // Separar transações de cartão de crédito das demais
-        const cartaoCredito = items.filter(t => t.forma_pagamento === 'Cartão de Crédito');
-        const outrasTransacoes = items.filter(t => t.forma_pagamento !== 'Cartão de Crédito');
-        
-        // Criar linha agrupada para cartão de crédito se houver transações
-        let linhaCartao = null;
-        if (cartaoCredito.length > 0) {
-          const totalCartao = cartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+        try {
+          const items = data.items || data.rows || [];
           
-          // Encontrar a data mais recente
-          let dataRecente = null;
-          for (const t of cartaoCredito) {
-            const dt = parseDateOnly(t.data_transacao || t.data);
-            if (dt && (!dataRecente || dt > dataRecente)) {
-              dataRecente = dt;
+          // Separar transações de cartão de crédito das demais
+          const cartaoCredito = items.filter(t => t.forma_pagamento === 'Cartão de Crédito');
+          const outrasTransacoes = items.filter(t => t.forma_pagamento !== 'Cartão de Crédito');
+          
+          // Armazenar transações de cartão globalmente para o modal
+          transacoesCartaoCredito = cartaoCredito;
+          
+          // Criar linha agrupada para cartão de crédito se houver transações
+          let linhaCartao = null;
+          if (cartaoCredito.length > 0) {
+            const totalCartao = cartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+            
+            // Encontrar a data mais recente
+            let dataRecente = null;
+            for (const t of cartaoCredito) {
+              const dt = parseDateOnly(t.data_transacao || t.data);
+              if (dt && (!dataRecente || dt > dataRecente)) {
+                dataRecente = dt;
+              }
             }
+            
+            // Se não encontrou data válida, usar data atual
+            if (!dataRecente) {
+              dataRecente = new Date();
+            }
+            
+            // Formatar data no formato YYYY-MM-DD
+            const dataStr = dataRecente.toISOString().split('T')[0];
+            
+            linhaCartao = {
+              id: 'CARTAO_AGRUPADO',
+              data_transacao: dataStr,
+              descricao: 'Cartão de Crédito',
+              categoria_nome: 'Mista',
+              forma_pagamento: 'Cartão de Crédito',
+              status: 'Pendente',
+              tipo: 'Despesa',
+              valor: totalCartao
+            };
           }
           
-          // Se não encontrou data válida, usar data atual
-          if (!dataRecente) {
-            dataRecente = new Date();
-          }
+          // Custom client-side sort: Receita first, then Despesa
+          const orderMap = { 'receita': 0, 'despesa': 1 };
+          outrasTransacoes.sort((a, b) => {
+            const ta = (a.tipo || '').toString().trim().toLowerCase();
+            const tb = (b.tipo || '').toString().trim().toLowerCase();
+            const oa = orderMap.hasOwnProperty(ta) ? orderMap[ta] : 2;
+            const ob = orderMap.hasOwnProperty(tb) ? orderMap[tb] : 2;
+            if (oa !== ob) return oa - ob;
+            const da = parseDateOnly(a.data_transacao || a.data || a.data_transacao);
+            const db = parseDateOnly(b.data_transacao || b.data || b.data_transacao);
+            if (da && db) return db - da;
+            return 0;
+          });
           
-          // Formatar data no formato YYYY-MM-DD
-          const dataStr = dataRecente.toISOString().split('T')[0];
-          
-          linhaCartao = {
-            id: 'CARTAO_AGRUPADO',
-            data_transacao: dataStr,
-            descricao: 'Cartão de Crédito',
-            categoria_nome: 'Mista',
-            forma_pagamento: 'Cartão de Crédito',
-            status: 'Pendente',
-            tipo: 'Despesa',
-            valor: totalCartao
-          };
-        }
-        
-        // Custom client-side sort: Receita first, then Despesa
-        const orderMap = { 'receita': 0, 'despesa': 1 };
-        outrasTransacoes.sort((a, b) => {
-          const ta = (a.tipo || '').toString().trim().toLowerCase();
-          const tb = (b.tipo || '').toString().trim().toLowerCase();
-          const oa = orderMap.hasOwnProperty(ta) ? orderMap[ta] : 2;
-          const ob = orderMap.hasOwnProperty(tb) ? orderMap[tb] : 2;
-          if (oa !== ob) return oa - ob;
-          const da = parseDateOnly(a.data_transacao || a.data || a.data_transacao);
-          const db = parseDateOnly(b.data_transacao || b.data || b.data_transacao);
-          if (da && db) return db - da;
-          return 0;
-        });
-        
-        // Adicionar linha de cartão agrupado no início se existir
-        const finalItems = linhaCartao ? [linhaCartao, ...outrasTransacoes] : outrasTransacoes;
+          // Adicionar linha de cartão agrupado no início se existir
+          const finalItems = linhaCartao ? [linhaCartao, ...outrasTransacoes] : outrasTransacoes;
 
-        return finalItems.map(row => [
-          row.id,
-          formatDate(row.data_transacao || row.data || row.data_transacao),
-          row.descricao || '',
-          row.categoria_nome || '',
-          row.forma_pagamento || '',
-          row.status || '',
-          row.tipo || '',
-          formatCurrency(row.valor)
-        ]);
+          return finalItems.map(row => [
+            row.id,
+            formatDate(row.data_transacao || row.data || row.data_transacao),
+            row.descricao || '',
+            row.categoria_nome || '',
+            row.forma_pagamento || '',
+            row.status || '',
+            row.tipo || '',
+            formatCurrency(row.valor)
+          ]);
+        } catch (error) {
+          console.error('Erro ao processar dados da grid:', error);
+          // Retornar dados sem processamento em caso de erro
+          const items = data.items || data.rows || [];
+          return items.map(row => [
+            row.id,
+            formatDate(row.data_transacao || row.data),
+            row.descricao || '',
+            row.categoria_nome || '',
+            row.forma_pagamento || '',
+            row.status || '',
+            row.tipo || '',
+            formatCurrency(row.valor)
+          ]);
+        }
       },
       total: data => {
         // Ajustar total considerando agrupamento de cartão de crédito
@@ -472,6 +541,209 @@ function createGrid(){
   grid.render(document.getElementById('grid'));
 }
 
+// Função para abrir modal com detalhes das transações de cartão de crédito
+window.abrirModalCartaoCredito = function() {
+  // Remover modal anterior se existir
+  var old = document.getElementById('modal-cartao-credito');
+  if (old) old.remove();
+
+  var modal = document.createElement('div');
+  modal.id = 'modal-cartao-credito';
+  modal.style.position = 'fixed';
+  modal.style.top = '0';
+  modal.style.left = '0';
+  modal.style.width = '100vw';
+  modal.style.height = '100vh';
+  modal.style.background = 'rgba(0,0,0,0.5)';
+  modal.style.zIndex = '9999';
+  modal.style.display = 'flex';
+  modal.style.alignItems = 'center';
+  modal.style.justifyContent = 'center';
+
+  const html = `
+    <div style="background:#fff;padding:24px;border-radius:10px;min-width:80vw;max-width:95vw;max-height:90vh;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h4 style="margin:0;">Transações de Cartão de Crédito</h4>
+        <button onclick="fecharModalCartaoCredito()" style="border:none;background:transparent;font-size:24px;cursor:pointer;color:#666;">&times;</button>
+      </div>
+      <div id="grid-cartao-credito"></div>
+    </div>
+  `;
+
+  modal.innerHTML = html;
+  document.body.appendChild(modal);
+
+  // Criar grid com as transações de cartão
+  const gridCartao = new gridjs.Grid({
+    columns: [
+      {
+        id: 'id',
+        name: '',
+        sort: false,
+        formatter: () => gridjs.html('')
+      },
+      { id: 'data_transacao', name: 'Data', sort: true },
+      { id: 'descricao', name: 'Descrição', sort: true },
+      { id: 'categoria_nome', name: 'Categoria', sort: true },
+      {
+        id: 'status',
+        name: 'Status',
+        sort: true,
+        formatter: (cell, row) => {
+          if (cell === null || cell === undefined) return '';
+          const txt = String(cell).trim();
+          const lower = txt.toLowerCase();
+          const baseStyle = 'padding:4px 8px;border-radius:6px;display:inline-block;font-weight:600;';
+          if (lower === 'pago') {
+            return gridjs.html(`<span style="${baseStyle}background:#198754;color:#fff;">${txt}</span>`);
+          }
+          if (lower === 'pendente') {
+            return gridjs.html(`<span style="${baseStyle}background:#dc3545;color:#fff;">${txt}</span>`);
+          }
+          return gridjs.html(`<span style="${baseStyle}">${txt}</span>`);
+        }
+      },
+      {
+        id: 'valor',
+        name: 'Valor',
+        sort: true,
+        formatter: (cell) => {
+          const num = Number(String(cell).replace(/[^\d,-]/g, '').replace(',', '.'));
+          if (isNaN(num)) return cell;
+          const color = num < 0 ? 'red' : 'red'; // Despesas sempre em vermelho
+          return gridjs.html(`<span style="color:${color}; font-weight:bold;">${formatCurrency(num)}</span>`);
+        }
+      },
+      {
+        id: 'acoes',
+        name: 'Ações',
+        sort: false,
+        formatter: (cell, row) => {
+          const idCell = (row && row.cells && row.cells[0]) ? (row.cells[0].data || row.cells[0]) : '';
+          const id = idCell || '';
+          return gridjs.html(`
+            <div class="btn-group" role="group" aria-label="Ações">
+              <button type="button" class="btn btn-sm btn-outline-danger delete-btn-modal" data-id="${id}" title="Excluir" aria-label="Excluir">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M5.5 5.5A.5.5 0 0 1 6 5h4a.5.5 0 0 1 .5.5v8A1.5 1.5 0 0 1 9 15H7a1.5 1.5 0 0 1-1.5-1.5v-8zM14.5 3a1 1 0 0 1-1 1H13v9.5A2.5 2.5 0 0 1 10.5 16h-5A2.5 2.5 0 0 1 3 13.5V4H2.5a1 1 0 1 1 0-2H5l.5-1h5l.5 1h2.5a1 1 0 0 1 1 1zM6.118 1L5.5 2h5l-.618-1H6.118z"/>
+                </svg>
+              </button>
+            </div>
+          `);
+        }
+      }
+    ],
+    data: transacoesCartaoCredito.map(t => [
+      t.id,
+      formatDate(t.data_transacao || t.data),
+      t.descricao || '',
+      t.categoria_nome || '',
+      t.status || '',
+      formatCurrency(t.valor)
+    ]),
+    sort: true,
+    pagination: {
+      enabled: true,
+      limit: 10
+    },
+    search: false,
+    language: {
+      'search': {
+        'placeholder': '🔍 Buscar...'
+      },
+      'pagination': {
+        'previous': 'Anterior',
+        'next': 'Próximo',
+        'showing': 'Mostrando',
+        'results': () => 'registros',
+        'of': 'de',
+        'to': 'a'
+      }
+    }
+  });
+
+  // Esconder primeira coluna (ID)
+  const cssIdModal = 'hide-grid-modal-id-column-style';
+  if (!document.getElementById(cssIdModal)) {
+    const style = document.createElement('style');
+    style.id = cssIdModal;
+    style.innerHTML = `#grid-cartao-credito .gridjs-table th:nth-child(1), #grid-cartao-credito .gridjs-table td:nth-child(1) { display: none; }`;
+    document.head.appendChild(style);
+  }
+
+  gridCartao.render(document.getElementById('grid-cartao-credito'));
+
+  // Adicionar event listeners para editar e excluir dentro do modal
+  setTimeout(() => {
+    const gridElement = document.getElementById('grid-cartao-credito');
+    if (!gridElement) return;
+
+    gridElement.addEventListener('click', async function(e) {
+      console.log('🔴 Click detectado no grid do modal de cartão');
+      const editBtn = e.target.closest('.edit-btn-modal');
+      const deleteBtn = e.target.closest('.delete-btn-modal');
+
+      if (editBtn) {
+        console.log('🔴 Botão EDITAR clicado no modal');
+        const tid = editBtn.getAttribute('data-id');
+        console.log('🔴 ID da transação:', tid);
+        if (!tid) return;
+        
+        try {
+          console.log('🔴 Buscando transação via fetchJWT...');
+          const resp = await fetchJWT(`${apiUrl}/${tid}`);
+          console.log('🔴 Resposta do GET:', resp.status);
+          if (resp.ok) {
+            const transacao = await resp.json();
+            console.log('🔴 Transação obtida:', transacao);
+            // Fechar modal de cartão e abrir modal de edição
+            console.log('🔴 Fechando modal de cartão...');
+            fecharModalCartaoCredito();
+            console.log('🔴 Abrindo modal de edição...');
+            window.abrirModalEdicao(transacao);
+          }
+        } catch (err) {
+          console.error('Erro ao buscar transação', err);
+          alert('Erro ao carregar transação');
+        }
+      }
+
+      if (deleteBtn) {
+        const tid = deleteBtn.getAttribute('data-id');
+        if (!tid || !confirm('Tem certeza que deseja excluir esta transação?')) return;
+
+        try {
+          const resp = await fetchJWT(`${apiUrl}/${tid}`, { method: 'DELETE' });
+          if (resp.ok) {
+            alert('Transação excluída com sucesso!');
+            fecharModalCartaoCredito();
+            reloadGrid();
+            fetchAndRenderSummary();
+          } else {
+            alert('Erro ao excluir transação');
+          }
+        } catch (err) {
+          console.error('Erro ao excluir', err);
+          alert('Erro ao excluir transação');
+        }
+      }
+    });
+  }, 100);
+
+  // Fechar modal ao clicar fora
+  modal.addEventListener('click', function(e) {
+    if (e.target === modal) {
+      fecharModalCartaoCredito();
+    }
+  });
+};
+
+// Função para fechar modal de cartão de crédito
+window.fecharModalCartaoCredito = function() {
+  var modal = document.getElementById('modal-cartao-credito');
+  if (modal) modal.remove();
+};
+
 function reloadGrid(){
   if (!grid) {
     createGrid();
@@ -483,73 +755,92 @@ function reloadGrid(){
       url: buildUrl(apiUrl, 1, 10),
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
-        const items = data.items || data.rows || [];
-        
-        // Separar transações de cartão de crédito das demais
-        const cartaoCredito = items.filter(t => t.forma_pagamento === 'Cartão de Crédito');
-        const outrasTransacoes = items.filter(t => t.forma_pagamento !== 'Cartão de Crédito');
-        
-        // Criar linha agrupada para cartão de crédito se houver transações
-        let linhaCartao = null;
-        if (cartaoCredito.length > 0) {
-          const totalCartao = cartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+        try {
+          const items = data.items || data.rows || [];
           
-          // Encontrar a data mais recente
-          let dataRecente = null;
-          for (const t of cartaoCredito) {
-            const dt = parseDateOnly(t.data_transacao || t.data);
-            if (dt && (!dataRecente || dt > dataRecente)) {
-              dataRecente = dt;
+          // Separar transações de cartão de crédito das demais
+          const cartaoCredito = items.filter(t => t.forma_pagamento === 'Cartão de Crédito');
+          const outrasTransacoes = items.filter(t => t.forma_pagamento !== 'Cartão de Crédito');
+          
+          // Armazenar transações de cartão globalmente para o modal
+          transacoesCartaoCredito = cartaoCredito;
+          
+          // Criar linha agrupada para cartão de crédito se houver transações
+          let linhaCartao = null;
+          if (cartaoCredito.length > 0) {
+            const totalCartao = cartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+            
+            // Encontrar a data mais recente
+            let dataRecente = null;
+            for (const t of cartaoCredito) {
+              const dt = parseDateOnly(t.data_transacao || t.data);
+              if (dt && (!dataRecente || dt > dataRecente)) {
+                dataRecente = dt;
+              }
             }
+            
+            // Se não encontrou data válida, usar data atual
+            if (!dataRecente) {
+              dataRecente = new Date();
+            }
+            
+            // Formatar data no formato YYYY-MM-DD
+            const dataStr = dataRecente.toISOString().split('T')[0];
+            
+            linhaCartao = {
+              id: 'CARTAO_AGRUPADO',
+              data_transacao: dataStr,
+              descricao: 'Cartão de Crédito',
+              categoria_nome: 'Mista',
+              forma_pagamento: 'Cartão de Crédito',
+              status: 'Pendente',
+              tipo: 'Despesa',
+              valor: totalCartao
+            };
           }
           
-          // Se não encontrou data válida, usar data atual
-          if (!dataRecente) {
-            dataRecente = new Date();
-          }
+          // Custom client-side sort: Receita first, then Despesa
+          const orderMap = { 'receita': 0, 'despesa': 1 };
+          outrasTransacoes.sort((a, b) => {
+            const ta = (a.tipo || '').toString().trim().toLowerCase();
+            const tb = (b.tipo || '').toString().trim().toLowerCase();
+            const oa = orderMap.hasOwnProperty(ta) ? orderMap[ta] : 2;
+            const ob = orderMap.hasOwnProperty(tb) ? orderMap[tb] : 2;
+            if (oa !== ob) return oa - ob;
+            const da = parseDateOnly(a.data_transacao || a.data || a.data_transacao);
+            const db = parseDateOnly(b.data_transacao || b.data || b.data_transacao);
+            if (da && db) return db - da;
+            return 0;
+          });
           
-          // Formatar data no formato YYYY-MM-DD
-          const dataStr = dataRecente.toISOString().split('T')[0];
-          
-          linhaCartao = {
-            id: 'CARTAO_AGRUPADO',
-            data_transacao: dataStr,
-            descricao: 'Cartão de Crédito',
-            categoria_nome: 'Mista',
-            forma_pagamento: 'Cartão de Crédito',
-            status: 'Pendente',
-            tipo: 'Despesa',
-            valor: totalCartao
-          };
-        }
-        
-        // Custom client-side sort: Receita first, then Despesa
-        const orderMap = { 'receita': 0, 'despesa': 1 };
-        outrasTransacoes.sort((a, b) => {
-          const ta = (a.tipo || '').toString().trim().toLowerCase();
-          const tb = (b.tipo || '').toString().trim().toLowerCase();
-          const oa = orderMap.hasOwnProperty(ta) ? orderMap[ta] : 2;
-          const ob = orderMap.hasOwnProperty(tb) ? orderMap[tb] : 2;
-          if (oa !== ob) return oa - ob;
-          const da = parseDateOnly(a.data_transacao || a.data || a.data_transacao);
-          const db = parseDateOnly(b.data_transacao || b.data || b.data_transacao);
-          if (da && db) return db - da;
-          return 0;
-        });
-        
-        // Adicionar linha de cartão agrupado no início se existir
-        const finalItems = linhaCartao ? [linhaCartao, ...outrasTransacoes] : outrasTransacoes;
+          // Adicionar linha de cartão agrupado no início se existir
+          const finalItems = linhaCartao ? [linhaCartao, ...outrasTransacoes] : outrasTransacoes;
 
-        return finalItems.map(row => [
-          row.id,
-          formatDate(row.data_transacao || row.data || row.data_transacao),
-          row.descricao || '',
-          row.categoria_nome || '',
-          row.forma_pagamento || '',
-          row.status || '',
-          row.tipo || '',
-          formatCurrency(row.valor)
-        ]);
+          return finalItems.map(row => [
+            row.id,
+            formatDate(row.data_transacao || row.data || row.data_transacao),
+            row.descricao || '',
+            row.categoria_nome || '',
+            row.forma_pagamento || '',
+            row.status || '',
+            row.tipo || '',
+            formatCurrency(row.valor)
+          ]);
+        } catch (error) {
+          console.error('Erro ao processar dados do reloadGrid:', error);
+          // Retornar dados sem processamento em caso de erro
+          const items = data.items || data.rows || [];
+          return items.map(row => [
+            row.id,
+            formatDate(row.data_transacao || row.data),
+            row.descricao || '',
+            row.categoria_nome || '',
+            row.forma_pagamento || '',
+            row.status || '',
+            row.tipo || '',
+            formatCurrency(row.valor)
+          ]);
+        }
       },
       total: data => {
         // Ajustar total considerando agrupamento de cartão de crédito
@@ -893,9 +1184,19 @@ async function fetchAndRenderSummary() {
 // Função para requisições fetch protegidas com token JWT
 function fetchJWT(url, options = {}) {
     const token = localStorage.getItem('access_token');
+    if (!token) {
+        console.error('Token JWT não encontrado no localStorage');
+        console.log('localStorage keys:', Object.keys(localStorage));
+        alert('Sessão expirada. Faça login novamente.');
+        window.location.href = '/login.html';
+        return Promise.reject(new Error('Token ausente'));
+    }
     options.headers = options.headers || {};
     options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
     options.headers['Authorization'] = 'Bearer ' + token;
+    console.log('fetchJWT - URL:', url, 'Method:', options.method || 'GET', 'Token presente:', !!token);
+    console.log('fetchJWT - Headers:', options.headers);
+    console.log('fetchJWT - Token (primeiros 20 chars):', token.substring(0, 20));
     return fetch(url, options);
 }
 
