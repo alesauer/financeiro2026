@@ -1,5 +1,7 @@
 # Sistema de Gestão Financeira Pessoal
 
+## Made by S@uer
+
 ## Visão Geral
 Este projeto é um sistema completo para gestão de finanças pessoais, desenvolvido em Flask (backend) e HTML/JS/Bootstrap (frontend). Permite o controle de categorias, transações, usuários, relatórios e configurações avançadas.
 
