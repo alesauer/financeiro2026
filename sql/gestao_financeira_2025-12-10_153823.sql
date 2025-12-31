@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 -- MySQL dump 10.13  Distrib 8.0.39, for Win64 (x86_64)
 --
 -- Host: 127.0.0.1    Database: gestao_financeira
@@ -18,6 +19,10 @@
 --
 -- Table structure for table `alembic_version`
 --
+=======
+CREATE DATABASE IF NOT EXISTS `gestao_financeira` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE `gestao_financeira`;
+>>>>>>> 041641f (Ajuste modal Transaçoes)
 
 DROP TABLE IF EXISTS `alembic_version`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;

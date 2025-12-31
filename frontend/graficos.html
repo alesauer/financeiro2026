@@ -140,7 +140,11 @@
       const periodo = getPeriodoSelecionado();
       if (!periodo.inicio || !periodo.fim) return;
       // 1. Despesas por categoria
+<<<<<<< HEAD
       const respDespesas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}`);
+=======
+      const respDespesas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}&tipo=Despesa`);
+>>>>>>> 041641f (Ajuste modal Transaçoes)
       const dadosDespesas = await respDespesas.json();
       // 2. Receitas por categoria
       const respReceitas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}&tipo=Receita`);

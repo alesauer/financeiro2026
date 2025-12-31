@@ -145,9 +145,11 @@ def obter(id):
 def atualizar(id):
     transacao = Transacao.query.get_or_404(id)
     data = request.get_json()
+    print(f"[PUT TRANSACAO] id={id}, payload recebido:", data)
     try:
         validado = schema.load(data, partial=True)
     except ValidationError as err:
+        print(f"[PUT TRANSACAO] Erro de validação:", err.messages)
         return jsonify(err.messages), 400
 
     for key, value in validado.items():
@@ -173,6 +175,7 @@ def deletar(id):
 def resumo_mes():
     inicio_str = request.args.get("inicio")
     fim_str = request.args.get("fim")
+    print(f"[SUMMARY] inicio={inicio_str}, fim={fim_str}")
 
     if not inicio_str or not fim_str:
         return jsonify({"error": "Parâmetros 'inicio' e 'fim' são obrigatórios (YYYY-MM-DD)."}), 400
@@ -180,7 +183,8 @@ def resumo_mes():
     try:
         inicio_dt = datetime.strptime(inicio_str, "%Y-%m-%d").date()
         fim_dt = datetime.strptime(fim_str, "%Y-%m-%d").date()
-    except ValueError:
+    except ValueError as e:
+        print(f"[SUMMARY] Erro ao parsear datas: {e}")
         return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
     # Soma receitas: usa valor_parcela quando parcelado, caso exista

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Ambiente virtual
 venv/
 ENV/
@@ -26,3 +27,45 @@ Thumbs.db
 node_modules/
 build/
 dist/
+=======
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+
+# Flask
+instance/
+.webassets-cache
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Migrations
+migrations/__pycache__/
+migrations/versions/__pycache__/
+
+# Notas pessoais
+.notas
+>>>>>>> 041641f (Ajuste modal Transaçoes)

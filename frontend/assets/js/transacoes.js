@@ -1,5 +1,5 @@
-// Função para abrir modal de edição (definida globalmente, sem duplicidade)
-function abrirModalEdicao(dados) {
+// Função para abrir modal de edição (definida globalmente)
+window.abrirModalEdicao = function(dados) {
   var old = document.getElementById('modal-edicao-transacao');
   if (old) old.remove();
 
