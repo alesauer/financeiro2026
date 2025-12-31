@@ -17,9 +17,9 @@ window.abrirModalEdicao = function(dados) {
   modal.style.justifyContent = 'center';
 
   const campos = [
-    { nome: 'descricao', label: 'Descrição', tipo: 'text' },
     { nome: 'tipo', label: 'Tipo', tipo: 'select', opcoes: ['Receita','Despesa','Investimento'] },
     { nome: 'categoria_id', label: 'Categoria', tipo: 'select-categoria' },
+    { nome: 'descricao', label: 'Descrição', tipo: 'text' },
     { nome: 'valor', label: 'Valor (R$)', tipo: 'number', step: '0.01' },
     { nome: 'data_transacao', label: 'Data', tipo: 'date' },
     { nome: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'select', opcoes: ['Dinheiro','Cartão de Crédito','Cartão de Débito','Pix','Boleto','Transferência'] },
