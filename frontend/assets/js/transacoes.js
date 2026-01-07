@@ -866,21 +866,6 @@ function reloadGrid(){
 }
 
 document.addEventListener('DOMContentLoaded', function(){
-  // Garante que abrirModalEdicao está definida antes de criar o botão
-  setTimeout(function() {
-    if (typeof window.abrirModalEdicao === 'function') {
-      const gridContainer = document.getElementById('grid');
-      if (gridContainer && !document.getElementById('btn-nova-transacao')) {
-        const btn = document.createElement('button');
-        btn.textContent = 'Nova Transação';
-        btn.className = 'btn btn-success mb-3';
-        btn.id = 'btn-nova-transacao';
-        btn.style.float = 'right';
-        btn.onclick = function(){ window.abrirModalEdicao(null); };
-        gridContainer.parentNode.insertBefore(btn, gridContainer);
-      }
-    }
-  }, 100);
   // initialize label and input
   updateLabel();
 
@@ -889,6 +874,20 @@ document.addEventListener('DOMContentLoaded', function(){
 
   // initial fetch for summary cards
   fetchAndRenderSummary();
+  
+  // Adiciona botão Nova Transação acima da grid
+  setTimeout(function() {
+    const gridContainer = document.getElementById('grid');
+    if (gridContainer && !document.getElementById('btn-nova-transacao')) {
+      const btn = document.createElement('button');
+      btn.textContent = 'Nova Transação';
+      btn.className = 'btn btn-success mb-3';
+      btn.id = 'btn-nova-transacao';
+      btn.style.float = 'right';
+      btn.onclick = function(){ window.abrirModalEdicao(null); };
+      gridContainer.parentNode.insertBefore(btn, gridContainer);
+    }
+  }, 100);
 
   // nav buttons
   document.getElementById('prevMonth').addEventListener('click', function(){
@@ -924,17 +923,7 @@ document.addEventListener('DOMContentLoaded', function(){
     }
   });
 });
-  // Adiciona botão Nova Transação acima da grid
-  const gridContainer = document.getElementById('grid');
-  if (gridContainer && !document.getElementById('btn-nova-transacao')) {
-    const btn = document.createElement('button');
-    btn.textContent = 'Nova Transação';
-    btn.className = 'btn btn-success mb-3';
-    btn.id = 'btn-nova-transacao';
-    btn.style.float = 'right';
-    btn.onclick = function(){ abrirModalEdicao(null); };
-    gridContainer.parentNode.insertBefore(btn, gridContainer);
-  }
+
 // CLICK LISTENER: toggle status Pago <-> Pendente
 
 document.getElementById('grid').addEventListener('click', async function(e){
