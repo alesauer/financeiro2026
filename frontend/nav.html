@@ -1,61 +1,103 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
-<nav class="navbar navbar-expand-lg">
-  <div class="container">
-
-    <!-- LOGO / HOME -->
-    <a class="navbar-brand d-flex align-items-center" href="transacoes.html">
-      <i class="bi bi-house-fill me-2"></i> Home
-    </a>
-
-    <!-- TOGGLER MOBILE -->
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-      <span class="navbar-toggler-icon"></span>
+<!-- Navbar Superior (Simplificada) -->
+<nav class="navbar navbar-top">
+  <div class="container-fluid">
+    <!-- Toggle Sidebar -->
+    <button class="btn btn-link sidebar-toggle" id="sidebarToggle" type="button">
+      <i class="bi bi-list fs-4"></i>
     </button>
 
-    <!-- MENU -->
-    <div class="collapse navbar-collapse" id="navbarNav">
-      <ul class="navbar-nav me-auto">
+    <!-- LOGO / TÍTULO -->
+    <a class="navbar-brand d-flex align-items-center" href="transacoes.html">
+      <i class="bi bi-house-fill me-2"></i> Maluki Budget
+    </a>
 
-        <!-- Dashboard -->
-        <li class="nav-item">
-          <a class="nav-link" href="dashboard.html"><i class="bi bi-speedometer2 me-1"></i> Dashboard</a>
-        </li>
-
-        <!-- Transações -->
-        <li class="nav-item">
-          <a class="nav-link" href="transacoes.html"><i class="bi bi-currency-exchange me-1"></i> Transações</a>
-        </li>
-
-        <!-- Investimentos -->
-        <li class="nav-item">
-          <a class="nav-link" href="investimentos.html"><i class="bi bi-graph-up-arrow me-1"></i> Investimentos</a>
-        </li>
-
-        <!-- Gráficos -->
-        <li class="nav-item">
-          <a class="nav-link" href="graficos.html"><i class="bi bi-bar-chart-fill me-1"></i> Gráficos</a>
-        </li>
-
-        <!-- CONFIGURAÇÕES (SUBMENU) -->
-        <li class="nav-item dropdown has-sub">
-          <a class="nav-link" href="#" id="configMenu" role="button" aria-haspopup="true" aria-expanded="false">
-            <i class="bi bi-gear-fill me-1"></i> Configurações <span class="caret">▾</span>
-          </a>
-          <ul class="dropdown-menu sub-menu" aria-labelledby="configMenu">
-            <li><a class="dropdown-item" href="categorias.html"><i class="bi bi-tags-fill me-2"></i> Categorias</a></li>
-            <li><a class="dropdown-item" href="usuarios.html"><i class="bi bi-people-fill me-2"></i> Usuários</a></li>
-            <li><a class="dropdown-item" href="importar_cartao.html"><i class="bi bi-credit-card-fill me-2"></i> Importar Cartão</a></li>
-            <li><a class="dropdown-item" href="outros.html"><i class="bi bi-three-dots me-2"></i> Outros</a></li>
-          </ul>
-        </li>
-
-           <!-- Sair -->
-        <li class="nav-item">
-          <a class="nav-link" href="#" id="btnLogout"><i class="bi bi-box-arrow-right me-1"></i> <b>Sair</b></a>
-        </li>
-
-      </ul>
-    </div>
+    <!-- Botão Logout -->
+    <button class="btn btn-outline-danger btn-sm" id="btnLogout">
+      <i class="bi bi-box-arrow-right me-1"></i> Sair
+    </button>
   </div>
 </nav>
+
+<!-- Sidebar Lateral -->
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-content">
+    <ul class="sidebar-menu">
+      
+      <!-- Dashboard -->
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="dashboard.html">
+          <i class="bi bi-speedometer2"></i>
+          <span class="sidebar-text">Dashboard</span>
+        </a>
+      </li>
+
+      <!-- Transações -->
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="transacoes.html">
+          <i class="bi bi-currency-exchange"></i>
+          <span class="sidebar-text">Transações</span>
+        </a>
+      </li>
+
+      <!-- Investimentos -->
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="investimentos.html">
+          <i class="bi bi-graph-up-arrow"></i>
+          <span class="sidebar-text">Investimentos</span>
+        </a>
+      </li>
+
+      <!-- Gráficos -->
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="graficos.html">
+          <i class="bi bi-bar-chart-fill"></i>
+          <span class="sidebar-text">Gráficos</span>
+        </a>
+      </li>
+
+      <!-- Divisor -->
+      <li class="sidebar-divider"></li>
+
+      <!-- Configurações (Header) -->
+      <li class="sidebar-header">
+        <i class="bi bi-gear-fill"></i>
+        <span class="sidebar-text">Configurações</span>
+      </li>
+
+      <!-- Categorias -->
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="categorias.html">
+          <i class="bi bi-tags-fill"></i>
+          <span class="sidebar-text">Categorias</span>
+        </a>
+      </li>
+
+      <!-- Usuários -->
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="usuarios.html">
+          <i class="bi bi-people-fill"></i>
+          <span class="sidebar-text">Usuários</span>
+        </a>
+      </li>
+
+      <!-- Importar Cartão -->
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="importar_cartao.html">
+          <i class="bi bi-credit-card-fill"></i>
+          <span class="sidebar-text">Importar Cartão</span>
+        </a>
+      </li>
+
+      <!-- Outros -->
+      <li class="sidebar-item">
+        <a class="sidebar-link" href="outros.html">
+          <i class="bi bi-three-dots"></i>
+          <span class="sidebar-text">Outros</span>
+        </a>
+      </li>
+
+    </ul>
+  </div>
+</div>
