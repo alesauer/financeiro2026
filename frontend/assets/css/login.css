@@ -30,6 +30,20 @@ body.login-page {
   padding: 0 !important;
 }
 
+/* Esconder botão Sair na tela de login */
+body.login-page #btnLogout {
+  display: none !important;
+}
+
+/* Centralizar logo na tela de login */
+body.login-page .navbar-top .container-fluid {
+  justify-content: center !important;
+}
+
+body.login-page .sidebar-toggle {
+  display: none !important;
+}
+
 /* Container do card */
 .login-container {
   position: relative;
