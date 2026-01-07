@@ -34,7 +34,7 @@ window.abrirModalEdicao = function(dados) {
   ];
 
   let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
-    <h4 style="margin-bottom:16px;">${dados ? 'Editar' : 'Nova'} Transação</h4>`;
+    <h4 style="margin-bottom:16px;"><i class="bi bi-${dados ? 'pencil-square' : 'plus-circle'}" style="margin-right:8px;"></i>${dados ? 'Editar' : 'Nova'} Transação</h4>`;
   let categorias = [];
   let tipoSelecionado = dados && dados.tipo ? dados.tipo : 'Receita';
 
@@ -68,8 +68,8 @@ window.abrirModalEdicao = function(dados) {
       }
       // Frequência: só aparece se recorrente marcado
       if (c.tipo === 'select-frequencia') {
-        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-frequencia"><label style="font-weight:600;">${c.label}</label><br/>`;
-        camposHtml += `<select name="frequencia" style="width:100%;padding:6px;">`;
+        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-frequencia"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<select name="frequencia" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
         c.opcoes.forEach(op => {
           let sel = dados && dados.frequencia === op ? 'selected' : '';
           camposHtml += `<option value="${op}" ${sel}>${op}</option>`;
@@ -81,14 +81,14 @@ window.abrirModalEdicao = function(dados) {
       if (c.nome === 'data_fim') {
         let val = dados && dados.data_fim ? dados.data_fim : '';
         if (val && val.length >= 10) val = val.slice(0,10);
-        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-data-fim"><label style="font-weight:600;">${c.label}</label><br/>`;
-        camposHtml += `<input type="date" name="data_fim" value="${val||''}" style="width:100%;padding:6px;" /></div>`;
+        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-data-fim"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<input type="date" name="data_fim" value="${val||''}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
         return;
       }
       // ...restante igual
       if (c.tipo === 'select') {
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;">${c.label}</label><br/>`;
-        camposHtml += `<select name="${c.nome}" style="width:100%;padding:6px;">`;
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<select name="${c.nome}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
         c.opcoes.forEach(op => {
           let sel = '';
           if (c.nome === 'tipo' && op === tipoSelecionado) sel = 'selected';
@@ -97,8 +97,8 @@ window.abrirModalEdicao = function(dados) {
         });
         camposHtml += `</select></div>`;
       } else if (c.tipo === 'select-categoria') {
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;">${c.label}</label><br/>`;
-        camposHtml += `<select name="categoria_id" style="width:100%;padding:6px;">`;
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<select name="categoria_id" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
         categorias.forEach(cat => {
           const sel = (dados && dados.categoria_id == cat.id) ? 'selected' : '';
           camposHtml += `<option value="${cat.id}" ${sel}>${cat.nome}</option>`;
@@ -107,11 +107,11 @@ window.abrirModalEdicao = function(dados) {
       } else if (c.tipo === 'date') {
         let val = dados && dados[c.nome] ? dados[c.nome] : '';
         if (val && val.length >= 10) val = val.slice(0,10);
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;">${c.label}</label><br/>`;
-        camposHtml += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:6px;" /></div>`;
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
       } else {
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;">${c.label}</label><br/>`;
-        camposHtml += `<input type="${c.tipo}" name="${c.nome}" value="${dados ? (dados[c.nome]||'') : ''}" style="width:100%;padding:6px;" step="${c.step||''}" /></div>`;
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<input type="${c.tipo}" name="${c.nome}" value="${dados ? (dados[c.nome]||'') : ''}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" step="${c.step||''}" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
       }
     });
     return camposHtml;
