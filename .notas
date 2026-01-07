@@ -1,0 +1,17 @@
+Iniciar o front: python -m http.server 8000
+Iniciar o back: python run.py
+login: alesauer@gmail.com / teste10
+
+Git:
+git init
+git add .
+git commit -m "Sua mensagem de commit"
+git push origin main
+
+
+git remote add origin https://github.com/alesauer/financeiro2026.git
+git branch -M main
+
+git push -u origin main
+
+

@@ -66,6 +66,6 @@ Thumbs.db
 migrations/__pycache__/
 migrations/versions/__pycache__/
 
-# Notas pessoais
-.notas
+
+
 >>>>>>> 041641f (Ajuste modal Transaçoes)
