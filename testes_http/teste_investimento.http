@@ -1,0 +1,54 @@
+@hostname = localhost:5000
+@token = REPLACE_WITH_VALID_TOKEN
+
+### Teste de Resumo de Investimentos (Relatórios)
+# @name getResumoInvestimentos
+GET http://{{hostname}}/api/relatorios/resumo?ano=2026&mes=1
+Authorization: Bearer {{token}}
+
+### Listar categorias para obter um ID válido
+# @name listarCategorias
+GET http://{{hostname}}/api/categorias
+Authorization: Bearer {{token}}
+
+### Criar uma nova transação de Investimento
+# @name criarInvestimento
+POST http://{{hostname}}/api/transacoes
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+    "descricao": "Aporte em Fundo Imobiliário",
+    "valor": 500.00,
+    "data_transacao": "2026-01-15",
+    "tipo": "Investimento",
+    "categoria_id": {{listarCategorias.response.body.$[0].id}},
+    "forma_pagamento": "Dinheiro",
+    "status": "Pago"
+}
+
+### Listar todas as transações do tipo Investimento
+# @name listarInvestimentos
+GET http://{{hostname}}/api/transacoes?tipo=Investimento
+Authorization: Bearer {{token}}
+
+### Obter a transação recém criada (por ID)
+# @name getInvestimentoPorId
+GET http://{{hostname}}/api/transacoes/{{criarInvestimento.response.body.$.id}}
+Authorization: Bearer {{token}}
+
+### Atualizar a transação recém criada
+# @name atualizarInvestimento
+PUT http://{{hostname}}/api/transacoes/{{criarInvestimento.response.body.$.id}}
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+    "valor": 550.00,
+    "observacoes": "Valor atualizado após reavaliação"
+}
+
+### Deletar a transação recém criada
+# @name deletarInvestimento
+DELETE http://{{hostname}}/api/transacoes/{{criarInvestimento.response.body.$.id}}
+Authorization: Bearer {{token}}

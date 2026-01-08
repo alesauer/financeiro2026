@@ -11,6 +11,8 @@ migrate = Migrate()
 def create_app():
     app = Flask(__name__)
     app.config.from_object(Config)
+    # Aceitar URLs com e sem barra final para evitar redirects 308
+    app.url_map.strict_slashes = False
 
     db.init_app(app)
     migrate.init_app(app, db)
