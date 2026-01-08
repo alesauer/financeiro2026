@@ -354,7 +354,7 @@ function createGrid(){
           if (cell === 'Receita') color = 'green';
           else if (cell === 'Despesa') color = 'red';
           else if (cell === 'Investimento') color = 'goldenrod';
-          return gridjs.html(`<span style="color:${color};font-weight:bold;">${cell}</span>`);
+          return gridjs.html(`<span style="color:${color};font-weight:bold;display:block;text-align:center;">${cell}</span>`);
         }
       },
       {
