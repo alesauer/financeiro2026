@@ -111,8 +111,9 @@
 
     // Função para montar datas de início/fim conforme filtro
     function getPeriodoSelecionado() {
-      const ano = document.getElementById('filtro-ano').value;
-      const mes = document.getElementById('filtro-mes').value;
+  const ano = document.getElementById('filtro-ano').value;
+  let mes = document.getElementById('filtro-mes').value;
+  if (mes) mes = Number(mes);
       if (!ano) return {};
       if (!mes) {
         // Ano inteiro
@@ -139,12 +140,8 @@
     async function buscarDadosGraficos() {
       const periodo = getPeriodoSelecionado();
       if (!periodo.inicio || !periodo.fim) return;
-      // 1. Despesas por categoria
-<<<<<<< HEAD
-      const respDespesas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}`);
-=======
-      const respDespesas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}&tipo=Despesa`);
->>>>>>> 041641f (Ajuste modal Transaçoes)
+  // 1. Despesas por categoria
+  const respDespesas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}&tipo=Despesa`);
       const dadosDespesas = await respDespesas.json();
       // 2. Receitas por categoria
       const respReceitas = await fetch(`${API_URL}/categorias?inicio=${periodo.inicio}&fim=${periodo.fim}&tipo=Receita`);
@@ -288,9 +285,11 @@
     }
 
     // Atualizar gráficos ao trocar filtros
-    document.getElementById('filtro-ano').addEventListener('change', buscarDadosGraficos);
-    document.getElementById('filtro-mes').addEventListener('change', buscarDadosGraficos);
-    document.addEventListener('DOMContentLoaded', buscarDadosGraficos);
+    document.addEventListener('DOMContentLoaded', function() {
+      document.getElementById('filtro-ano').addEventListener('change', buscarDadosGraficos);
+      document.getElementById('filtro-mes').addEventListener('change', buscarDadosGraficos);
+      buscarDadosGraficos();
+    });
   </script>
 </body>
 </html>
