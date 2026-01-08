@@ -446,13 +446,17 @@ function createGrid(){
             // Formatar data no formato YYYY-MM-DD
             const dataStr = dataRecente.toISOString().split('T')[0];
             
+            // Determinar status: se todas estão pagas = Pago, senão = Pendente
+            const todasPagas = cartaoCredito.every(t => (t.status || '').toLowerCase() === 'pago');
+            const statusCartao = todasPagas ? 'Pago' : 'Pendente';
+            
             linhaCartao = {
               id: 'CARTAO_AGRUPADO',
               data_transacao: dataStr,
               descricao: 'Cartão de Crédito',
               categoria_nome: 'Mista',
               forma_pagamento: 'Cartão de Crédito',
-              status: 'Pendente',
+              status: statusCartao,
               tipo: 'Despesa',
               valor: totalCartao
             };
@@ -787,13 +791,17 @@ function reloadGrid(){
             // Formatar data no formato YYYY-MM-DD
             const dataStr = dataRecente.toISOString().split('T')[0];
             
+            // Determinar status: se todas estão pagas = Pago, senão = Pendente
+            const todasPagas = cartaoCredito.every(t => (t.status || '').toLowerCase() === 'pago');
+            const statusCartao = todasPagas ? 'Pago' : 'Pendente';
+            
             linhaCartao = {
               id: 'CARTAO_AGRUPADO',
               data_transacao: dataStr,
               descricao: 'Cartão de Crédito',
               categoria_nome: 'Mista',
               forma_pagamento: 'Cartão de Crédito',
-              status: 'Pendente',
+              status: statusCartao,
               tipo: 'Despesa',
               valor: totalCartao
             };
@@ -934,30 +942,69 @@ document.getElementById('grid').addEventListener('click', async function(e){
     const current = statusEl.getAttribute('data-status');
     if (!id || !current) return;
     const novoStatus = (current.toLowerCase() === 'pago') ? 'Pendente' : 'Pago';
+    
     try {
-      const resp = await fetchJWT(`${apiUrl}/${id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: novoStatus })
-      });
-      if (!resp.ok) {
-        alert('Erro ao atualizar status.');
-        return;
-      }
-      const updated = await resp.json();
-      const finalStatus = updated.status || novoStatus;
-      statusEl.setAttribute('data-status', finalStatus);
-      statusEl.textContent = finalStatus;
-      if (finalStatus.toLowerCase() === 'pago') {
-        statusEl.style.background = '#198754';
-        statusEl.style.color = '#fff';
-      } else if (finalStatus.toLowerCase() === 'pendente') {
-        statusEl.style.background = '#dc3545';
-        statusEl.style.color = '#fff';
+      // Se for a linha consolidada de cartão de crédito, atualizar todas as transações
+      if (id === 'CARTAO_AGRUPADO') {
+        if (!transacoesCartaoCredito || transacoesCartaoCredito.length === 0) {
+          alert('Nenhuma transação de cartão de crédito encontrada.');
+          return;
+        }
+        
+        // Confirmar ação
+        const totalTransacoes = transacoesCartaoCredito.length;
+        const msg = `Deseja atualizar o status de todas as ${totalTransacoes} transações de cartão de crédito para "${novoStatus}"?`;
+        if (!confirm(msg)) return;
+        
+        // Atualizar todas as transações de cartão em paralelo
+        const promises = transacoesCartaoCredito.map(transacao => 
+          fetchJWT(`${apiUrl}/${transacao.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: novoStatus })
+          })
+        );
+        
+        const results = await Promise.allSettled(promises);
+        
+        // Verificar se todas foram atualizadas com sucesso
+        const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok));
+        
+        if (falhas.length > 0) {
+          alert(`${falhas.length} transação(ões) não puderam ser atualizadas. Recarregando dados...`);
+        } else {
+          alert(`${totalTransacoes} transação(ões) de cartão de crédito atualizadas com sucesso!`);
+        }
+        
+        // Recarregar a grid para refletir as mudanças
+        reloadGrid();
+        fetchAndRenderSummary();
+        
       } else {
-        statusEl.style.background = '';
-        statusEl.style.color = '';
+        // Lógica original para transações individuais
+        const resp = await fetchJWT(`${apiUrl}/${id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: novoStatus })
+        });
+        if (!resp.ok) {
+          alert('Erro ao atualizar status.');
+          return;
+        }
+        const updated = await resp.json();
+        const finalStatus = updated.status || novoStatus;
+        statusEl.setAttribute('data-status', finalStatus);
+        statusEl.textContent = finalStatus;
+        if (finalStatus.toLowerCase() === 'pago') {
+          statusEl.style.background = '#198754';
+          statusEl.style.color = '#fff';
+        } else if (finalStatus.toLowerCase() === 'pendente') {
+          statusEl.style.background = '#dc3545';
+          statusEl.style.color = '#fff';
+        } else {
+          statusEl.style.background = '';
+          statusEl.style.color = '';
+        }
+        fetchAndRenderSummary();
       }
-      fetchAndRenderSummary();
     } catch (err) {
       alert('Erro de rede ao atualizar status.');
     }
@@ -1008,113 +1055,6 @@ document.getElementById('grid').addEventListener('click', async function(e){
       }
       return;
     }
-// Função para abrir modal de edição (definida no escopo global)
-window.abrirModalEdicao = function(dados) {
-  // Remove modal anterior se existir
-  var old = document.getElementById('modal-edicao-transacao');
-  if (old) old.remove();
-
-  // Cria modal
-  var modal = document.createElement('div');
-    modal.id = 'modal-edicao-transacao';
-    modal.style.position = 'fixed';
-    modal.style.top = '0';
-    modal.style.left = '0';
-    modal.style.width = '100vw';
-    modal.style.height = '100vh';
-    modal.style.background = 'rgba(0,0,0,0.3)';
-    modal.style.zIndex = '9999';
-    modal.style.display = 'flex';
-    modal.style.alignItems = 'center';
-    modal.style.justifyContent = 'center';
-
-    // Campos editáveis
-    const campos = [
-        { nome: 'descricao', label: 'Descrição', tipo: 'text' },
-        { nome: 'valor', label: 'Valor (R$)', tipo: 'number', step: '0.01' },
-        { nome: 'data_transacao', label: 'Data', tipo: 'date' },
-        { nome: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'select', opcoes: ['Dinheiro','Cartão de Crédito','Cartão de Débito','Pix','Boleto','Transferência'] },
-        { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] },
-        { nome: 'tipo', label: 'Tipo', tipo: 'select', opcoes: ['Receita','Despesa','Investimento'] }
-    ];
-
-    // Monta formulário
-    let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
-        <h4 style="margin-bottom:16px;">${dados ? 'Editar' : 'Nova'} Transação</h4>`;
-    campos.forEach(c => {
-        html += `<div style="margin-bottom:12px;">
-            <label style="font-weight:600;">${c.label}</label><br/>`;
-        if (c.tipo === 'select') {
-            html += `<select name="${c.nome}" style="width:100%;padding:6px;">`;
-            c.opcoes.forEach(op => {
-                const sel = (dados && dados[c.nome] === op) ? 'selected' : '';
-                html += `<option value="${op}" ${sel}>${op}</option>`;
-            });
-            html += `</select>`;
-        } else if (c.tipo === 'date') {
-            let val = dados && dados[c.nome] ? dados[c.nome] : '';
-            if (val && val.length >= 10) val = val.slice(0,10);
-            html += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:6px;" />`;
-        } else {
-            html += `<input type="${c.tipo}" name="${c.nome}" value="${dados ? (dados[c.nome]||'') : ''}" style="width:100%;padding:6px;" step="${c.step||''}" />`;
-        }
-        html += `</div>`;
-    });
-    html += `<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
-        <button type="button" id="btn-cancelar-edicao" class="btn btn-secondary">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Salvar</button>
-    </div>
-    </form>`;
-
-    modal.innerHTML = html;
-    document.body.appendChild(modal);
-
-    // Cancelar
-    document.getElementById('btn-cancelar-edicao').onclick = () => {
-        modal.remove();
-    };
-
-    // Salvar
-    document.getElementById('form-edicao-transacao').onsubmit = async function(ev) {
-        ev.preventDefault();
-        const fd = new FormData(ev.target);
-        const payload = {};
-        campos.forEach(c => {
-            let v = fd.get(c.nome);
-            if (c.tipo === 'number') v = v ? parseFloat(v) : null;
-            payload[c.nome] = v;
-        });
-        try {
-            let resp;
-            if (dados && dados.id) {
-                // PUT para editar
-                resp = await fetch(`${apiUrl}/${dados.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-            } else {
-                // POST para criar
-                resp = await fetch(`${apiUrl}/`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-            }
-            if (!resp.ok) {
-                const err = await resp.json();
-                alert('Erro ao salvar: ' + (err.error || JSON.stringify(err)));
-                return;
-            }
-            alert(dados && dados.id ? 'Transação atualizada com sucesso.' : 'Transação criada com sucesso.');
-            modal.remove();
-            reloadGrid();
-            fetchAndRenderSummary();
-        } catch (err) {
-            alert('Erro de rede ao salvar.');
-        }
-    };
-}
 });
 
 // -------------------- Summary cards --------------------
