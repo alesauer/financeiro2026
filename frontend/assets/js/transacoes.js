@@ -377,15 +377,22 @@ function createGrid(){
           const idCell = (row && row.cells && row.cells[0]) ? (row.cells[0].data || row.cells[0]) : '';
           const id = idCell || '';
           
-          // Se for a linha agrupada de cartão, mostrar apenas botão Expandir
+          // Se for a linha agrupada de cartão, mostrar botões Visualizar e Deletar
           if (id === 'CARTAO_AGRUPADO') {
             return gridjs.html(`
-              <button type="button" class="btn btn-sm btn-primary expand-btn" onclick="abrirModalCartaoCredito()" title="Expandir" aria-label="Expandir">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zM2.5 2a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zM1 10.5A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3zm6.5.5A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3zm1.5-.5a.5.5 0 0 0-.5.5v3a.5.5 0 0 0 .5.5h3a.5.5 0 0 0 .5-.5v-3a.5.5 0 0 0-.5-.5h-3z"/>
-                </svg>
-                Expandir
-              </button>
+              <div class="btn-group" role="group" aria-label="Ações Cartão">
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="abrirModalCartaoCredito()" title="Visualizar transações" aria-label="Visualizar transações">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+                    <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+                  </svg>
+                </button>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-1" onclick="deletarTodasTransacoesCartao()" title="Deletar todas as transações" aria-label="Deletar todas">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M5.5 5.5A.5.5 0 0 1 6 5h4a.5.5 0 0 1 .5.5v8A1.5 1.5 0 0 1 9 15H7a1.5 1.5 0 0 1-1.5-1.5v-8zM14.5 3a1 1 0 0 1-1 1H13v9.5A2.5 2.5 0 0 1 10.5 16h-5A2.5 2.5 0 0 1 3 13.5V4H2.5a1 1 0 1 1 0-2H5l.5-1h5l.5 1h2.5a1 1 0 0 1 1 1zM6.118 1L5.5 2h5l-.618-1H6.118z"/>
+                  </svg>
+                </button>
+              </div>
             `);
           }
           
@@ -746,6 +753,61 @@ window.abrirModalCartaoCredito = function() {
 window.fecharModalCartaoCredito = function() {
   var modal = document.getElementById('modal-cartao-credito');
   if (modal) modal.remove();
+};
+
+// Função para deletar todas as transações de cartão de crédito
+window.deletarTodasTransacoesCartao = async function() {
+  if (!transacoesCartaoCredito || transacoesCartaoCredito.length === 0) {
+    alert('Nenhuma transação de cartão de crédito encontrada.');
+    return;
+  }
+  
+  const totalTransacoes = transacoesCartaoCredito.length;
+  const totalValor = transacoesCartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+  const valorFormatado = totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  
+  const msg = `⚠️ ATENÇÃO: Você está prestes a DELETAR ${totalTransacoes} transação(ões) de cartão de crédito no valor total de ${valorFormatado}.\n\nEsta ação NÃO pode ser desfeita!\n\nDeseja realmente continuar?`;
+  
+  if (!confirm(msg)) {
+    return;
+  }
+  
+  // Confirmação dupla para segurança
+  if (!confirm('Tem certeza ABSOLUTA? Esta é sua última chance de cancelar.')) {
+    return;
+  }
+  
+  try {
+    // Deletar todas as transações em paralelo
+    const promises = transacoesCartaoCredito.map(transacao => 
+      fetchJWT(`${apiUrl}/${transacao.id}`, {
+        method: 'DELETE'
+      })
+    );
+    
+    const results = await Promise.allSettled(promises);
+    
+    // Contar sucessos e falhas
+    const sucessos = results.filter(r => r.status === 'fulfilled' && r.value && r.value.ok).length;
+    const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
+    
+    if (falhas > 0) {
+      alert(`⚠️ Resultado:\n✅ ${sucessos} transação(ões) deletada(s)\n❌ ${falhas} transação(ões) com erro\n\nRecarregando dados...`);
+    } else {
+      alert(`✅ Sucesso! ${sucessos} transação(ões) de cartão de crédito deletadas com sucesso!`);
+    }
+    
+    // Limpar array global
+    transacoesCartaoCredito = [];
+    
+    // Recarregar grid e summary
+    reloadGrid();
+    fetchAndRenderSummary();
+    
+  } catch (err) {
+    console.error('Erro ao deletar transações de cartão:', err);
+    alert('❌ Erro de rede ao deletar transações. Tente novamente.');
+  }
 };
 
 function reloadGrid(){
