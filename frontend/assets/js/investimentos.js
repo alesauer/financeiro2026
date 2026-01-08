@@ -16,6 +16,18 @@ function fmtBRL(v){
   return n.toLocaleString('pt-BR', { style:'currency', currency:'BRL' });
 }
 
+// Detecta base da API: quando rodando via Live Server (5500), usa backend 5000
+const API_BASE = (() => {
+  const stored = localStorage.getItem('api_base');
+  if (stored) return stored.replace(/\/$/, '');
+  if (window.location.port === '5500') return 'http://localhost:5000';
+  return '';
+})();
+
+function api(path){
+  return `${API_BASE}${path}`;
+}
+
 function getToken(){
   return localStorage.getItem('access_token');
 }
@@ -84,7 +96,7 @@ async function init(){
 
 async function carregarCategorias(){
   try{
-    const r = await fetch('/api/categorias');
+    const r = await fetch(api('/api/categorias'));
     const data = await r.json();
     const selFiltro = document.getElementById('filtro-categoria');
     const selNv = document.getElementById('nv-categoria');
@@ -98,7 +110,7 @@ async function carregarCategorias(){
 
 async function carregarResumoMes(ano, mes){
   try{
-    const r = await fetch(`/api/relatorios/resumo?ano=${ano}&mes=${mes}`);
+    const r = await fetch(api(`/api/relatorios/resumo?ano=${ano}&mes=${mes}`));
     const data = await r.json();
     state.ultimoResumo = data;
     const totalMes = (data.acum_invest && data.acum_invest.length) ? data.acum_invest[data.acum_invest.length-1] : 0;
@@ -111,7 +123,7 @@ async function carregarResumoMes(ano, mes){
 async function carregarKpisPeriodo(){
   let totalPeriodo = 0;
   try{
-    const r = await fetch(`/api/relatorios/totais?inicio=${state.inicio}&fim=${state.fim}`);
+    const r = await fetch(api(`/api/relatorios/totais?inicio=${state.inicio}&fim=${state.fim}`));
     const arr = await r.json();
     const inv = (arr||[]).find(x=>x.tipo==='Investimento');
     totalPeriodo = inv ? Number(inv.total) : 0;
@@ -120,7 +132,7 @@ async function carregarKpisPeriodo(){
   }catch(e){ console.error('totais', e); }
 
   try{
-    const url = new URL(window.location.origin + '/api/transacoes');
+    const url = new URL(api('/api/transacoes'));
     url.searchParams.set('tipo','Investimento');
     url.searchParams.set('inicio', state.inicio);
     url.searchParams.set('fim', state.fim);
@@ -138,7 +150,7 @@ async function carregarKpisPeriodo(){
 
 async function carregarGraficoCategorias(){
   try{
-    const r = await fetch(`/api/relatorios/categorias?inicio=${state.inicio}&fim=${state.fim}&tipo=Investimento`);
+    const r = await fetch(api(`/api/relatorios/categorias?inicio=${state.inicio}&fim=${state.fim}&tipo=Investimento`));
     const data = await r.json();
     const labels = (data||[]).map(x=>x.categoria);
     const valores = (data||[]).map(x=>Number(x.total));
@@ -148,7 +160,7 @@ async function carregarGraficoCategorias(){
 
 async function carregarTabela(){
   try{
-    const url = new URL(window.location.origin + '/api/transacoes');
+    const url = new URL(api('/api/transacoes'));
     url.searchParams.set('tipo', 'Investimento');
     url.searchParams.set('page', state.page);
     url.searchParams.set('per_page', state.per_page);
@@ -238,7 +250,7 @@ async function salvarInvestimento(){
     return;
   }
   try{
-    const r = await fetch('/api/transacoes', {
+    const r = await fetch(api('/api/transacoes'), {
       method:'POST',
       headers: { 'Content-Type':'application/json', ...headersAuth() },
       body: JSON.stringify(payload)
@@ -258,7 +270,7 @@ async function salvarInvestimento(){
 async function excluir(id){
   if(!confirm('Excluir este lançamento?')) return;
   try{
-    const r = await fetch(`/api/transacoes/${id}`, { method:'DELETE', headers: headersAuth() });
+    const r = await fetch(api(`/api/transacoes/${id}`), { method:'DELETE', headers: headersAuth() });
     if(r.ok){ await carregarTabela(); await carregarKpisPeriodo(); }
   }catch(e){ console.error('excluir', e); }
 }
