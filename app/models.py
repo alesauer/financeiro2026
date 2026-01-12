@@ -70,3 +70,60 @@ class Transacao(db.Model):
 
     def __repr__(self):
         return f"<Transacao {self.tipo} - {self.descricao} R${self.valor}>"
+
+
+# =======================
+# Documentos
+# =======================
+
+class TipoDocumento(db.Model):
+    __tablename__ = "tipos_documentos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(100), nullable=False, unique=True)
+    descricao = db.Column(db.String(255), nullable=True)
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    documentos = db.relationship("Documento", backref="tipo_documento", lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<TipoDocumento {self.nome} ativo={self.ativo}>"
+
+
+class Documento(db.Model):
+    __tablename__ = "documentos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    tipo_documento_id = db.Column(db.Integer, db.ForeignKey("tipos_documentos.id", ondelete="RESTRICT"), nullable=False)
+
+    nome = db.Column(db.String(150), nullable=False)
+    registro = db.Column(db.String(120), nullable=True)
+    outras_informacoes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    anexos = db.relationship("DocumentoAnexo", backref="documento", lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Documento {self.nome} usuario={self.usuario_id} tipo={self.tipo_documento_id}>"
+
+
+class DocumentoAnexo(db.Model):
+    __tablename__ = "documentos_anexos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    documento_id = db.Column(db.Integer, db.ForeignKey("documentos.id", ondelete="CASCADE"), nullable=False)
+
+    original_name = db.Column(db.String(255), nullable=False)
+    stored_name = db.Column(db.String(255), nullable=False)
+    mime_type = db.Column(db.String(100), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False)
+    storage_path = db.Column(db.String(500), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=db.func.now())
+
+    def __repr__(self):
+        return f"<DocumentoAnexo doc={self.documento_id} arquivo={self.original_name}>"

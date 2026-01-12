@@ -1,0 +1,53 @@
+### Login para obter token
+POST http://127.0.0.1:5000/api/usuarios/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "senha": "senha123"
+}
+
+### Variables (ajuste após login)
+@access_token = token_aqui
+@doc_id = 1
+@anexo_id = 1
+
+### Listar tipos de documentos
+GET http://127.0.0.1:5000/api/documentos/tipos
+Authorization: Bearer {{access_token}}
+
+### Criar documento
+POST http://127.0.0.1:5000/api/documentos/
+Authorization: Bearer {{access_token}}
+Content-Type: application/json
+
+{
+  "tipo_documento_id": 1,
+  "nome": "Documento de Teste",
+  "registro": "123456",
+  "outras_informacoes": "Observações"
+}
+
+### Listar documentos
+GET http://127.0.0.1:5000/api/documentos?page=1&per_page=10
+Authorization: Bearer {{access_token}}
+
+### Upload anexos (substitua {{doc_id}})
+POST http://127.0.0.1:5000/api/documentos/{{doc_id}}/anexos
+Authorization: Bearer {{access_token}}
+Content-Type: multipart/form-data; boundary=MyBoundary
+
+--MyBoundary
+Content-Disposition: form-data; name="files"; filename="teste.pdf"
+Content-Type: application/pdf
+
+< ./teste.pdf
+--MyBoundary--
+
+### Listar anexos
+GET http://127.0.0.1:5000/api/documentos/{{doc_id}}/anexos
+Authorization: Bearer {{access_token}}
+
+### Baixar primeiro anexo
+GET http://127.0.0.1:5000/api/documentos/{{doc_id}}/anexos/{{anexo_id}}
+Authorization: Bearer {{access_token}}

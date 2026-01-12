@@ -125,3 +125,47 @@ class TransacaoSchema(Schema):
                 # se falhar, deixa para validação normal acusar ausência do id
                 pass
         return data
+
+# ======================
+# Documentos
+# ======================
+
+class TipoDocumentoSchema(Schema):
+    id = fields.Int(dump_only=True)
+    nome = fields.Str(required=True)
+    descricao = fields.Str(allow_none=True)
+    ativo = fields.Boolean(load_default=True)
+
+
+class DocumentoAnexoSchema(Schema):
+    id = fields.Int(dump_only=True)
+    documento_id = fields.Int(required=True)
+    original_name = fields.Str(dump_only=True)
+    stored_name = fields.Str(dump_only=True)
+    mime_type = fields.Str(dump_only=True)
+    size_bytes = fields.Int(dump_only=True)
+    storage_path = fields.Str(dump_only=True)
+    uploaded_at = fields.DateTime(dump_only=True)
+
+
+class DocumentoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    usuario_id = fields.Int(dump_only=True)
+    tipo_documento_id = fields.Int(required=True)
+    nome = fields.Str(required=True)
+    registro = fields.Str(allow_none=True)
+    outras_informacoes = fields.Str(allow_none=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+
+    # Extras
+    tipo_documento_nome = fields.Method("get_tipo_documento_nome", dump_only=True)
+    anexos = fields.List(fields.Nested(DocumentoAnexoSchema), dump_only=True)
+
+    def get_tipo_documento_nome(self, obj):
+        if hasattr(obj, "tipo_documento") and obj.tipo_documento:
+            return obj.tipo_documento.nome
+        return None
