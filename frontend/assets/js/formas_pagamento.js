@@ -1,0 +1,146 @@
+// formas_pagamento.js - CRUD semelhante a categorias
+
+document.addEventListener('DOMContentLoaded', function () {
+  carregarFormas();
+  document.getElementById('btnAddForma').addEventListener('click', abrirModalAdicionar);
+  document.getElementById('saveFormaBtn').addEventListener('click', salvarForma);
+});
+
+function fetchJWT(url, options = {}) {
+  const token = localStorage.getItem('access_token');
+  if (!token) {
+    alert('Sessão expirada. Faça login novamente.');
+    window.location.href = 'login.html';
+    return Promise.reject(new Error('Token ausente'));
+  }
+  options.headers = options.headers || {};
+  options.headers['Content-Type'] = options.headers['Content-Type'] || 'application/json';
+  options.headers['Authorization'] = 'Bearer ' + token;
+  return fetch(url, options);
+}
+
+const API_BASE = 'http://127.0.0.1:5000/api/formas_pagamento';
+
+function carregarFormas() {
+  fetchJWT(API_BASE)
+    .then(async res => {
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error('HTTP ' + res.status + ': ' + msg);
+      }
+      return res.json();
+    })
+    .then(data => preencherTabela(data))
+    .catch(err => mostrarAlerta('Erro ao carregar formas de pagamento: ' + err.message, 'danger'));
+}
+
+function preencherTabela(formas) {
+  const tbody = document.querySelector('#formasTable tbody');
+  tbody.innerHTML = '';
+  formas.forEach(fp => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${fp.id}</td>
+      <td>${fp.nome}</td>
+      <td>${fp.tipo}</td>
+      <td>${fp.cartao_credito ? 'Sim' : 'Não'}</td>
+      <td>${fp.ativo ? 'Sim' : 'Não'}</td>
+      <td>
+        <button class="btn btn-sm btn-warning me-1" onclick="abrirModalEditar(${fp.id}, '${escapeHtml(fp.nome)}', '${escapeHtml(fp.tipo)}', ${fp.cartao_credito}, ${fp.ativo})">Editar</button>
+        <button class="btn btn-sm btn-danger" onclick="excluirForma(${fp.id})">Excluir</button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function abrirModalAdicionar() {
+  document.getElementById('formaModalLabel').textContent = 'Adicionar Forma';
+  document.getElementById('formaId').value = '';
+  document.getElementById('formaNome').value = '';
+  document.getElementById('formaTipo').value = '';
+  document.getElementById('formaCartaoCredito').checked = false;
+  document.getElementById('formaAtivo').checked = true;
+  document.getElementById('modalMode').value = 'add';
+  new bootstrap.Modal(document.getElementById('formaModal')).show();
+}
+
+function abrirModalEditar(id, nome, tipo, cartao_credito, ativo) {
+  document.getElementById('formaModalLabel').textContent = 'Editar Forma';
+  document.getElementById('formaId').value = id;
+  document.getElementById('formaNome').value = nome;
+  document.getElementById('formaTipo').value = tipo;
+  document.getElementById('formaCartaoCredito').checked = !!cartao_credito;
+  document.getElementById('formaAtivo').checked = !!ativo;
+  document.getElementById('modalMode').value = 'edit';
+  new bootstrap.Modal(document.getElementById('formaModal')).show();
+}
+
+function salvarForma() {
+  const modo = document.getElementById('modalMode').value;
+  const id = document.getElementById('formaId').value;
+  const nome = document.getElementById('formaNome').value.trim();
+  const tipo = document.getElementById('formaTipo').value.trim();
+  const cartao_credito = document.getElementById('formaCartaoCredito').checked;
+  const ativo = document.getElementById('formaAtivo').checked;
+  if (!nome || !tipo) {
+    mostrarAlerta('Preencha Nome e Tipo!', 'warning');
+    return;
+  }
+  const payload = { nome, tipo, cartao_credito, ativo };
+  let url = API_BASE;
+  let metodo = 'POST';
+  if (modo === 'edit') {
+    url += `/${id}`;
+    metodo = 'PUT';
+  }
+  const options = { method: metodo, body: JSON.stringify(payload) };
+  fetchJWT(url, options)
+    .then(async res => {
+      const data = await res.json().catch(()=>null);
+      if (!res.ok) {
+        const msg = data ? JSON.stringify(data) : 'Erro ao salvar';
+        throw new Error(msg);
+      }
+      return data;
+    })
+    .then(() => {
+      mostrarAlerta('Forma de pagamento salva com sucesso!', 'success');
+      bootstrap.Modal.getInstance(document.getElementById('formaModal')).hide();
+      carregarFormas();
+    })
+    .catch(err => mostrarAlerta('Erro ao salvar forma: ' + err.message, 'danger'));
+}
+
+function excluirForma(id) {
+  if (!confirm('Confirma a exclusão da forma de pagamento?')) return;
+  const options = { method: 'DELETE' };
+  fetchJWT(`${API_BASE}/${id}`, options)
+    .then(res => {
+      if (!res.ok) throw new Error('Erro ao excluir');
+      return res.json();
+    })
+    .then(() => {
+      mostrarAlerta('Forma de pagamento excluída com sucesso!', 'success');
+      carregarFormas();
+    })
+    .catch(() => mostrarAlerta('Erro ao excluir forma de pagamento', 'danger'));
+}
+
+function mostrarAlerta(msg, tipo) {
+  const alertArea = document.getElementById('alert-area');
+  alertArea.innerHTML = `<div class="alert alert-${tipo} alert-dismissible fade show" role="alert">
+    ${msg}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+  </div>`;
+  setTimeout(() => { alertArea.innerHTML = ''; }, 4000);
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}

@@ -1,7 +1,8 @@
 from flask import Blueprint, request, jsonify
 from marshmallow import Schema, fields, ValidationError
 from app import db
-from app.models import FormaPagamento
+from app.models import FormaPagamento, Transacao
+from sqlalchemy.exc import IntegrityError
 from flask_jwt_extended import jwt_required
 
 bp_formas_pagamento = Blueprint("formas_pagamento", __name__)
@@ -67,6 +68,17 @@ def atualizar(id):
 @jwt_required()
 def deletar(id):
     item = FormaPagamento.query.get_or_404(id)
+    # Bloquear exclusão se houver transações vinculadas
+    refs = db.session.query(Transacao).filter(Transacao.forma_pagamento_id == id).count()
+    if refs > 0:
+        return jsonify({
+            "error": "Forma de pagamento está vinculada a transações",
+            "referencias": refs
+        }), 400
     db.session.delete(item)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"error": "Não foi possível excluir devido a vínculos existentes"}), 400
     return jsonify({"message": "Forma de pagamento removida"}), 200
