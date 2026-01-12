@@ -13,6 +13,21 @@ class Categoria(db.Model):
     def __repr__(self):
         return f"<Categoria {self.nome} ({self.tipo})>"
 
+class FormaPagamento(db.Model):
+    __tablename__ = "formas_pagamento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(120), nullable=False)
+    # Tipo geral do método: Dinheiro, Cartão de Crédito, Cartão de Débito, Pix, Boleto, Transferência, etc.
+    tipo = db.Column(db.String(30), nullable=False)
+    # Indica se este método corresponde a um cartão de crédito (útil para relatórios e regras específicas)
+    cartao_credito = db.Column(db.Boolean, default=False, nullable=False)
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+
+    def __repr__(self):
+        flag = "CC" if self.cartao_credito else "Geral"
+        return f"<FormaPagamento {self.nome} [{self.tipo} | {flag}]>"
+
 
 class Usuario(db.Model):
     __tablename__ = "usuarios"
