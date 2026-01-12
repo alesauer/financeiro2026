@@ -43,6 +43,7 @@ def create_app():
     from .routes_ia import bp_ia
     from .routes_importacao import bp_importacao
     from .routes_usuarios import bp_usuarios
+    from .routes_formas_pagamento import bp_formas_pagamento
 
     app.register_blueprint(bp_categorias, url_prefix="/api/categorias")
     app.register_blueprint(bp_transacoes, url_prefix="/api/transacoes")
@@ -50,5 +51,6 @@ def create_app():
     app.register_blueprint(bp_ia, url_prefix="/api/ia")
     app.register_blueprint(bp_importacao, url_prefix="/api")
     app.register_blueprint(bp_usuarios, url_prefix="/api/usuarios")
+    app.register_blueprint(bp_formas_pagamento, url_prefix="/api/formas_pagamento")
 
     return app

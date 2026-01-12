@@ -26,7 +26,7 @@ window.abrirModalEdicao = function(dados) {
     { nome: 'descricao', label: 'Descrição', tipo: 'text' },
     { nome: 'valor', label: 'Valor (R$)', tipo: 'number', step: '0.01' },
     { nome: 'data_transacao', label: 'Data', tipo: 'date' },
-    { nome: 'forma_pagamento', label: 'Forma de Pagamento', tipo: 'select', opcoes: ['Dinheiro','Cartão de Crédito','Cartão de Débito','Pix','Boleto','Transferência'] },
+  { nome: 'forma_pagamento_id', label: 'Forma de Pagamento', tipo: 'select-forma-pagamento' },
     { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] },
     { nome: 'recorrente', label: 'Recorrente', tipo: 'checkbox' },
     { nome: 'frequencia', label: 'Frequência', tipo: 'select-frequencia', opcoes: ['Mensal'] },
@@ -36,21 +36,26 @@ window.abrirModalEdicao = function(dados) {
   let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
     <h4 style="margin-bottom:16px;"><i class="bi bi-${dados ? 'pencil-square' : 'plus-circle'}" style="margin-right:8px;"></i>${dados ? 'Editar' : 'Nova'} Transação</h4>`;
   let categorias = [];
+  let formasPagamento = [];
   let tipoSelecionado = dados && dados.tipo ? dados.tipo : 'Receita';
 
   // Busca categorias do tipo informado e renderiza campos SEMPRE que abrir o modal
   function buscarECampos(tipoCat) {
-  fetchJWT(`http://127.0.0.1:5000/api/categorias?tipo=${encodeURIComponent(tipoCat)}`)
+    // Carregar categorias por tipo
+    fetchJWT(`http://127.0.0.1:5000/api/categorias?tipo=${encodeURIComponent(tipoCat)}`)
       .then(resp => resp.json())
-      .then(arr => {
-        categorias = arr;
-        document.getElementById('campos-modal-transacao').innerHTML = renderCampos();
-        adicionarListeners();
-      })
-      .catch(() => {
-        categorias = [];
-        document.getElementById('campos-modal-transacao').innerHTML = renderCampos();
-        adicionarListeners();
+      .then(arr => { categorias = arr || []; })
+      .catch(() => { categorias = []; })
+      .finally(() => {
+        // Carregar formas de pagamento ativas
+        fetchJWT(`http://127.0.0.1:5000/api/formas_pagamento?ativo=true`)
+          .then(resp => resp.json())
+          .then(arr => { formasPagamento = Array.isArray(arr) ? arr : []; })
+          .catch(() => { formasPagamento = []; })
+          .finally(() => {
+            document.getElementById('campos-modal-transacao').innerHTML = renderCampos();
+            adicionarListeners();
+          });
       });
   }
 
@@ -102,6 +107,15 @@ window.abrirModalEdicao = function(dados) {
         categorias.forEach(cat => {
           const sel = (dados && dados.categoria_id == cat.id) ? 'selected' : '';
           camposHtml += `<option value="${cat.id}" ${sel}>${cat.nome}</option>`;
+        });
+        camposHtml += `</select></div>`;
+      } else if (c.tipo === 'select-forma-pagamento') {
+        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<select name="forma_pagamento_id" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
+        formasPagamento.forEach(fp => {
+          let sel = '';
+          if (dados && (dados.forma_pagamento_id == fp.id || (dados.forma_pagamento_nome && dados.forma_pagamento_nome === fp.nome))) sel = 'selected';
+          camposHtml += `<option value="${fp.id}" ${sel}>${fp.nome}</option>`;
         });
         camposHtml += `</select></div>`;
       } else if (c.tipo === 'date') {
@@ -164,9 +178,10 @@ window.abrirModalEdicao = function(dados) {
       const fd = new FormData(ev.target);
       const payload = {};
       campos.forEach(c => {
-        let v = fd.get(c.nome);
+  let v = fd.get(c.nome);
         if (c.tipo === 'number') v = v ? parseFloat(v) : null;
         if (c.nome === 'categoria_id') v = v ? parseInt(v) : null;
+  if (c.nome === 'forma_pagamento_id') v = v ? parseInt(v) : null;
         // Checkbox recorrente
         if (c.nome === 'recorrente') v = fd.get('recorrente') ? true : false;
         // Corrige data_fim: se vazio, não envia ou envia como null
@@ -324,7 +339,7 @@ function createGrid(){
   { id: 'data_transacao', name: 'Data', sort: true },
   { id: 'descricao', name: 'Descrição', sort: true },
   { id: 'categoria_nome', name: 'Categoria', sort: true },
-  { id: 'forma_pagamento', name: 'Forma Pagamento', sort: true },
+  { id: 'forma_pagamento_nome', name: 'Forma Pagamento', sort: true },
       {
         id: 'status',
         name: 'Status',
@@ -425,8 +440,8 @@ function createGrid(){
           const items = data.items || data.rows || [];
           
           // Separar transações de cartão de crédito das demais
-          const cartaoCredito = items.filter(t => t.forma_pagamento === 'Cartão de Crédito');
-          const outrasTransacoes = items.filter(t => t.forma_pagamento !== 'Cartão de Crédito');
+          const cartaoCredito = items.filter(t => t.forma_pagamento_cartao === true);
+          const outrasTransacoes = items.filter(t => t.forma_pagamento_cartao !== true);
           
           // Armazenar transações de cartão globalmente para o modal
           transacoesCartaoCredito = cartaoCredito;
@@ -462,7 +477,7 @@ function createGrid(){
               data_transacao: dataStr,
               descricao: 'Cartão de Crédito',
               categoria_nome: 'Mista',
-              forma_pagamento: 'Cartão de Crédito',
+              forma_pagamento_nome: 'Cartão de Crédito',
               status: statusCartao,
               tipo: 'Despesa',
               valor: totalCartao
@@ -491,7 +506,7 @@ function createGrid(){
             formatDate(row.data_transacao || row.data || row.data_transacao),
             row.descricao || '',
             row.categoria_nome || '',
-            row.forma_pagamento || '',
+            row.forma_pagamento_nome || '',
             row.status || '',
             row.tipo || '',
             formatCurrency(row.valor)
@@ -505,7 +520,7 @@ function createGrid(){
             formatDate(row.data_transacao || row.data),
             row.descricao || '',
             row.categoria_nome || '',
-            row.forma_pagamento || '',
+            row.forma_pagamento_nome || '',
             row.status || '',
             row.tipo || '',
             formatCurrency(row.valor)
@@ -516,7 +531,7 @@ function createGrid(){
         // Ajustar total considerando agrupamento de cartão de crédito
         const total = data.total_items || data.total || 0;
         const items = data.items || data.rows || [];
-        const numCartao = items.filter(t => t.forma_pagamento === 'Cartão de Crédito').length;
+  const numCartao = items.filter(t => t.forma_pagamento_cartao === true).length;
         // Se há transações de cartão, reduz o total pelo número de transações agrupadas menos 1
         return numCartao > 0 ? total - numCartao + 1 : total;
       }
@@ -825,8 +840,8 @@ function reloadGrid(){
           const items = data.items || data.rows || [];
           
           // Separar transações de cartão de crédito das demais
-          const cartaoCredito = items.filter(t => t.forma_pagamento === 'Cartão de Crédito');
-          const outrasTransacoes = items.filter(t => t.forma_pagamento !== 'Cartão de Crédito');
+          const cartaoCredito = items.filter(t => t.forma_pagamento_cartao === true);
+          const outrasTransacoes = items.filter(t => t.forma_pagamento_cartao !== true);
           
           // Armazenar transações de cartão globalmente para o modal
           transacoesCartaoCredito = cartaoCredito;
@@ -862,7 +877,7 @@ function reloadGrid(){
               data_transacao: dataStr,
               descricao: 'Cartão de Crédito',
               categoria_nome: 'Mista',
-              forma_pagamento: 'Cartão de Crédito',
+              forma_pagamento_nome: 'Cartão de Crédito',
               status: statusCartao,
               tipo: 'Despesa',
               valor: totalCartao
@@ -891,7 +906,7 @@ function reloadGrid(){
             formatDate(row.data_transacao || row.data || row.data_transacao),
             row.descricao || '',
             row.categoria_nome || '',
-            row.forma_pagamento || '',
+            row.forma_pagamento_nome || '',
             row.status || '',
             row.tipo || '',
             formatCurrency(row.valor)
@@ -905,7 +920,7 @@ function reloadGrid(){
             formatDate(row.data_transacao || row.data),
             row.descricao || '',
             row.categoria_nome || '',
-            row.forma_pagamento || '',
+            row.forma_pagamento_nome || '',
             row.status || '',
             row.tipo || '',
             formatCurrency(row.valor)
@@ -916,7 +931,7 @@ function reloadGrid(){
         // Ajustar total considerando agrupamento de cartão de crédito
         const total = data.total_items || data.total || 0;
         const items = data.items || data.rows || [];
-        const numCartao = items.filter(t => t.forma_pagamento === 'Cartão de Crédito').length;
+  const numCartao = items.filter(t => t.forma_pagamento_cartao === true).length;
         // Se há transações de cartão, reduz o total pelo número de transações agrupadas menos 1
         return numCartao > 0 ? total - numCartao + 1 : total;
       }
@@ -1158,7 +1173,7 @@ async function fetchAndRenderSummary() {
           const dataCartao = await respCartao.json();
           const arr = dataCartao.items || dataCartao.rows || [];
           arr.forEach(t => {
-            if (t.tipo === 'Despesa' && t.forma_pagamento === 'Cartão de Crédito') {
+            if (t.tipo === 'Despesa' && t.forma_pagamento_cartao === true) {
               totalCartao += Number(t.valor) || 0;
             }
           });

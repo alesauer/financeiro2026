@@ -5,6 +5,7 @@ from app import db
 from app.models import Transacao
 from app.schemas import TransacaoSchema
 from sqlalchemy import exc, func, case
+from app.models import FormaPagamento
 from flask_jwt_extended import jwt_required
 
 bp_transacoes = Blueprint("transacoes", __name__)
@@ -71,7 +72,8 @@ def listar():
     filtros = {
         "tipo": request.args.get("tipo"),
         "categoria_id": request.args.get("categoria_id"),
-        "forma_pagamento": request.args.get("forma_pagamento"),
+        # nova coluna FK
+        "forma_pagamento_id": request.args.get("forma_pagamento_id"),
         "status": request.args.get("status"),
         "recorrente": request.args.get("recorrente"),
         "parcelado": request.args.get("parcelado"),
@@ -93,6 +95,17 @@ def listar():
                 query = query.filter(getattr(Transacao, campo) == valor)
             except (exc.InvalidRequestError, AttributeError):
                 return jsonify({"error": f"Filtro inválido: {campo}"}), 400
+
+    # Filtro legado: forma_pagamento por nome/tipo (ex.: ?forma_pagamento=Pix)
+    forma_pagamento_legacy = request.args.get("forma_pagamento")
+    if forma_pagamento_legacy:
+        try:
+            # Faz join com FormaPagamento e filtra por nome OU tipo
+            query = query.join(Transacao.forma_pagamento).filter(
+                (FormaPagamento.nome == forma_pagamento_legacy) | (FormaPagamento.tipo == forma_pagamento_legacy)
+            )
+        except Exception:
+            return jsonify({"error": "Filtro de forma_pagamento inválido"}), 400
 
     # 3. Tratar filtro de data
     if inicio_str and fim_str:

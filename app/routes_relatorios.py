@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from datetime import datetime
 from sqlalchemy import func
 from app import db
-from app.models import Transacao, Categoria
+from app.models import Transacao, Categoria, FormaPagamento
 from flask_jwt_extended import jwt_required
 
 bp_relatorios = Blueprint("relatorios", __name__)
@@ -93,6 +93,58 @@ def por_categoria():
 
     query = query.group_by(Categoria.nome).all()
     resultado = [{ "categoria": cat, "total": float(total) } for cat, total in query]
+    return jsonify(resultado), 200
+
+# Totais por forma de pagamento em um período (ou geral)
+@bp_relatorios.route("/formas_pagamento_totais", methods=["GET"])
+def formas_pagamento_totais():
+    inicio = request.args.get("inicio")
+    fim = request.args.get("fim")
+
+    query = db.session.query(
+        FormaPagamento.nome.label("forma_pagamento"),
+        func.sum(Transacao.valor).label("total")
+    ).join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+
+    if inicio and fim:
+        try:
+            inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+            fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
+            query = query.filter(Transacao.data_transacao.between(inicio_dt, fim_dt))
+        except ValueError:
+            return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+
+    query = query.group_by(FormaPagamento.nome).order_by(FormaPagamento.nome.asc()).all()
+    resultado = [{"forma_pagamento": nome, "total": float(total)} for nome, total in query]
+    return jsonify(resultado), 200
+
+# Despesas por cartão de crédito (agrupado por cartão)
+@bp_relatorios.route("/despesas_por_cartao", methods=["GET"])
+def despesas_por_cartao():
+    inicio = request.args.get("inicio")
+    fim = request.args.get("fim")
+
+    query = db.session.query(
+        FormaPagamento.nome.label("cartao"),
+        func.count(Transacao.id).label("qtd"),
+        func.sum(Transacao.valor).label("total")
+    ).join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+
+    query = query.filter(
+        Transacao.tipo == "Despesa",
+        FormaPagamento.cartao_credito.is_(True)
+    )
+
+    if inicio and fim:
+        try:
+            inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+            fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
+            query = query.filter(Transacao.data_transacao.between(inicio_dt, fim_dt))
+        except ValueError:
+            return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+
+    query = query.group_by(FormaPagamento.nome).order_by(FormaPagamento.nome.asc()).all()
+    resultado = [{"cartao": nome, "qtd": int(qtd), "total": float(total)} for nome, qtd, total in query]
     return jsonify(resultado), 200
 
 # Resumo anual

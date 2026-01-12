@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validates, ValidationError
+from marshmallow import Schema, fields, validates, ValidationError, pre_load, EXCLUDE
 
 # ======================
 # Usuário
@@ -23,6 +23,8 @@ class CategoriaSchema(Schema):
 # Transação
 # ======================
 class TransacaoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
     id = fields.Int(dump_only=True)
 
     # --- Campos obrigatórios ---
@@ -30,15 +32,29 @@ class TransacaoSchema(Schema):
     categoria_id = fields.Int(required=True)
     descricao = fields.Str(required=True)
     valor = fields.Decimal(required=True, as_string=True)
-    forma_pagamento = fields.Str(required=True)
+    # Nova modelagem: forma_pagamento_id (FK)
+    forma_pagamento_id = fields.Int(required=True)
     # Campo extra: nome da categoria
     categoria_nome = fields.Method("get_categoria_nome", dump_only=True)
+    # Campos extras: nome e flag de cartão da forma de pagamento
+    forma_pagamento_nome = fields.Method("get_forma_pagamento_nome", dump_only=True)
+    forma_pagamento_cartao = fields.Method("get_forma_pagamento_cartao", dump_only=True)
 
     def get_categoria_nome(self, obj):
         # obj é uma instância de Transacao
         if hasattr(obj, "categoria") and obj.categoria:
             return obj.categoria.nome
         return None
+
+    def get_forma_pagamento_nome(self, obj):
+        if hasattr(obj, "forma_pagamento") and obj.forma_pagamento:
+            return getattr(obj.forma_pagamento, "nome", None)
+        return None
+
+    def get_forma_pagamento_cartao(self, obj):
+        if hasattr(obj, "forma_pagamento") and obj.forma_pagamento:
+            return bool(getattr(obj.forma_pagamento, "cartao_credito", False))
+        return False
 
     # --- Campos com default ---
     data_transacao = fields.Date(load_default=date.today)
@@ -83,3 +99,29 @@ class TransacaoSchema(Schema):
     def validate_tipo(self, value, **kwargs):
         if value not in ["Receita", "Despesa", "Investimento"]:
             raise ValidationError("Tipo deve ser Receita, Despesa ou Investimento")
+
+    # Compatibilidade: permitir payloads antigos com campo 'forma_pagamento' (string)
+    @pre_load
+    def map_forma_pagamento_legacy(self, data, **kwargs):
+        if isinstance(data, dict) and "forma_pagamento_id" not in data and "forma_pagamento" in data:
+            valor = data.get("forma_pagamento")
+            try:
+                # Import tardio para evitar ciclos
+                from app import db
+                from app.models import FormaPagamento
+                # tenta por nome
+                fp = db.session.query(FormaPagamento).filter_by(nome=valor).first()
+                if not fp:
+                    # tenta por tipo
+                    fp = db.session.query(FormaPagamento).filter_by(tipo=valor).first()
+                if not fp and valor:
+                    # cria registro genérico com nome e tipo iguais
+                    fp = FormaPagamento(nome=str(valor), tipo=str(valor), cartao_credito=(str(valor).lower() == "cartão de crédito"))
+                    db.session.add(fp)
+                    db.session.commit()
+                if fp:
+                    data["forma_pagamento_id"] = fp.id
+            except Exception:
+                # se falhar, deixa para validação normal acusar ausência do id
+                pass
+        return data

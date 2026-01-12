@@ -51,15 +51,9 @@ class Transacao(db.Model):
     descricao = db.Column(db.String(255), nullable=False)
     valor = db.Column(db.Numeric(10, 2), nullable=False)
     data_transacao = db.Column(db.Date, default=date.today, nullable=False)
-
-    forma_pagamento = db.Column(
-        db.Enum(
-            "Dinheiro", "Cartão de Crédito", "Cartão de Débito",
-            "Pix", "Boleto", "Transferência",
-            name="forma_pagamento"
-        ),
-        nullable=False
-    )
+    # Nova modelagem: vínculo para formas_pagamento
+    forma_pagamento_id = db.Column(db.Integer, db.ForeignKey("formas_pagamento.id"), nullable=False)
+    forma_pagamento = db.relationship("FormaPagamento", lazy=True)
 
     status = db.Column(db.Enum("Pago", "Pendente", name="status_transacao"), default="Pago")
 
