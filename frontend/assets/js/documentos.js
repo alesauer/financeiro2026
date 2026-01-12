@@ -30,8 +30,9 @@ function createGrid(){
       { id: 'outras_informacoes', name: 'Outras informações' },
       { id: 'acoes', name: 'Ações', formatter: (_, row) => {
           const id = row.cells[0]?.data; // primeira coluna é o ID
-          const verBtn = `<button class=\"btn btn-sm btn-primary ver-doc\" data-id=\"${id}\">Ver Documento</button>`;
-          return gridjs.html(verBtn);
+          const verBtn = `<button class=\"btn btn-sm btn-primary me-2 ver-doc\" data-id=\"${id}\">Ver Documento</button>`;
+          const delBtn = `<button class=\"btn btn-sm btn-outline-danger delete-doc\" data-id=\"${id}\">Excluir</button>`;
+          return gridjs.html(`${verBtn}${delBtn}`);
         }
       }
     ],
@@ -61,6 +62,28 @@ function createGrid(){
     style.innerHTML = `#grid .gridjs-table th:nth-child(1), #grid .gridjs-table td:nth-child(1) { display: none; }`;
     document.head.appendChild(style);
   }
+}
+
+function reloadGrid(){
+  if (!grid) {
+    createGrid();
+    return;
+  }
+  grid.updateConfig({
+    data: async () => {
+      const page = 1;
+      const resp = await fetchJWT(`${apiBase}?page=${page}&per_page=10`);
+      if (!resp.ok) throw new Error('Erro ao listar documentos');
+      const json = await resp.json();
+      return json.items.map(item => ({
+        id: item.id,
+        tipo_documento_nome: item.tipo_documento_nome || '-',
+        nome: item.nome,
+        registro: item.registro || '-',
+        outras_informacoes: item.outras_informacoes || '-',
+      }));
+    }
+  }).forceRender();
 }
 
 async function carregarTipos(){
@@ -101,6 +124,8 @@ async function salvarDocumento(){
     return;
   }
   const doc = await resp.json();
+  // Atualiza a grid imediatamente após criar o documento (antes do upload)
+  try { reloadGrid(); } catch(e){}
   // 2) upload anexos se houver
   if (files.length > 0) {
     const form = new FormData();
@@ -111,15 +136,16 @@ async function salvarDocumento(){
       alert('Erro ao enviar anexos: ' + (err.error || JSON.stringify(err)));
       return;
     }
+    // Atualiza novamente após concluir upload
+    try { reloadGrid(); } catch(e){}
   }
   // fechar modal e recarregar grid
   const modalEl = document.getElementById('modalDocumento');
   const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
   modal.hide();
   document.getElementById('formDocumento').reset();
-  // Forçar reload básico: recriar grid
-  document.getElementById('grid').innerHTML = '';
-  createGrid();
+  // Garantia final: recarregar grid sem refresh
+  reloadGrid();
 }
 
 function setupEvents(){
@@ -159,6 +185,27 @@ function setupEvents(){
     if (!newWin) {
       // Caso popup seja bloqueado, abrir no mesmo tab
       window.location.href = objectUrl;
+    }
+  });
+
+  // Excluir documento
+  document.getElementById('grid').addEventListener('click', async function(e){
+    const btn = e.target.closest('.delete-doc');
+    if (!btn) return;
+    const id = btn.getAttribute('data-id');
+    if (!id) return;
+    if (!confirm('Deseja excluir este documento? Esta ação não pode ser desfeita.')) return;
+    try {
+      const resp = await fetchJWT(`${apiBase}/${id}`, { method: 'DELETE' });
+      if (!resp.ok) {
+        const err = await resp.json().catch(()=>({error:'Erro'}));
+        alert('Erro ao excluir: ' + (err.error || JSON.stringify(err)));
+        return;
+      }
+      // Recarregar grid sem refresh
+      reloadGrid();
+    } catch (error) {
+      alert('Erro de rede ao excluir.');
     }
   });
 }
