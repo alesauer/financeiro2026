@@ -201,3 +201,20 @@ class MilhaSchema(Schema):
     def validate_quantidade(self, value, **kwargs):
         if value is None or value <= 0:
             raise ValidationError("Quantidade deve ser maior que 0")
+
+
+# ======================
+# Configurações - E-mails de Alerta
+# ======================
+
+class EmailsAlertaSchema(Schema):
+    emails = fields.List(fields.Email(), required=True)
+
+    @validates("emails")
+    def validate_emails(self, value, **kwargs):
+        if len(value) > 50:
+            raise ValidationError("Limite de 50 e-mails excedido")
+
+
+class EmailItemSchema(Schema):
+    email = fields.Email(required=True)

@@ -34,7 +34,7 @@
                 <button class="nav-link" id="tab-integracoes-tab" data-bs-toggle="tab" data-bs-target="#tab-integracoes" type="button" role="tab" aria-controls="tab-integracoes" aria-selected="false">Integrações</button>
             </li>
             <li class="nav-item" role="presentation">
-                <button class="nav-link" id="tab-email-tab" data-bs-toggle="tab" data-bs-target="#tab-email" type="button" role="tab" aria-controls="tab-email" aria-selected="false">E-mail (SMTP)</button>
+                <button class="nav-link" id="tab-email-tab" data-bs-toggle="tab" data-bs-target="#tab-email" type="button" role="tab" aria-controls="tab-email" aria-selected="false">E-mail</button>
             </li>
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="tab-dados-tab" data-bs-toggle="tab" data-bs-target="#tab-dados" type="button" role="tab" aria-controls="tab-dados" aria-selected="false">Dados e Manutenção</button>
@@ -88,28 +88,22 @@
                     </div>
                 </div>
 
-                <!-- E-mail (SMTP) -->
+                <!-- E-mail -->
                 <div class="tab-pane fade" id="tab-email" role="tabpanel" aria-labelledby="tab-email-tab">
                     <div class="row g-3">
                         <div class="col-12">
-                            <label class="form-label">Servidor de E-mail</label>
-                            <input type="text" class="form-control" id="emailServidor" required>
-                            <div class="invalid-feedback">Informe o servidor de e-mail.</div>
+                            <label class="form-label" for="emailAlertaInput">E-mails para receber alertas</label>
+                            <div class="input-group">
+                                <input type="email" class="form-control" id="emailAlertaInput" placeholder="ex.: usuario@dominio.com" aria-describedby="btnAddEmail">
+                                <button class="btn btn-outline-secondary" type="button" id="btnAddEmail">Adicionar</button>
+                            </div>
+                            <div class="form-text">Pressione Enter para adicionar. Você pode incluir múltiplos e-mails.</div>
                         </div>
-                        <div class="col-md-3">
-                            <label class="form-label">Porta</label>
-                            <input type="number" class="form-control" id="emailPorta" required>
-                            <div class="invalid-feedback">Informe a porta.</div>
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label">Usuário E-mail</label>
-                            <input type="text" class="form-control" id="emailUsuario" required>
-                            <div class="invalid-feedback">Informe o usuário do e-mail.</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Senha E-mail</label>
-                            <input type="password" class="form-control" id="emailSenha" required>
-                            <div class="invalid-feedback">Informe a senha do e-mail.</div>
+                        <div class="col-12">
+                            <ul class="list-group" id="listaEmailsAlerta">
+                                <!-- itens adicionados dinamicamente -->
+                            </ul>
+                            <input type="hidden" id="emailsAlertaHidden" name="emailsAlerta" value="">
                         </div>
                     </div>
                 </div>

@@ -56,6 +56,7 @@ def create_app():
     from .routes_formas_pagamento import bp_formas_pagamento
     from .routes_documentos import bp_documentos
     from .routes_milhas import bp_milhas
+    from .routes_config import bp_config
 
     app.register_blueprint(bp_categorias, url_prefix="/api/categorias")
     app.register_blueprint(bp_transacoes, url_prefix="/api/transacoes")
@@ -66,5 +67,6 @@ def create_app():
     app.register_blueprint(bp_formas_pagamento, url_prefix="/api/formas_pagamento")
     app.register_blueprint(bp_documentos, url_prefix="/api/documentos")
     app.register_blueprint(bp_milhas, url_prefix="/api/milhas")
+    app.register_blueprint(bp_config, url_prefix="/api/config")
 
     return app

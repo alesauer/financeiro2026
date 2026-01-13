@@ -152,3 +152,19 @@ class Milha(db.Model):
 
     def __repr__(self):
         return f"<Milha {self.programa} tipo={self.tipo} qtd={self.quantidade}>"
+
+
+# =======================
+# Configurações (chave/valor JSON)
+# =======================
+
+class Configuracao(db.Model):
+    __tablename__ = "configuracoes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    chave = db.Column(db.String(100), unique=True, nullable=False)
+    valor = db.Column(db.Text, nullable=False)  # JSON serializado
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    def __repr__(self):
+        return f"<Configuracao {self.chave}>"

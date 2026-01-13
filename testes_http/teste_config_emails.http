@@ -1,0 +1,30 @@
+### Obter e-mails de alerta
+GET http://localhost:5000/api/config/emails-alerta
+Authorization: Bearer {{ACCESS_TOKEN}}
+
+### Definir lista completa (PUT)
+PUT http://localhost:5000/api/config/emails-alerta
+Authorization: Bearer {{ACCESS_TOKEN}}
+Content-Type: application/json
+
+{
+  "emails": ["alertas@example.com", "financeiro@example.com"]
+}
+
+### Adicionar um e-mail
+POST http://localhost:5000/api/config/emails-alerta
+Authorization: Bearer {{ACCESS_TOKEN}}
+Content-Type: application/json
+
+{
+  "email": "novo@example.com"
+}
+
+### Remover um e-mail
+DELETE http://localhost:5000/api/config/emails-alerta
+Authorization: Bearer {{ACCESS_TOKEN}}
+Content-Type: application/json
+
+{
+  "email": "novo@example.com"
+}
