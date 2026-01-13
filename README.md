@@ -154,6 +154,58 @@ Testes HTTP disponíveis em `testes_http/` para validação dos endpoints.
 
 ---
 
+## 📧 Integração de E-mail (Mailgun)
+
+O projeto inclui um serviço de envio de e-mails via Mailgun.
+
+### Variáveis de ambiente necessárias (.env)
+
+```
+MAILGUN_API_KEY=your-mailgun-key
+MAILGUN_DOMAIN=mg.seudominio.com
+# Para região EU, defina a base URL:
+# MAILGUN_BASE_URL=https://api.eu.mailgun.net
+# Opcional: remetente padrão
+MAILGUN_FROM=postmaster@mg.seudominio.com
+```
+
+### Uso no código (backend)
+
+```python
+from app.services import send_email
+
+send_email(
+   to="destinatario@exemplo.com",
+   subject="Assunto",
+   text="Corpo em texto",
+   html="<p>Corpo em <b>HTML</b></p>",
+)
+```
+
+Suporta anexos (lista de tuplas `(filename, bytes)`), `cc`/`bcc` e timeout configurável.
+
+### Teste rápido (script)
+
+Configure o destinatário:
+
+```
+EMAIL_TEST_TO=destinatario@exemplo.com
+EMAIL_TEST_SUBJECT=Teste Mailgun
+EMAIL_TEST_TEXT=Envio de teste
+```
+
+Execute:
+
+```bash
+python scripts/send_test_email.py
+```
+
+Observações:
+- Em domínio `sandbox` do Mailgun, os destinatários devem estar autorizados.
+- Para produção, use seu domínio verificado com SPF/DKIM configurados.
+
+---
+
 ## Autor
 
 Alexandre Sauer

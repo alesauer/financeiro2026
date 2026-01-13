@@ -1,0 +1,42 @@
+### Login
+POST http://127.0.0.1:5000/api/usuarios/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "senha": "{{senha}}"
+}
+
+> {% client.global.set("token", response.body.access_token); %}
+
+### Criar milha (entrada)
+POST http://127.0.0.1:5000/api/milhas/
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "programa": "LATAM Pass",
+  "tipo": "entrada",
+  "quantidade": 1000,
+  "origem": "Compra",
+  "data_movimentacao": "2026-01-13",
+  "data_expiracao": null,
+  "descricao": "Bônus promoção"
+}
+
+### Listar milhas
+GET http://127.0.0.1:5000/api/milhas/?page=1&per_page=10
+Authorization: Bearer {{token}}
+
+### Atualizar milha
+PUT http://127.0.0.1:5000/api/milhas/{{milha_id}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "descricao": "Atualizado"
+}
+
+### Excluir milha
+DELETE http://127.0.0.1:5000/api/milhas/{{milha_id}}
+Authorization: Bearer {{token}}

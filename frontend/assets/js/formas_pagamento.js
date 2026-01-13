@@ -45,9 +45,11 @@ function preencherTabela(formas) {
       <td>${fp.tipo}</td>
       <td>${fp.cartao_credito ? 'Sim' : 'Não'}</td>
       <td>${fp.ativo ? 'Sim' : 'Não'}</td>
-      <td>
-        <button class="btn btn-sm btn-warning me-1" onclick="abrirModalEditar(${fp.id}, '${escapeHtml(fp.nome)}', '${escapeHtml(fp.tipo)}', ${fp.cartao_credito}, ${fp.ativo})">Editar</button>
-        <button class="btn btn-sm btn-danger" onclick="excluirForma(${fp.id})">Excluir</button>
+      <td class="text-nowrap">
+        <div class="btn-group" role="group" aria-label="Ações">
+          <button class="btn btn-sm btn-warning" onclick="abrirModalEditar(${fp.id}, '${escapeHtml(fp.nome)}', '${escapeHtml(fp.tipo)}', ${fp.cartao_credito}, ${fp.ativo})">Editar</button>
+          <button class="btn btn-sm btn-danger ms-1" onclick="excluirForma(${fp.id})">Excluir</button>
+        </div>
       </td>
     `;
     tbody.appendChild(tr);

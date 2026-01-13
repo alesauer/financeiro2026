@@ -169,3 +169,35 @@ class DocumentoSchema(Schema):
         if hasattr(obj, "tipo_documento") and obj.tipo_documento:
             return obj.tipo_documento.nome
         return None
+
+# ======================
+# Milhas
+# ======================
+
+class MilhaSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    usuario_id = fields.Int(dump_only=True)
+
+    programa = fields.Str(required=True)
+    tipo = fields.Str(required=True)
+    quantidade = fields.Int(required=True)
+    origem = fields.Str(allow_none=True)
+    data_movimentacao = fields.Date(load_default=date.today)
+    data_expiracao = fields.Date(allow_none=True)
+    descricao = fields.Str(allow_none=True)
+
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+
+    @validates("tipo")
+    def validate_tipo(self, value, **kwargs):
+        if value not in ["entrada", "saida"]:
+            raise ValidationError("Tipo deve ser 'entrada' ou 'saida'")
+
+    @validates("quantidade")
+    def validate_quantidade(self, value, **kwargs):
+        if value is None or value <= 0:
+            raise ValidationError("Quantidade deve ser maior que 0")

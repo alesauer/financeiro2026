@@ -40,9 +40,11 @@ function preencherTabela(usuarios) {
             <td>${u.nome}</td>
             <td>${u.email}</td>
             <td>${u.data_criacao ? new Date(u.data_criacao).toLocaleString('pt-BR') : ''}</td>
-            <td>
-                <button class="btn btn-sm btn-warning me-1" onclick="abrirModalEditar(${u.id}, '${u.nome}', '${u.email}')">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="excluirUsuario(${u.id})">Excluir</button>
+            <td class="text-nowrap">
+                <div class="btn-group" role="group" aria-label="Ações">
+                    <button class="btn btn-sm btn-warning" onclick="abrirModalEditar(${u.id}, '${u.nome}', '${u.email}')">Editar</button>
+                    <button class="btn btn-sm btn-danger ms-1" onclick="excluirUsuario(${u.id})">Excluir</button>
+                </div>
             </td>
         `;
         tbody.appendChild(tr);

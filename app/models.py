@@ -127,3 +127,28 @@ class DocumentoAnexo(db.Model):
 
     def __repr__(self):
         return f"<DocumentoAnexo doc={self.documento_id} arquivo={self.original_name}>"
+
+
+# =======================
+# Milhas
+# =======================
+
+class Milha(db.Model):
+    __tablename__ = "milhas"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+
+    programa = db.Column(db.String(100), nullable=False)
+    tipo = db.Column(db.String(10), nullable=False)  # 'entrada' | 'saida' (validado no schema)
+    quantidade = db.Column(db.Integer, nullable=False)
+    origem = db.Column(db.String(120), nullable=True)
+    data_movimentacao = db.Column(db.Date, nullable=False, default=date.today)
+    data_expiracao = db.Column(db.Date, nullable=True)
+    descricao = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    def __repr__(self):
+        return f"<Milha {self.programa} tipo={self.tipo} qtd={self.quantidade}>"

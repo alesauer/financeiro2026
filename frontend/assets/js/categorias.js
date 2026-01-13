@@ -39,9 +39,11 @@ function preencherTabela(categorias) {
             <td>${cat.id}</td>
             <td>${cat.nome}</td>
             <td>${cat.tipo}</td>
-            <td>
-                <button class="btn btn-sm btn-warning me-1" onclick="abrirModalEditar(${cat.id}, '${cat.nome}', '${cat.tipo}')">Editar</button>
-                <button class="btn btn-sm btn-danger" onclick="excluirCategoria(${cat.id})">Excluir</button>
+            <td class="text-nowrap">
+                <div class="btn-group" role="group" aria-label="Ações">
+                    <button class="btn btn-sm btn-warning" onclick="abrirModalEditar(${cat.id}, '${cat.nome}', '${cat.tipo}')">Editar</button>
+                    <button class="btn btn-sm btn-danger ms-1" onclick="excluirCategoria(${cat.id})">Excluir</button>
+                </div>
             </td>
         `;
         tbody.appendChild(tr);

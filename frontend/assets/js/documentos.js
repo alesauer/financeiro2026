@@ -30,9 +30,9 @@ function createGrid(){
       { id: 'outras_informacoes', name: 'Outras informações' },
       { id: 'acoes', name: 'Ações', formatter: (_, row) => {
           const id = row.cells[0]?.data; // primeira coluna é o ID
-          const verBtn = `<button class=\"btn btn-sm btn-primary me-2 ver-doc\" data-id=\"${id}\">Ver Documento</button>`;
-          const delBtn = `<button class=\"btn btn-sm btn-outline-danger delete-doc\" data-id=\"${id}\">Excluir</button>`;
-          return gridjs.html(`${verBtn}${delBtn}`);
+          const verBtn = `<button class=\"btn btn-sm btn-primary ver-doc\" data-id=\"${id}\">Ver Documento</button>`;
+          const delBtn = `<button class=\"btn btn-sm btn-outline-danger ms-1 delete-doc\" data-id=\"${id}\">Excluir</button>`;
+          return gridjs.html(`<div class=\"btn-group\" role=\"group\" aria-label=\"Ações\">${verBtn}${delBtn}</div>`);
         }
       }
     ],
