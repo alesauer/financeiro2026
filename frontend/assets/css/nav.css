@@ -119,6 +119,7 @@
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
+  cursor: pointer; /* torna clicável para colapsar/expandir */
 }
 
 .sidebar-header i {
@@ -249,4 +250,22 @@ body.sidebar-collapsed .app-footer {
 /* Ajustar padding-bottom do body para acomodar o footer */
 body {
   padding-bottom: 40px;
+}
+
+/* ========== COLAPSO DA SEÇÃO CONFIGURAÇÕES ========== */
+/* Itens marcados via JS como parte da seção Configurações */
+.sidebar.settings-collapsed .settings-item {
+  display: none;
+}
+
+/* Indicador visual de estado no header */
+.sidebar-header::after {
+  content: '▾';
+  margin-left: auto;
+  color: #95a5a6;
+  font-size: 0.9rem;
+}
+
+.settings-collapsed .sidebar-header::after {
+  content: '▸';
 }

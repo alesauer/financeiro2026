@@ -1,4 +1,4 @@
-import os
+ import os
 from alembic.config import Config
 from alembic import command
 

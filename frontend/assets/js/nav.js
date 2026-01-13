@@ -8,6 +8,8 @@ class NavBar extends HTMLElement {
         
         // Inicializar sidebar após carregar o HTML
         initSidebar();
+        // Inicializar colapso/expansão da seção Configurações
+        initSettingsGroupToggle();
         
         // Adiciona evento de logout após inserir o HTML
         const btnLogout = this.querySelector('#btnLogout');
@@ -51,6 +53,7 @@ function initSidebar() {
   // Carregar estado salvo do localStorage
   const isMobile = window.innerWidth <= 768;
   const savedState = localStorage.getItem('sidebarCollapsed');
+  const savedSettingsState = localStorage.getItem('settingsCollapsed');
   
   if (isMobile) {
     // Mobile: sidebar começa oculta
@@ -64,6 +67,12 @@ function initSidebar() {
     } else {
       sidebar.classList.remove('collapsed');
       body.classList.remove('sidebar-collapsed');
+    }
+    // Restaurar estado da seção Configurações
+    if (savedSettingsState === 'true') {
+      sidebar.classList.add('settings-collapsed');
+    } else {
+      sidebar.classList.remove('settings-collapsed');
     }
   }
   
@@ -136,6 +145,51 @@ function highlightActivePage() {
       link.classList.add('active');
     } else {
       link.classList.remove('active');
+    }
+  });
+}
+
+// Inicializa o comportamento de colapsar/expandir a seção "Configurações"
+function initSettingsGroupToggle() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+
+  const header = sidebar.querySelector('.sidebar-header');
+  if (!header) return;
+
+  // Marcar itens pertencentes à seção Configurações
+  let el = header.nextElementSibling;
+  const settingsItems = [];
+  while (el) {
+    // Se encontrar um novo header ou divisor, para (há apenas um header hoje)
+    if (el.classList && (el.classList.contains('sidebar-header') || el.classList.contains('sidebar-divider'))) {
+      break;
+    }
+    if (el.classList && el.classList.contains('sidebar-item')) {
+      el.classList.add('settings-item');
+      settingsItems.push(el);
+    }
+    el = el.nextElementSibling;
+  }
+
+  // Aplicar estado salvo
+  const savedSettingsState = localStorage.getItem('settingsCollapsed');
+  if (savedSettingsState === 'true') {
+    sidebar.classList.add('settings-collapsed');
+  }
+
+  // Tornar o header clicável para toggle
+  header.setAttribute('role', 'button');
+  header.setAttribute('tabindex', '0');
+  header.addEventListener('click', () => {
+    sidebar.classList.toggle('settings-collapsed');
+    const isCollapsed = sidebar.classList.contains('settings-collapsed');
+    localStorage.setItem('settingsCollapsed', isCollapsed);
+  });
+  header.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      header.click();
     }
   });
 }
