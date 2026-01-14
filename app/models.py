@@ -58,16 +58,16 @@ class Transacao(db.Model):
     status = db.Column(db.Enum("Pago", "Pendente", name="status_transacao"), default="Pago")
 
     recorrente = db.Column(db.Boolean, default=False)
-    frequencia = db.Column(
-        db.Enum("Diária", "Semanal", "Mensal", "Semestral", "Anual", name="frequencia_recorrencia"),
-        nullable=True
-    )
+    frequencia = db.Column(db.Enum("Diária", "Semanal", "Mensal", "Semestral", "Anual", name="frequencia_recorrencia"), nullable=True)
+    recorrencia_tipo = db.Column(db.Enum("Assinatura", "Parcelamento", name="tipo_recorrencia"), nullable=True)
     data_fim = db.Column(db.Date, nullable=True)
 
     parcelado = db.Column(db.Boolean, default=False)
     total_parcelas = db.Column(db.Integer, nullable=True)
     parcela_atual = db.Column(db.Integer, default=1)
     valor_parcela = db.Column(db.Numeric(10, 2), nullable=True)
+    # Identificador de grupo de parcelamento para deletar/gerenciar em conjunto
+    parcelamento_id = db.Column(db.String(36), nullable=True)
 
     observacoes = db.Column(db.Text, nullable=True)
 

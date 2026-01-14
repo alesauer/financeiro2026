@@ -7,6 +7,7 @@ from app.schemas import TransacaoSchema
 from sqlalchemy import exc, func, case
 from app.models import FormaPagamento
 from flask_jwt_extended import jwt_required
+import uuid
 
 bp_transacoes = Blueprint("transacoes", __name__)
 schema = TransacaoSchema()
@@ -25,12 +26,13 @@ def criar():
 
     transacoes_geradas = []
     recorrente = validado.get('recorrente', False)
+    tipo_rec = validado.get('recorrencia_tipo')
     frequencia = validado.get('frequencia')
     data_fim = validado.get('data_fim')
     data_inicial = validado.get('data_transacao')
 
-    # Se for recorrente e tiver frequência e data_fim, gera múltiplas transações
-    if recorrente and frequencia and data_fim and data_inicial:
+    # Se for recorrente com tipo Assinatura e tiver frequência e data_fim, gera múltiplas transações
+    if recorrente and tipo_rec == "Assinatura" and frequencia and data_fim and data_inicial:
         data_atual = data_inicial
         while data_atual <= data_fim:
             dados_nova = dict(validado)
@@ -55,6 +57,27 @@ def criar():
                 data_atual += relativedelta(years=1)
             else:
                 break
+        db.session.add_all(transacoes_geradas)
+        db.session.commit()
+        return jsonify(schemas.dump(transacoes_geradas)), 201
+    # Parcelamento recorrente: gerar N parcelas mensais
+    elif recorrente and tipo_rec == "Parcelamento" and data_inicial and validado.get('total_parcelas'):
+        total = int(validado.get('total_parcelas'))
+        valor_total = float(validado.get('valor'))
+        valor_parcela = valor_total / total if total > 0 else valor_total
+        grupo_id = str(uuid.uuid4())
+        data_atual = data_inicial
+        for p in range(1, total + 1):
+            dados_parc = dict(validado)
+            dados_parc['data_transacao'] = data_atual
+            dados_parc['parcelado'] = True
+            dados_parc['parcela_atual'] = p
+            dados_parc['valor_parcela'] = valor_parcela
+            dados_parc['parcelamento_id'] = grupo_id
+            nova = Transacao(**dados_parc)
+            transacoes_geradas.append(nova)
+            # incrementa mês a mês
+            data_atual += relativedelta(months=1)
         db.session.add_all(transacoes_geradas)
         db.session.commit()
         return jsonify(schemas.dump(transacoes_geradas)), 201
@@ -180,9 +203,35 @@ def atualizar(id):
 @jwt_required()
 def deletar(id):
     transacao = Transacao.query.get_or_404(id)
-    db.session.delete(transacao)
-    db.session.commit()
-    return jsonify({"message": "Transação deletada com sucesso"}), 200
+    deletadas = 0
+    if transacao.parcelado:
+        # Se tiver parcelamento_id, deletar todas as futuras (inclui a atual)
+        if transacao.parcelamento_id:
+            q = Transacao.query.filter(
+                Transacao.parcelamento_id == transacao.parcelamento_id,
+                Transacao.parcela_atual >= transacao.parcela_atual
+            )
+            deletadas = q.delete(synchronize_session=False)
+        else:
+            # Fallback: tentar identificar pelo conjunto de campos (menos robusto)
+            from sqlalchemy import and_
+            q = Transacao.query.filter(and_(
+                Transacao.parcelado == True,
+                Transacao.tipo == transacao.tipo,
+                Transacao.categoria_id == transacao.categoria_id,
+                Transacao.forma_pagamento_id == transacao.forma_pagamento_id,
+                Transacao.descricao == transacao.descricao,
+                Transacao.total_parcelas == transacao.total_parcelas,
+                Transacao.valor_parcela == transacao.valor_parcela,
+                Transacao.parcela_atual >= transacao.parcela_atual
+            ))
+            deletadas = q.delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({"message": "Parcelas futuras deletadas com sucesso", "qtd": deletadas}), 200
+    else:
+        db.session.delete(transacao)
+        db.session.commit()
+        return jsonify({"message": "Transação deletada com sucesso"}), 200
 
 # Novo endpoint: resumo (summary) para um período (inicio/fim)
 @bp_transacoes.route("/summary", methods=["GET"])

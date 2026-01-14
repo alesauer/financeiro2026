@@ -61,6 +61,7 @@ class TransacaoSchema(Schema):
     status = fields.Str(load_default="Pago")
 
     recorrente = fields.Boolean(load_default=False)
+    recorrencia_tipo = fields.Str(allow_none=True)
     frequencia = fields.Str(allow_none=True)
     data_fim = fields.Date(allow_none=True)
 
@@ -68,6 +69,7 @@ class TransacaoSchema(Schema):
     total_parcelas = fields.Int(allow_none=True)
     parcela_atual = fields.Int(load_default=1)
     valor_parcela = fields.Decimal(as_string=True, allow_none=True)
+    parcelamento_id = fields.Str(dump_only=True)
 
     observacoes = fields.Str(allow_none=True)
 
@@ -99,6 +101,31 @@ class TransacaoSchema(Schema):
     def validate_tipo(self, value, **kwargs):
         if value not in ["Receita", "Despesa", "Investimento"]:
             raise ValidationError("Tipo deve ser Receita, Despesa ou Investimento")
+
+    @validates("recorrencia_tipo")
+    def validate_recorrencia_tipo(self, value, **kwargs):
+        if value and value not in ["Assinatura", "Parcelamento"]:
+            raise ValidationError("Tipo de recorrência inválido")
+
+    @pre_load
+    def validate_dependencies(self, data, **kwargs):
+        # regras de dependência entre campos
+        try:
+            rec = bool(data.get("recorrente"))
+            tipo = data.get("recorrencia_tipo")
+            if rec:
+                if not tipo:
+                    raise ValidationError({"recorrencia_tipo": ["Obrigatório quando recorrente é verdadeiro."]})
+                if tipo == "Assinatura":
+                    if not data.get("frequencia"):
+                        raise ValidationError({"frequencia": ["Obrigatório para Assinatura."]})
+                elif tipo == "Parcelamento":
+                    tp = data.get("total_parcelas")
+                    if tp is None:
+                        raise ValidationError({"total_parcelas": ["Obrigatório para Parcelamento."]})
+        except ValidationError:
+            raise
+        return data
 
     # Compatibilidade: permitir payloads antigos com campo 'forma_pagamento' (string)
     @pre_load

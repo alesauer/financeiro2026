@@ -29,7 +29,8 @@ window.abrirModalEdicao = function(dados) {
   { nome: 'forma_pagamento_id', label: 'Forma de Pagamento', tipo: 'select-forma-pagamento' },
     { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] },
     { nome: 'recorrente', label: 'Recorrente', tipo: 'checkbox' },
-  { nome: 'frequencia', label: 'Frequência', tipo: 'select-frequencia', opcoes: ['Semanal','Mensal','Semestral','Anual'] },
+    { nome: 'recorrencia_tipo', label: 'Tipo de Recorrência', tipo: 'radio-recorrencia', opcoes: ['Assinatura','Parcelamento'] },
+    { nome: 'frequencia', label: 'Frequência', tipo: 'select-frequencia', opcoes: ['Semanal','Mensal','Semestral','Anual'] },
     { nome: 'data_fim', label: 'Data Fim', tipo: 'date' }
   ];
 
@@ -71,7 +72,19 @@ window.abrirModalEdicao = function(dados) {
         camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;"><input type="checkbox" name="recorrente" ${checked}/> Recorrente</label></div>`;
         return;
       }
-      // Frequência: só aparece se recorrente marcado
+      // Tipo de Recorrência: só aparece se recorrente marcado
+      if (c.tipo === 'radio-recorrencia') {
+        const currentTipo = (dados && dados.recorrencia_tipo) || (dados && dados.parcelado ? 'Parcelamento' : (dados && dados.recorrente ? 'Assinatura' : 'Assinatura'));
+        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-radio-recorrencia"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<div style="display:flex;gap:16px;">`;
+        c.opcoes.forEach(op => {
+          const checked = (currentTipo === op) ? 'checked' : '';
+          camposHtml += `<label style="font-weight:500;"><input type="radio" name="recorrencia_tipo" value="${op}" ${checked}/> ${op}</label>`;
+        });
+        camposHtml += `</div></div>`;
+        return;
+      }
+      // Frequência: só aparece se recorrente marcado E tipo=Assinatura
       if (c.tipo === 'select-frequencia') {
         camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-frequencia"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<select name="frequencia" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
@@ -82,12 +95,19 @@ window.abrirModalEdicao = function(dados) {
         camposHtml += `</select></div>`;
         return;
       }
-      // Data Fim: só aparece se recorrente marcado
+      // Data Fim: só aparece se recorrente marcado E tipo=Assinatura
       if (c.nome === 'data_fim') {
         let val = dados && dados.data_fim ? dados.data_fim : '';
         if (val && val.length >= 10) val = val.slice(0,10);
         camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-data-fim"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<input type="date" name="data_fim" value="${val||''}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
+        return;
+      }
+      // Total de Parcelas: aparece quando recorrente e tipo=Parcelamento
+      if (c.nome === 'total_parcelas') {
+        const val = dados && dados.total_parcelas ? dados.total_parcelas : '';
+        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-total-parcelas"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">Total de Parcelas</label>`;
+        camposHtml += `<input type="number" min="2" max="60" name="total_parcelas" value="${val}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
         return;
       }
       // ...restante igual
@@ -132,6 +152,9 @@ window.abrirModalEdicao = function(dados) {
   }
 
   html += `<div id="campos-modal-transacao"></div>`;
+  // Campo total_parcelas é especial, inserir como último bloco no form
+  // (O renderCampos controla a visibilidade via div-total-parcelas)
+  campos.push({ nome: 'total_parcelas', label: 'Total de Parcelas', tipo: 'number' });
   html += `<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
     <button type="button" id="btn-cancelar-edicao" class="btn btn-secondary">Cancelar</button>
     <button type="submit" class="btn btn-primary">Salvar</button>
@@ -150,21 +173,41 @@ window.abrirModalEdicao = function(dados) {
     };
     // Exibir/ocultar campos de recorrência assim que renderiza os campos
     const recorrenteCheckbox = document.querySelector('input[name="recorrente"]');
+    const divRadioRecorrencia = document.getElementById('div-radio-recorrencia');
     const divFrequencia = document.getElementById('div-frequencia');
     const divDataFim = document.getElementById('div-data-fim');
+    const divTotalParcelas = document.getElementById('div-total-parcelas');
+    const radiosRec = () => Array.from(document.querySelectorAll('input[name="recorrencia_tipo"]'));
+    const getTipoRec = () => {
+      const r = document.querySelector('input[name="recorrencia_tipo"]:checked');
+      return r ? r.value : null;
+    };
     function toggleRecorrenteFields() {
       if (recorrenteCheckbox && recorrenteCheckbox.checked) {
-        if (divFrequencia) divFrequencia.style.display = '';
-        if (divDataFim) divDataFim.style.display = '';
+        if (divRadioRecorrencia) divRadioRecorrencia.style.display = '';
+        const tipo = getTipoRec();
+        if (tipo === 'Assinatura') {
+          if (divFrequencia) divFrequencia.style.display = '';
+          if (divDataFim) divDataFim.style.display = '';
+          if (divTotalParcelas) divTotalParcelas.style.display = 'none';
+        } else if (tipo === 'Parcelamento') {
+          if (divFrequencia) divFrequencia.style.display = 'none';
+          if (divDataFim) divDataFim.style.display = 'none';
+          if (divTotalParcelas) divTotalParcelas.style.display = '';
+        }
       } else {
+        if (divRadioRecorrencia) divRadioRecorrencia.style.display = 'none';
         if (divFrequencia) divFrequencia.style.display = 'none';
         if (divDataFim) divDataFim.style.display = 'none';
+        if (divTotalParcelas) divTotalParcelas.style.display = 'none';
       }
     }
     if (recorrenteCheckbox) {
       recorrenteCheckbox.onchange = toggleRecorrenteFields;
       toggleRecorrenteFields();
     }
+    // mudar visibilidade quando trocar radio
+    radiosRec().forEach(r => r.addEventListener('change', toggleRecorrenteFields));
 
     const formElement = document.getElementById('form-edicao-transacao');
     console.log('🟢 Registrando onsubmit no formulário:', formElement);
@@ -178,21 +221,48 @@ window.abrirModalEdicao = function(dados) {
       const fd = new FormData(ev.target);
       const payload = {};
       campos.forEach(c => {
-  let v = fd.get(c.nome);
+        let v = fd.get(c.nome);
         if (c.tipo === 'number') v = v ? parseFloat(v) : null;
         if (c.nome === 'categoria_id') v = v ? parseInt(v) : null;
-  if (c.nome === 'forma_pagamento_id') v = v ? parseInt(v) : null;
+        if (c.nome === 'forma_pagamento_id') v = v ? parseInt(v) : null;
         // Checkbox recorrente
         if (c.nome === 'recorrente') v = fd.get('recorrente') ? true : false;
-        // Corrige data_fim: se vazio, não envia ou envia como null
+        // Radio recorrencia_tipo
+        if (c.nome === 'recorrencia_tipo') v = getTipoRec();
+        // Corrige data_fim: só enviar para Assinatura e se preenchido
         if (c.nome === 'data_fim') {
-          if (!v || v === "") {
-            // Pode remover ou enviar como null, aqui removendo:
+          const tipo = getTipoRec();
+          if (tipo !== 'Assinatura' || !v || v === '') {
+            return; // não enviar
+          }
+        }
+        // Frequência: só enviar se Assinatura
+        if (c.nome === 'frequencia') {
+          const tipo = getTipoRec();
+          if (tipo !== 'Assinatura') {
             return;
           }
         }
+        // total_parcelas: só enviar se Parcelamento
+        if (c.nome === 'total_parcelas') {
+          const tipo = getTipoRec();
+          if (tipo !== 'Parcelamento') {
+            return;
+          }
+          v = v ? parseInt(v) : null;
+        }
         payload[c.nome] = v;
       });
+
+      // Ajuste de parcelado conforme tipo recorrencia
+      const tipoRec = getTipoRec();
+      if (fd.get('recorrente')) {
+        if (tipoRec === 'Parcelamento') {
+          payload.parcelado = true;
+        } else {
+          payload.parcelado = false;
+        }
+      }
       
       console.log('Payload:', payload);
       
@@ -449,7 +519,10 @@ function createGrid(){
           // Criar linha agrupada para cartão de crédito se houver transações
           let linhaCartao = null;
           if (cartaoCredito.length > 0) {
-            const totalCartao = cartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+            const totalCartao = cartaoCredito.reduce((sum, t) => {
+              const v = t && t.parcelado ? (Number(t.valor_parcela) || 0) : (Number(t.valor) || 0);
+              return sum + v;
+            }, 0);
             
             // Encontrar a data mais recente
             let dataRecente = null;
@@ -509,7 +582,7 @@ function createGrid(){
             row.forma_pagamento_nome || '',
             row.status || '',
             row.tipo || '',
-            formatCurrency(row.valor)
+            formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
           ]);
         } catch (error) {
           console.error('Erro ao processar dados da grid:', error);
@@ -523,7 +596,7 @@ function createGrid(){
             row.forma_pagamento_nome || '',
             row.status || '',
             row.tipo || '',
-            formatCurrency(row.valor)
+            formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
           ]);
         }
       },
@@ -665,7 +738,7 @@ window.abrirModalCartaoCredito = function() {
       t.descricao || '',
       t.categoria_nome || '',
       t.status || '',
-      formatCurrency(t.valor)
+      formatCurrency(t && t.parcelado ? t.valor_parcela : t.valor)
     ]),
     sort: true,
     pagination: {
@@ -849,7 +922,10 @@ function reloadGrid(){
           // Criar linha agrupada para cartão de crédito se houver transações
           let linhaCartao = null;
           if (cartaoCredito.length > 0) {
-            const totalCartao = cartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+            const totalCartao = cartaoCredito.reduce((sum, t) => {
+              const v = t && t.parcelado ? (Number(t.valor_parcela) || 0) : (Number(t.valor) || 0);
+              return sum + v;
+            }, 0);
             
             // Encontrar a data mais recente
             let dataRecente = null;
@@ -909,7 +985,7 @@ function reloadGrid(){
             row.forma_pagamento_nome || '',
             row.status || '',
             row.tipo || '',
-            formatCurrency(row.valor)
+            formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
           ]);
         } catch (error) {
           console.error('Erro ao processar dados do reloadGrid:', error);
@@ -923,7 +999,7 @@ function reloadGrid(){
             row.forma_pagamento_nome || '',
             row.status || '',
             row.tipo || '',
-            formatCurrency(row.valor)
+            formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
           ]);
         }
       },
@@ -1174,7 +1250,8 @@ async function fetchAndRenderSummary() {
           const arr = dataCartao.items || dataCartao.rows || [];
           arr.forEach(t => {
             if (t.tipo === 'Despesa' && t.forma_pagamento_cartao === true) {
-              totalCartao += Number(t.valor) || 0;
+              const v = t && t.parcelado ? Number(t.valor_parcela) : Number(t.valor);
+              totalCartao += v || 0;
             }
           });
         }
