@@ -1,0 +1,15 @@
+### Obter configuração de alertas
+GET http://localhost:5000/api/config/alertas-config
+Authorization: Bearer {{ACCESS_TOKEN}}
+
+### Atualizar configuração de alertas
+PUT http://localhost:5000/api/config/alertas-config
+Authorization: Bearer {{ACCESS_TOKEN}}
+Content-Type: application/json
+
+{
+  "ligado": true,
+  "email": true,
+  "whatsapp": false,
+  "limite": 150.0
+}

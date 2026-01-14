@@ -218,3 +218,28 @@ class EmailsAlertaSchema(Schema):
 
 class EmailItemSchema(Schema):
     email = fields.Email(required=True)
+
+
+# ======================
+# Configurações - Alertas (ligado/email/whatsapp/limite)
+# ======================
+
+class AlertasConfigSchema(Schema):
+    ligado = fields.Boolean(load_default=False)
+    email = fields.Boolean(load_default=False)
+    whatsapp = fields.Boolean(load_default=False)
+    limite = fields.Float(load_default=0.0)
+
+    @validates("limite")
+    def validate_limite(self, value, **kwargs):
+        if value is None or value < 0:
+            raise ValidationError("Limite deve ser maior ou igual a 0")
+
+
+# ======================
+# Configurações - Sobre o Sistema
+# ======================
+
+class SobreSistemaConfigSchema(Schema):
+    descricao = fields.Str(load_default="", allow_none=True)
+    versao = fields.Str(load_default="", allow_none=True)

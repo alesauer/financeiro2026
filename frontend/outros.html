@@ -42,6 +42,9 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="tab-sobre-tab" data-bs-toggle="tab" data-bs-target="#tab-sobre" type="button" role="tab" aria-controls="tab-sobre" aria-selected="false">Sobre o Sistema</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-usuario-tab" data-bs-toggle="tab" data-bs-target="#tab-usuario" type="button" role="tab" aria-controls="tab-usuario" aria-selected="false">Usuário</button>
+            </li>
         </ul>
 
         <!-- Formulário abrangendo todas as abas -->
@@ -53,13 +56,19 @@
                         <div class="col-md-4">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="alertaLigado">
-                                <label class="form-check-label" for="alertaLigado">Modo Alerta Ligado</label>
+                                <label class="form-check-label" for="alertaLigado">Ligar Alertas</label>
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="form-check form-switch">
                                 <input class="form-check-input" type="checkbox" id="notificacoesEmail">
-                                <label class="form-check-label" for="notificacoesEmail">Notificações por E-mail</label>
+                                <label class="form-check-label" for="notificacoesEmail">Alertas por e-mail</label>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="notificacoesWhatsapp">
+                                <label class="form-check-label" for="notificacoesWhatsapp">Alertas por WhatsApp</label>
                             </div>
                         </div>
                         <div class="col-md-4">
@@ -144,10 +153,50 @@
                         <div class="col-12 col-lg-8 col-xl-6">
                             <div class="card">
                                 <div class="card-body">
-                                    <div class="mb-2"><strong>Versão do sistema:</strong> <span id="versaoSistema">1.0.0</span></div>
-                                    <div class="mb-2"><strong>Usuário logado:</strong> <span id="usuarioLogado">admin</span></div>
-                                    <div class="mb-2"><strong>Modo alerta:</strong> <span id="statusAlerta">Ligado</span></div>
-                                    <div class="mb-2"><strong>Dark mode:</strong> <span id="statusDark">Desligado</span></div>
+                                    <div class="mb-3">
+                                        <label class="form-label" for="descricaoSistema"><strong>Descrição</strong></label>
+                                        <textarea class="form-control" id="descricaoSistema" rows="3" placeholder="Descrição do sistema..."></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label" for="versaoSistema"><strong>Versão</strong></label>
+                                        <input type="text" class="form-control" id="versaoSistema" placeholder="ex.: 1.0.0">
+                                    </div>
+                                    <div class="mb-2"><strong>Usuário logado:</strong> <span id="usuarioLogado">—</span></div>
+                                    <div class="mb-2"><strong>Data/hora do sistema:</strong> <span id="dataHoraSistema">—</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Usuário -->
+                <div class="tab-pane fade" id="tab-usuario" role="tabpanel" aria-labelledby="tab-usuario-tab">
+                    <div class="row g-3">
+                        <div class="col-12 col-lg-8 col-xl-6">
+                            <div class="card mb-3">
+                                <div class="card-body">
+                                    <div class="mb-2"><strong>Nome:</strong> <span id="userNome">—</span></div>
+                                    <div class="mb-2"><strong>E-mail:</strong> <span id="userEmail">—</span></div>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <div class="card-header">Alterar senha</div>
+                                <div class="card-body" id="userSenhaForm">
+                                    <div class="mb-3">
+                                        <label class="form-label" for="senhaAtual">Senha atual</label>
+                                        <input type="password" class="form-control" id="senhaAtual" autocomplete="current-password" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label" for="senhaNova">Nova senha</label>
+                                        <input type="password" class="form-control" id="senhaNova" autocomplete="new-password" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label" for="senhaNovaConfirm">Confirmar nova senha</label>
+                                        <input type="password" class="form-control" id="senhaNovaConfirm" autocomplete="new-password" required>
+                                    </div>
+                                    <div class="d-grid d-md-block">
+                                        <button type="button" class="btn btn-primary" id="btnChangePassword">Alterar senha</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -176,6 +225,6 @@
 </div>
     <script src="assets/js/nav.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="assets/js/outros.js"></script>
+    <script src="assets/js/outros.js?v=20260114"></script>
 </body>
 </html>
