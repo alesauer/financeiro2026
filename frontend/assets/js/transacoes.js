@@ -303,7 +303,6 @@ window.abrirModalEdicao = function(dados) {
           alert('Erro ao salvar: ' + (err.error || JSON.stringify(err)));
           return;
         }
-        alert(dados && dados.id ? 'Transação atualizada com sucesso.' : 'Transação criada com sucesso.');
         modal.remove();
         reloadGrid();
   refreshPeriodoData();
@@ -789,7 +788,6 @@ window.abrirModalCartaoCredito = function(formaPagamentoId = null) {
         try {
           const resp = await fetchJWT(`${apiUrl}/${tid}`, { method: 'DELETE' });
           if (resp.ok) {
-            alert('Transação excluída com sucesso!');
             fecharModalCartaoCredito();
             reloadGrid();
             refreshPeriodoData();
@@ -866,8 +864,6 @@ window.deletarTodasTransacoesCartao = async function() {
     
     if (falhas > 0) {
       alert(`⚠️ Resultado:\n✅ ${sucessos} transação(ões) deletada(s)\n❌ ${falhas} transação(ões) com erro\n\nRecarregando dados...`);
-    } else {
-      alert(`✅ Sucesso! ${sucessos} transação(ões) de cartão de crédito deletadas com sucesso!`);
     }
     
     // Limpar array global
@@ -1053,8 +1049,7 @@ document.getElementById('grid').addEventListener('click', async function(e){
         alert('Erro ao excluir transação.');
         return;
       }
-      const result = await resp.json();
-      alert(result.message || 'Transação excluída com sucesso.');
+  await resp.json();
       reloadGrid();
   refreshPeriodoData();
     } catch (err) {
@@ -1240,8 +1235,6 @@ async function atualizarStatusCartaoPorForma(formaPagamentoId, novoStatus) {
     const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
     if (falhas > 0) {
       alert(`${falhas} transação(ões) não puderam ser atualizadas.`);
-    } else {
-      alert('Status atualizado com sucesso.');
     }
   } catch (err) {
     console.error('Erro ao atualizar status do cartão', err);
@@ -1278,8 +1271,6 @@ async function deletarTransacoesCartaoPorForma(formaPagamentoId) {
     const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
     if (falhas > 0) {
       alert(`${falhas} transação(ões) não puderam ser excluídas.`);
-    } else {
-      alert('Transações excluídas com sucesso.');
     }
   } catch (err) {
     console.error('Erro ao excluir transações', err);
@@ -1314,8 +1305,6 @@ async function atualizarStatusTodosCartoes(novoStatus) {
     const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
     if (falhas > 0) {
       alert(`${falhas} transação(ões) não puderam ser atualizadas.`);
-    } else {
-      alert('Status atualizado para todas as transações de cartão.');
     }
   } catch (err) {
     console.error('Erro ao atualizar status dos cartões', err);
