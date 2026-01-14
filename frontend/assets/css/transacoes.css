@@ -160,6 +160,14 @@
   color: #b02a37;
 }
 
+#cartao-credito-panel .titulo-cartao-credito {
+  font-weight: 600;
+}
+
+#cartao-credito-panel .titulo-cartao-credito i {
+  font-size: 1rem;
+}
+
 /* --- Summary cards compaction --- */
 
 #cards-container {
