@@ -87,7 +87,7 @@ class TransacaoSchema(Schema):
 
     @validates("frequencia")
     def validate_frequencia(self, value, **kwargs):
-        if value and value not in ["Diária", "Semanal", "Mensal", "Anual"]:
+        if value and value not in ["Diária", "Semanal", "Mensal", "Semestral", "Anual"]:
             raise ValidationError("Frequência inválida")
 
     @validates("status")

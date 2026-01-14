@@ -49,6 +49,8 @@ def criar():
                 data_atual += relativedelta(weeks=1)
             elif frequencia == "Diária":
                 data_atual += relativedelta(days=1)
+            elif frequencia == "Semestral":
+                data_atual += relativedelta(months=6)
             elif frequencia == "Anual":
                 data_atual += relativedelta(years=1)
             else:

@@ -58,7 +58,10 @@ class Transacao(db.Model):
     status = db.Column(db.Enum("Pago", "Pendente", name="status_transacao"), default="Pago")
 
     recorrente = db.Column(db.Boolean, default=False)
-    frequencia = db.Column(db.Enum("Diária", "Semanal", "Mensal", "Anual", name="frequencia_recorrencia"), nullable=True)
+    frequencia = db.Column(
+        db.Enum("Diária", "Semanal", "Mensal", "Semestral", "Anual", name="frequencia_recorrencia"),
+        nullable=True
+    )
     data_fim = db.Column(db.Date, nullable=True)
 
     parcelado = db.Column(db.Boolean, default=False)

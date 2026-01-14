@@ -29,7 +29,7 @@ window.abrirModalEdicao = function(dados) {
   { nome: 'forma_pagamento_id', label: 'Forma de Pagamento', tipo: 'select-forma-pagamento' },
     { nome: 'status', label: 'Status', tipo: 'select', opcoes: ['Pago','Pendente'] },
     { nome: 'recorrente', label: 'Recorrente', tipo: 'checkbox' },
-    { nome: 'frequencia', label: 'Frequência', tipo: 'select-frequencia', opcoes: ['Mensal'] },
+  { nome: 'frequencia', label: 'Frequência', tipo: 'select-frequencia', opcoes: ['Semanal','Mensal','Semestral','Anual'] },
     { nome: 'data_fim', label: 'Data Fim', tipo: 'date' }
   ];
 
