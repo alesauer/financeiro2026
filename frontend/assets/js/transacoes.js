@@ -34,8 +34,8 @@ window.abrirModalEdicao = function(dados) {
     { nome: 'data_fim', label: 'Data Fim', tipo: 'date' }
   ];
 
-  let html = `<form id="form-edicao-transacao" style="background:#fff;padding:24px;border-radius:10px;min-width:320px;max-width:90vw;box-shadow:0 2px 16px #0002;">
-    <h4 style="margin-bottom:16px;"><i class="bi bi-${dados ? 'pencil-square' : 'plus-circle'}" style="margin-right:8px;"></i>${dados ? 'Editar' : 'Nova'} Transação</h4>`;
+  let html = `<form id="form-edicao-transacao" class="modal-transacao-form">
+    <h4><i class="bi bi-${dados ? 'pencil-square' : 'plus-circle'}" style="margin-right:8px;"></i>${dados ? 'Editar' : 'Nova'} Transação</h4>`;
   let categorias = [];
   let formasPagamento = [];
   let tipoSelecionado = dados && dados.tipo ? dados.tipo : 'Receita';
@@ -64,19 +64,22 @@ window.abrirModalEdicao = function(dados) {
   setTimeout(() => buscarECampos(tipoSelecionado), 0);
 
   function renderCampos() {
-    let camposHtml = '';
+    const fullWidthCampos = ['descricao', 'frequencia', 'data_fim', 'total_parcelas'];
+    let camposHtml = '<div class="modal-fields-grid">';
     campos.forEach(c => {
+      const precisaFull = fullWidthCampos.includes(c.nome) || ['checkbox', 'radio-recorrencia'].includes(c.tipo);
+      const wrapperClass = `modal-field${precisaFull ? ' modal-field--full' : ''}`;
       // Recorrente: checkbox
       if (c.tipo === 'checkbox') {
         const checked = dados && dados.recorrente ? 'checked' : '';
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;"><input type="checkbox" name="recorrente" ${checked}/> Recorrente</label></div>`;
+        camposHtml += `<div class="${wrapperClass}"><div class="modal-checkbox"><label style="font-weight:600;"><input type="checkbox" name="recorrente" ${checked}/> Recorrente</label></div></div>`;
         return;
       }
       // Tipo de Recorrência: só aparece se recorrente marcado
       if (c.tipo === 'radio-recorrencia') {
         const currentTipo = (dados && dados.recorrencia_tipo) || (dados && dados.parcelado ? 'Parcelamento' : (dados && dados.recorrente ? 'Assinatura' : 'Assinatura'));
-        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-radio-recorrencia"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
-        camposHtml += `<div style="display:flex;gap:16px;">`;
+        camposHtml += `<div class="${wrapperClass}" style="display:none;" id="div-radio-recorrencia"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<div class="modal-radio-group">`;
         c.opcoes.forEach(op => {
           const checked = (currentTipo === op) ? 'checked' : '';
           camposHtml += `<label style="font-weight:500;"><input type="radio" name="recorrencia_tipo" value="${op}" ${checked}/> ${op}</label>`;
@@ -86,7 +89,7 @@ window.abrirModalEdicao = function(dados) {
       }
       // Frequência: só aparece se recorrente marcado E tipo=Assinatura
       if (c.tipo === 'select-frequencia') {
-        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-frequencia"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<div class="${wrapperClass}" style="display:none;" id="div-frequencia"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<select name="frequencia" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
         c.opcoes.forEach(op => {
           let sel = dados && dados.frequencia === op ? 'selected' : '';
@@ -99,20 +102,20 @@ window.abrirModalEdicao = function(dados) {
       if (c.nome === 'data_fim') {
         let val = dados && dados.data_fim ? dados.data_fim : '';
         if (val && val.length >= 10) val = val.slice(0,10);
-        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-data-fim"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<div class="${wrapperClass}" style="display:none;" id="div-data-fim"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<input type="date" name="data_fim" value="${val||''}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
         return;
       }
       // Total de Parcelas: aparece quando recorrente e tipo=Parcelamento
       if (c.nome === 'total_parcelas') {
         const val = dados && dados.total_parcelas ? dados.total_parcelas : '';
-        camposHtml += `<div style="margin-bottom:12px;display:none;" id="div-total-parcelas"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">Total de Parcelas</label>`;
+        camposHtml += `<div class="${wrapperClass}" style="display:none;" id="div-total-parcelas"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">Total de Parcelas</label>`;
         camposHtml += `<input type="number" min="2" max="60" name="total_parcelas" value="${val}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
         return;
       }
       // ...restante igual
       if (c.tipo === 'select') {
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<div class="${wrapperClass}"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<select name="${c.nome}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
         c.opcoes.forEach(op => {
           let sel = '';
@@ -122,7 +125,7 @@ window.abrirModalEdicao = function(dados) {
         });
         camposHtml += `</select></div>`;
       } else if (c.tipo === 'select-categoria') {
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+  camposHtml += `<div class="${wrapperClass}"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<select name="categoria_id" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
         categorias.forEach(cat => {
           const sel = (dados && dados.categoria_id == cat.id) ? 'selected' : '';
@@ -130,7 +133,7 @@ window.abrirModalEdicao = function(dados) {
         });
         camposHtml += `</select></div>`;
       } else if (c.tipo === 'select-forma-pagamento') {
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+  camposHtml += `<div class="${wrapperClass}"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<select name="forma_pagamento_id" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'">`;
         formasPagamento.forEach(fp => {
           let sel = '';
@@ -141,21 +144,22 @@ window.abrirModalEdicao = function(dados) {
       } else if (c.tipo === 'date') {
         let val = dados && dados[c.nome] ? dados[c.nome] : '';
         if (val && val.length >= 10) val = val.slice(0,10);
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<div class="${wrapperClass}"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<input type="date" name="${c.nome}" value="${val||''}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
       } else {
-        camposHtml += `<div style="margin-bottom:12px;"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
+        camposHtml += `<div class="${wrapperClass}"><label style="font-weight:600;color:#4a5568;margin-bottom:6px;display:block;">${c.label}</label>`;
         camposHtml += `<input type="${c.tipo}" name="${c.nome}" value="${dados ? (dados[c.nome]||'') : ''}" style="width:100%;padding:10px;border:1px solid #e0e0e0;border-radius:8px;transition:all 0.3s ease;" step="${c.step||''}" onfocus="this.style.borderColor='#1abc9c';this.style.boxShadow='0 0 0 3px rgba(26,188,156,0.1)'" onblur="this.style.borderColor='#e0e0e0';this.style.boxShadow='none'" /></div>`;
       }
     });
+    camposHtml += '</div>';
     return camposHtml;
   }
 
-  html += `<div id="campos-modal-transacao"></div>`;
+  html += `<div id="campos-modal-transacao" class="modal-fields-wrapper"></div>`;
   // Campo total_parcelas é especial, inserir como último bloco no form
   // (O renderCampos controla a visibilidade via div-total-parcelas)
   campos.push({ nome: 'total_parcelas', label: 'Total de Parcelas', tipo: 'number' });
-  html += `<div style="display:flex;gap:12px;justify-content:flex-end;margin-top:24px;">
+  html += `<div class="modal-actions">
     <button type="button" id="btn-cancelar-edicao" class="btn btn-secondary">Cancelar</button>
     <button type="submit" class="btn btn-primary">Salvar</button>
   </div>
