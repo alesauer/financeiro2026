@@ -77,6 +77,25 @@
   <div id="grid"></div>
 </div>
 
+<div class="container pb-5">
+  <div class="card shadow-sm" id="cartao-credito-panel">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <h5 class="mb-0">Cartões de Crédito do período</h5>
+        <small class="text-muted">Totais consolidados por forma de pagamento</small>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" id="btn-recarregar-cartoes">Atualizar</button>
+        <button class="btn btn-outline-danger btn-sm" id="btn-cartoes-deletar-todos">Excluir todos</button>
+        <button class="btn btn-outline-success btn-sm" id="btn-cartoes-marcar-pago">Marcar tudo como pago</button>
+      </div>
+    </div>
+    <div class="card-body">
+      <div id="cartao-credito-conteudo" class="table-responsive"></div>
+    </div>
+  </div>
+</div>
+
 <!-- FOOTER -->
 <app-footer></app-footer>
 

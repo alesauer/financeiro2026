@@ -306,7 +306,7 @@ window.abrirModalEdicao = function(dados) {
         alert(dados && dados.id ? 'Transação atualizada com sucesso.' : 'Transação criada com sucesso.');
         modal.remove();
         reloadGrid();
-        fetchAndRenderSummary();
+  refreshPeriodoData();
       } catch (err) {
         console.error('Erro no catch do submit:', err);
         alert('Erro de rede ao salvar: ' + err.message);
@@ -391,14 +391,15 @@ function buildUrl(base, page, per_page){
   // compute last day of month
   const lastDay = new Date(year, current.mes, 0).getDate();
   const fim = `${year}-${month}-${String(lastDay).padStart(2,'0')}`;
-  return `${base}?inicio=${inicio}&fim=${fim}&page=${page}&per_page=${per_page}`;
+  return `${base}?inicio=${inicio}&fim=${fim}&page=${page}&per_page=${per_page}&cartao_credito=false`;
 }
 
 // Create initial grid instance variable so we can update config later
 let grid = null;
 
-// Armazenar transações de cartão de crédito para o modal de detalhes
+// Armazenar transações e agregações de cartão de crédito para o painel dedicado
 let transacoesCartaoCredito = [];
+let cartoesCreditoAgrupados = [];
 
 function createGrid(){
   grid = new gridjs.Grid({
@@ -465,26 +466,6 @@ function createGrid(){
         formatter: (cell, row) => {
           const idCell = (row && row.cells && row.cells[0]) ? (row.cells[0].data || row.cells[0]) : '';
           const id = idCell || '';
-          
-          // Se for a linha agrupada de cartão, mostrar botões Visualizar e Deletar
-          if (id === 'CARTAO_AGRUPADO') {
-            return gridjs.html(`
-              <div class="btn-group" role="group" aria-label="Ações Cartão">
-                <button type="button" class="btn btn-sm btn-outline-primary" onclick="abrirModalCartaoCredito()" title="Visualizar transações" aria-label="Visualizar transações">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
-                    <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
-                  </svg>
-                </button>
-                <button type="button" class="btn btn-sm btn-outline-danger ms-1" onclick="deletarTodasTransacoesCartao()" title="Deletar todas as transações" aria-label="Deletar todas">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                    <path d="M5.5 5.5A.5.5 0 0 1 6 5h4a.5.5 0 0 1 .5.5v8A1.5 1.5 0 0 1 9 15H7a1.5 1.5 0 0 1-1.5-1.5v-8zM14.5 3a1 1 0 0 1-1 1H13v9.5A2.5 2.5 0 0 1 10.5 16h-5A2.5 2.5 0 0 1 3 13.5V4H2.5a1 1 0 1 1 0-2H5l.5-1h5l.5 1h2.5a1 1 0 0 1 1 1zM6.118 1L5.5 2h5l-.618-1H6.118z"/>
-                  </svg>
-                </button>
-              </div>
-            `);
-          }
-          
           // Para linhas normais, mostrar botões editar e excluir
           return gridjs.html(`
             <div class="btn-group" role="group" aria-label="Ações">
@@ -510,107 +491,17 @@ function createGrid(){
       url: buildUrl(apiUrl, 1, 10),
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
-        try {
-          const items = data.items || data.rows || [];
-          
-          // Separar transações de cartão de crédito das demais
-          const cartaoCredito = items.filter(t => t.forma_pagamento_cartao === true);
-          const outrasTransacoes = items.filter(t => t.forma_pagamento_cartao !== true);
-          
-          // Armazenar transações de cartão globalmente para o modal
-          transacoesCartaoCredito = cartaoCredito;
-          
-          // Criar linha agrupada para cartão de crédito se houver transações
-          let linhaCartao = null;
-          if (cartaoCredito.length > 0) {
-            const totalCartao = cartaoCredito.reduce((sum, t) => {
-              const v = t && t.parcelado ? (Number(t.valor_parcela) || 0) : (Number(t.valor) || 0);
-              return sum + v;
-            }, 0);
-            
-            // Encontrar a data mais recente
-            let dataRecente = null;
-            for (const t of cartaoCredito) {
-              const dt = parseDateOnly(t.data_transacao || t.data);
-              if (dt && (!dataRecente || dt > dataRecente)) {
-                dataRecente = dt;
-              }
-            }
-            
-            // Se não encontrou data válida, usar data atual
-            if (!dataRecente) {
-              dataRecente = new Date();
-            }
-            
-            // Formatar data no formato YYYY-MM-DD
-            const dataStr = dataRecente.toISOString().split('T')[0];
-            
-            // Determinar status: se todas estão pagas = Pago, senão = Pendente
-            const todasPagas = cartaoCredito.every(t => (t.status || '').toLowerCase() === 'pago');
-            const statusCartao = todasPagas ? 'Pago' : 'Pendente';
-            
-            linhaCartao = {
-              id: 'CARTAO_AGRUPADO',
-              data_transacao: dataStr,
-              descricao: 'Cartão de Crédito',
-              categoria_nome: 'Mista',
-              forma_pagamento_nome: 'Cartão de Crédito',
-              status: statusCartao,
-              tipo: 'Despesa',
-              valor: totalCartao
-            };
-          }
-          
-          // Custom client-side sort: Receita first, then Despesa
-          const orderMap = { 'receita': 0, 'despesa': 1 };
-          outrasTransacoes.sort((a, b) => {
-            const ta = (a.tipo || '').toString().trim().toLowerCase();
-            const tb = (b.tipo || '').toString().trim().toLowerCase();
-            const oa = orderMap.hasOwnProperty(ta) ? orderMap[ta] : 2;
-            const ob = orderMap.hasOwnProperty(tb) ? orderMap[tb] : 2;
-            if (oa !== ob) return oa - ob;
-            const da = parseDateOnly(a.data_transacao || a.data || a.data_transacao);
-            const db = parseDateOnly(b.data_transacao || b.data || b.data_transacao);
-            if (da && db) return db - da;
-            return 0;
-          });
-          
-          // Adicionar linha de cartão agrupado no início se existir
-          const finalItems = linhaCartao ? [linhaCartao, ...outrasTransacoes] : outrasTransacoes;
-
-          return finalItems.map(row => [
-            row.id,
-            formatDate(row.data_transacao || row.data || row.data_transacao),
-            row.descricao || '',
-            row.categoria_nome || '',
-            row.forma_pagamento_nome || '',
-            row.status || '',
-            row.tipo || '',
-            formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
-          ]);
-        } catch (error) {
-          console.error('Erro ao processar dados da grid:', error);
-          // Retornar dados sem processamento em caso de erro
-          const items = data.items || data.rows || [];
-          return items.map(row => [
-            row.id,
-            formatDate(row.data_transacao || row.data),
-            row.descricao || '',
-            row.categoria_nome || '',
-            row.forma_pagamento_nome || '',
-            row.status || '',
-            row.tipo || '',
-            formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
-          ]);
-        }
-      },
-      total: data => {
-        // Ajustar total considerando agrupamento de cartão de crédito
-        const total = data.total_items || data.total || 0;
         const items = data.items || data.rows || [];
-  const numCartao = items.filter(t => t.forma_pagamento_cartao === true).length;
-        // Se há transações de cartão, reduz o total pelo número de transações agrupadas menos 1
-        return numCartao > 0 ? total - numCartao + 1 : total;
+        return items.map(row => [
+          row.id,
+          formatDate(row.data_transacao || row.data || row.data_transacao),
+          row.descricao || '',
+          row.categoria_nome || '',
+          row.forma_pagamento_nome || '',
+          row.status || '',
+          row.tipo || '',
+          formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
+        ]);
       }
     },
     pagination: {
@@ -645,7 +536,16 @@ function createGrid(){
 }
 
 // Função para abrir modal com detalhes das transações de cartão de crédito
-window.abrirModalCartaoCredito = function() {
+window.abrirModalCartaoCredito = function(formaPagamentoId = null) {
+  const dataset = formaPagamentoId
+    ? transacoesCartaoCredito.filter(t => t.forma_pagamento_id === formaPagamentoId)
+    : transacoesCartaoCredito;
+
+  if (!dataset.length) {
+    alert('Nenhuma transação encontrada para este cartão.');
+    return;
+  }
+
   // Remover modal anterior se existir
   var old = document.getElementById('modal-cartao-credito');
   if (old) old.remove();
@@ -663,10 +563,14 @@ window.abrirModalCartaoCredito = function() {
   modal.style.alignItems = 'center';
   modal.style.justifyContent = 'center';
 
+  const tituloModal = formaPagamentoId && dataset[0]
+    ? `Transações - ${dataset[0].forma_pagamento_nome || 'Cartão'}`
+    : 'Transações de Cartão de Crédito';
+
   const html = `
     <div style="background:#fff;padding:24px;border-radius:10px;min-width:80vw;max-width:95vw;max-height:90vh;overflow:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
-        <h4 style="margin:0;">Transações de Cartão de Crédito</h4>
+        <h4 style="margin:0;">${tituloModal}</h4>
         <button onclick="fecharModalCartaoCredito()" style="border:none;background:transparent;font-size:24px;cursor:pointer;color:#666;">&times;</button>
       </div>
       <div id="grid-cartao-credito"></div>
@@ -736,7 +640,7 @@ window.abrirModalCartaoCredito = function() {
         }
       }
     ],
-    data: transacoesCartaoCredito.map(t => [
+    data: dataset.map(t => [
       t.id,
       formatDate(t.data_transacao || t.data),
       t.descricao || '',
@@ -821,7 +725,7 @@ window.abrirModalCartaoCredito = function() {
             alert('Transação excluída com sucesso!');
             fecharModalCartaoCredito();
             reloadGrid();
-            fetchAndRenderSummary();
+            refreshPeriodoData();
           } else {
             alert('Erro ao excluir transação');
           }
@@ -855,7 +759,10 @@ window.deletarTodasTransacoesCartao = async function() {
   }
   
   const totalTransacoes = transacoesCartaoCredito.length;
-  const totalValor = transacoesCartaoCredito.reduce((sum, t) => sum + (Number(t.valor) || 0), 0);
+  const totalValor = transacoesCartaoCredito.reduce((sum, t) => {
+    const valor = t.parcelado ? Number(t.valor_parcela) : Number(t.valor);
+    return sum + (valor || 0);
+  }, 0);
   const valorFormatado = totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   
   const msg = `⚠️ ATENÇÃO: Você está prestes a DELETAR ${totalTransacoes} transação(ões) de cartão de crédito no valor total de ${valorFormatado}.\n\nEsta ação NÃO pode ser desfeita!\n\nDeseja realmente continuar?`;
@@ -870,14 +777,9 @@ window.deletarTodasTransacoesCartao = async function() {
   }
   
   try {
-    // Deletar todas as transações em paralelo
-    const promises = transacoesCartaoCredito.map(transacao => 
-      fetchJWT(`${apiUrl}/${transacao.id}`, {
-        method: 'DELETE'
-      })
-    );
-    
-    const results = await Promise.allSettled(promises);
+    const results = await Promise.allSettled(transacoesCartaoCredito.map(transacao => 
+      fetchJWT(`${apiUrl}/${transacao.id}`, { method: 'DELETE' })
+    ));
     
     // Contar sucessos e falhas
     const sucessos = results.filter(r => r.status === 'fulfilled' && r.value && r.value.ok).length;
@@ -893,8 +795,8 @@ window.deletarTodasTransacoesCartao = async function() {
     transacoesCartaoCredito = [];
     
     // Recarregar grid e summary
-    reloadGrid();
-    fetchAndRenderSummary();
+  reloadGrid();
+  await refreshPeriodoData();
     
   } catch (err) {
     console.error('Erro ao deletar transações de cartão:', err);
@@ -913,107 +815,17 @@ function reloadGrid(){
       url: buildUrl(apiUrl, 1, 10),
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
-        try {
-          const items = data.items || data.rows || [];
-          
-          // Separar transações de cartão de crédito das demais
-          const cartaoCredito = items.filter(t => t.forma_pagamento_cartao === true);
-          const outrasTransacoes = items.filter(t => t.forma_pagamento_cartao !== true);
-          
-          // Armazenar transações de cartão globalmente para o modal
-          transacoesCartaoCredito = cartaoCredito;
-          
-          // Criar linha agrupada para cartão de crédito se houver transações
-          let linhaCartao = null;
-          if (cartaoCredito.length > 0) {
-            const totalCartao = cartaoCredito.reduce((sum, t) => {
-              const v = t && t.parcelado ? (Number(t.valor_parcela) || 0) : (Number(t.valor) || 0);
-              return sum + v;
-            }, 0);
-            
-            // Encontrar a data mais recente
-            let dataRecente = null;
-            for (const t of cartaoCredito) {
-              const dt = parseDateOnly(t.data_transacao || t.data);
-              if (dt && (!dataRecente || dt > dataRecente)) {
-                dataRecente = dt;
-              }
-            }
-            
-            // Se não encontrou data válida, usar data atual
-            if (!dataRecente) {
-              dataRecente = new Date();
-            }
-            
-            // Formatar data no formato YYYY-MM-DD
-            const dataStr = dataRecente.toISOString().split('T')[0];
-            
-            // Determinar status: se todas estão pagas = Pago, senão = Pendente
-            const todasPagas = cartaoCredito.every(t => (t.status || '').toLowerCase() === 'pago');
-            const statusCartao = todasPagas ? 'Pago' : 'Pendente';
-            
-            linhaCartao = {
-              id: 'CARTAO_AGRUPADO',
-              data_transacao: dataStr,
-              descricao: 'Cartão de Crédito',
-              categoria_nome: 'Mista',
-              forma_pagamento_nome: 'Cartão de Crédito',
-              status: statusCartao,
-              tipo: 'Despesa',
-              valor: totalCartao
-            };
-          }
-          
-          // Custom client-side sort: Receita first, then Despesa
-          const orderMap = { 'receita': 0, 'despesa': 1 };
-          outrasTransacoes.sort((a, b) => {
-            const ta = (a.tipo || '').toString().trim().toLowerCase();
-            const tb = (b.tipo || '').toString().trim().toLowerCase();
-            const oa = orderMap.hasOwnProperty(ta) ? orderMap[ta] : 2;
-            const ob = orderMap.hasOwnProperty(tb) ? orderMap[tb] : 2;
-            if (oa !== ob) return oa - ob;
-            const da = parseDateOnly(a.data_transacao || a.data || a.data_transacao);
-            const db = parseDateOnly(b.data_transacao || b.data || b.data_transacao);
-            if (da && db) return db - da;
-            return 0;
-          });
-          
-          // Adicionar linha de cartão agrupado no início se existir
-          const finalItems = linhaCartao ? [linhaCartao, ...outrasTransacoes] : outrasTransacoes;
-
-          return finalItems.map(row => [
-            row.id,
-            formatDate(row.data_transacao || row.data || row.data_transacao),
-            row.descricao || '',
-            row.categoria_nome || '',
-            row.forma_pagamento_nome || '',
-            row.status || '',
-            row.tipo || '',
-            formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
-          ]);
-        } catch (error) {
-          console.error('Erro ao processar dados do reloadGrid:', error);
-          // Retornar dados sem processamento em caso de erro
-          const items = data.items || data.rows || [];
-          return items.map(row => [
-            row.id,
-            formatDate(row.data_transacao || row.data),
-            row.descricao || '',
-            row.categoria_nome || '',
-            row.forma_pagamento_nome || '',
-            row.status || '',
-            row.tipo || '',
-            formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
-          ]);
-        }
-      },
-      total: data => {
-        // Ajustar total considerando agrupamento de cartão de crédito
-        const total = data.total_items || data.total || 0;
         const items = data.items || data.rows || [];
-  const numCartao = items.filter(t => t.forma_pagamento_cartao === true).length;
-        // Se há transações de cartão, reduz o total pelo número de transações agrupadas menos 1
-        return numCartao > 0 ? total - numCartao + 1 : total;
+        return items.map(row => [
+          row.id,
+          formatDate(row.data_transacao || row.data || row.data_transacao),
+          row.descricao || '',
+          row.categoria_nome || '',
+          row.forma_pagamento_nome || '',
+          row.status || '',
+          row.tipo || '',
+          formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
+        ]);
       }
     },
     pagination: {
@@ -1038,7 +850,20 @@ document.addEventListener('DOMContentLoaded', function(){
   createGrid();
 
   // initial fetch for summary cards
-  fetchAndRenderSummary();
+  refreshPeriodoData();
+  
+  const btnAtualizarCartoes = document.getElementById('btn-recarregar-cartoes');
+  if (btnAtualizarCartoes) {
+    btnAtualizarCartoes.addEventListener('click', () => fetchCartaoCreditoDados(buildMonthRange(current)));
+  }
+  const btnDeletarTodosCartoes = document.getElementById('btn-cartoes-deletar-todos');
+  if (btnDeletarTodosCartoes) {
+    btnDeletarTodosCartoes.addEventListener('click', deletarTodasTransacoesCartao);
+  }
+  const btnMarcarPagoTodos = document.getElementById('btn-cartoes-marcar-pago');
+  if (btnMarcarPagoTodos) {
+    btnMarcarPagoTodos.addEventListener('click', () => atualizarStatusTodosCartoes('Pago'));
+  }
   
   // Adiciona botão Nova Transação acima da grid
   setTimeout(function() {
@@ -1060,7 +885,7 @@ document.addEventListener('DOMContentLoaded', function(){
     if (current.mes === 0) { current.mes = 12; current.ano--; }
     updateLabel();
     reloadGrid();
-    fetchAndRenderSummary();
+    refreshPeriodoData();
   });
 
   document.getElementById('nextMonth').addEventListener('click', function(){
@@ -1068,7 +893,7 @@ document.addEventListener('DOMContentLoaded', function(){
     if (current.mes === 13) { current.mes = 1; current.ano++; }
     updateLabel();
     reloadGrid();
-    fetchAndRenderSummary();
+    refreshPeriodoData();
   });
 
   // month picker change
@@ -1084,7 +909,7 @@ document.addEventListener('DOMContentLoaded', function(){
       current.mes = mes;
       updateLabel();
       reloadGrid();
-      fetchAndRenderSummary();
+      refreshPeriodoData();
     }
   });
 });
@@ -1101,67 +926,29 @@ document.getElementById('grid').addEventListener('click', async function(e){
     const novoStatus = (current.toLowerCase() === 'pago') ? 'Pendente' : 'Pago';
     
     try {
-      // Se for a linha consolidada de cartão de crédito, atualizar todas as transações
-      if (id === 'CARTAO_AGRUPADO') {
-        if (!transacoesCartaoCredito || transacoesCartaoCredito.length === 0) {
-          alert('Nenhuma transação de cartão de crédito encontrada.');
-          return;
-        }
-        
-        // Confirmar ação
-        const totalTransacoes = transacoesCartaoCredito.length;
-        const msg = `Deseja atualizar o status de todas as ${totalTransacoes} transações de cartão de crédito para "${novoStatus}"?`;
-        if (!confirm(msg)) return;
-        
-        // Atualizar todas as transações de cartão em paralelo
-        const promises = transacoesCartaoCredito.map(transacao => 
-          fetchJWT(`${apiUrl}/${transacao.id}`, {
-            method: 'PUT',
-            body: JSON.stringify({ status: novoStatus })
-          })
-        );
-        
-        const results = await Promise.allSettled(promises);
-        
-        // Verificar se todas foram atualizadas com sucesso
-        const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok));
-        
-        if (falhas.length > 0) {
-          alert(`${falhas.length} transação(ões) não puderam ser atualizadas. Recarregando dados...`);
-        } else {
-          alert(`${totalTransacoes} transação(ões) de cartão de crédito atualizadas com sucesso!`);
-        }
-        
-        // Recarregar a grid para refletir as mudanças
-        reloadGrid();
-        fetchAndRenderSummary();
-        
-      } else {
-        // Lógica original para transações individuais
-        const resp = await fetchJWT(`${apiUrl}/${id}`, {
-          method: 'PUT',
-          body: JSON.stringify({ status: novoStatus })
-        });
-        if (!resp.ok) {
-          alert('Erro ao atualizar status.');
-          return;
-        }
-        const updated = await resp.json();
-        const finalStatus = updated.status || novoStatus;
-        statusEl.setAttribute('data-status', finalStatus);
-        statusEl.textContent = finalStatus;
-        if (finalStatus.toLowerCase() === 'pago') {
-          statusEl.style.background = '#198754';
-          statusEl.style.color = '#fff';
-        } else if (finalStatus.toLowerCase() === 'pendente') {
-          statusEl.style.background = '#dc3545';
-          statusEl.style.color = '#fff';
-        } else {
-          statusEl.style.background = '';
-          statusEl.style.color = '';
-        }
-        fetchAndRenderSummary();
+      const resp = await fetchJWT(`${apiUrl}/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: novoStatus })
+      });
+      if (!resp.ok) {
+        alert('Erro ao atualizar status.');
+        return;
       }
+      const updated = await resp.json();
+      const finalStatus = updated.status || novoStatus;
+      statusEl.setAttribute('data-status', finalStatus);
+      statusEl.textContent = finalStatus;
+      if (finalStatus.toLowerCase() === 'pago') {
+        statusEl.style.background = '#198754';
+        statusEl.style.color = '#fff';
+      } else if (finalStatus.toLowerCase() === 'pendente') {
+        statusEl.style.background = '#dc3545';
+        statusEl.style.color = '#fff';
+      } else {
+        statusEl.style.background = '';
+        statusEl.style.color = '';
+      }
+      await refreshPeriodoData();
     } catch (err) {
       alert('Erro de rede ao atualizar status.');
     }
@@ -1185,7 +972,7 @@ document.getElementById('grid').addEventListener('click', async function(e){
       const result = await resp.json();
       alert(result.message || 'Transação excluída com sucesso.');
       reloadGrid();
-      fetchAndRenderSummary();
+  refreshPeriodoData();
     } catch (err) {
       alert('Erro de rede ao excluir transação.');
     }
@@ -1224,8 +1011,8 @@ function buildMonthRange(curr) {
   return { inicio, fim };
 }
 
-async function fetchAndRenderSummary() {
-  const { inicio, fim } = buildMonthRange(current);
+async function fetchAndRenderSummary(range) {
+  const { inicio, fim } = range || buildMonthRange(current);
   try {
   const resp = await fetchJWT(`http://127.0.0.1:5000/api/transacoes/summary?inicio=${inicio}&fim=${fim}`);
     if (!resp.ok) {
@@ -1243,29 +1030,203 @@ async function fetchAndRenderSummary() {
     if (elR) elR.textContent = formatMoeda(data.receitas || 0);
     if (elD) elD.textContent = formatMoeda(data.despesas || 0);
     if (elS) elS.textContent = formatMoeda(data.saldo || 0);
-    // Soma despesas de cartão de crédito
-    if (elC) {
-      // Se o backend não retorna data.transacoes, buscar manualmente
-      let totalCartao = 0;
-      try {
-        const respCartao = await fetch(`http://127.0.0.1:5000/api/transacoes?inicio=${inicio}&fim=${fim}`);
-        if (respCartao.ok) {
-          const dataCartao = await respCartao.json();
-          const arr = dataCartao.items || dataCartao.rows || [];
-          arr.forEach(t => {
-            if (t.tipo === 'Despesa' && t.forma_pagamento_cartao === true) {
-              const v = t && t.parcelado ? Number(t.valor_parcela) : Number(t.valor);
-              totalCartao += v || 0;
-            }
-          });
-        }
-      } catch {}
-      elC.textContent = formatMoeda(totalCartao);
-    }
+    if (elC) elC.textContent = formatMoeda(data.cartao_credito_total || 0);
 
   } catch (err) {
     console.error('Erro fetch summary', err);
   }
+}
+
+async function fetchCartaoCreditoDados(range) {
+  const { inicio, fim } = range || buildMonthRange(current);
+  const container = document.getElementById('cartao-credito-conteudo');
+  try {
+    const resp = await fetchJWT(`${apiUrl}/cartao_credito?inicio=${inicio}&fim=${fim}`);
+    if (!resp.ok) {
+      throw new Error(`Status ${resp.status}`);
+    }
+    const data = await resp.json();
+    transacoesCartaoCredito = data.transacoes || [];
+    cartoesCreditoAgrupados = data.cartoes || [];
+    renderCartaoCreditoPainel();
+  } catch (err) {
+    console.error('Erro ao carregar dados de cartões', err);
+    if (container) {
+      container.innerHTML = '<p class="text-danger mb-0">Erro ao carregar cartões de crédito.</p>';
+    }
+  }
+}
+
+function renderCartaoCreditoPainel() {
+  const container = document.getElementById('cartao-credito-conteudo');
+  if (!container) return;
+
+  if (!cartoesCreditoAgrupados.length) {
+    container.innerHTML = '<p class="text-muted mb-0">Nenhuma compra realizada no cartão neste período.</p>';
+    return;
+  }
+
+  const rows = cartoesCreditoAgrupados.map(card => {
+    const pendentes = Number(card.pendentes || 0);
+    const statusClass = pendentes === 0 ? 'pago' : 'pendente';
+    const statusLabel = pendentes === 0 ? 'Tudo pago' : `${pendentes} pendente(s)`;
+    const ultimaData = card.ultima_data ? formatDate(card.ultima_data) : '-';
+    return `
+      <tr>
+        <td class="fw-semibold">${card.forma_pagamento_nome || 'Cartão'}</td>
+        <td>${card.quantidade || 0}</td>
+        <td>${formatCurrency(card.total || 0)}</td>
+        <td>${ultimaData}</td>
+        <td>
+          <span class="cartao-status-pill ${statusClass}">${statusLabel}</span>
+        </td>
+        <td class="text-end">
+          <div class="btn-group btn-group-sm" role="group">
+            <button class="btn btn-outline-primary" title="Ver detalhes" aria-label="Ver detalhes" onclick="abrirModalCartaoCredito(${card.forma_pagamento_id || 'null'})">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8z"/>
+                <path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/>
+              </svg>
+            </button>
+            <button class="btn btn-outline-success" title="Marcar como pago" aria-label="Marcar como pago" onclick="atualizarStatusCartaoPorForma(${card.forma_pagamento_id}, 'Pago')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M13.485 1.929a.75.75 0 0 1 .086 1.056l-7 8.25a.75.75 0 0 1-1.1.044l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.93 2.93 6.47-7.63a.75.75 0 0 1 1.054-.086z"/>
+              </svg>
+            </button>
+            <button class="btn btn-outline-warning" title="Marcar como pendente" aria-label="Marcar como pendente" onclick="atualizarStatusCartaoPorForma(${card.forma_pagamento_id}, 'Pendente')">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M11.354 4.646a.5.5 0 0 0-.708 0L8 7.293 5.354 4.646a.5.5 0 0 0-.708.708L7.293 8l-2.647 2.646a.5.5 0 0 0 .708.708L8 8.707l2.646 2.647a.5.5 0 0 0 .708-.708L8.707 8l2.647-2.646a.5.5 0 0 0 0-.708z"/>
+              </svg>
+            </button>
+            <button class="btn btn-outline-danger" title="Excluir" aria-label="Excluir" onclick="deletarTransacoesCartaoPorForma(${card.forma_pagamento_id})">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M5.5 5.5A.5.5 0 0 1 6 5h4a.5.5 0 0 1 .5.5v8A1.5 1.5 0 0 1 9 15H7a1.5 1.5 0 0 1-1.5-1.5v-8z"/>
+                <path d="M14.5 3a1 1 0 0 1-1 1H13v9.5A2.5 2.5 0 0 1 10.5 16h-5A2.5 2.5 0 0 1 3 13.5V4H2.5a1 1 0 1 1 0-2H5l.5-1h5l.5 1h2.5a1 1 0 0 1 1 1z"/>
+              </svg>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Cartão</th>
+          <th>Qtd.</th>
+          <th>Total</th>
+          <th>Última compra</th>
+          <th>Status</th>
+          <th class="text-end">Ações</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+async function atualizarStatusCartaoPorForma(formaPagamentoId, novoStatus) {
+  const transacoes = transacoesCartaoCredito.filter(t => t.forma_pagamento_id === formaPagamentoId);
+  if (!transacoes.length) {
+    alert('Nenhuma transação encontrada para este cartão.');
+    return;
+  }
+
+  const nome = transacoes[0].forma_pagamento_nome || 'Cartão de Crédito';
+  if (!confirm(`Atualizar ${transacoes.length} transação(ões) do cartão "${nome}" para "${novoStatus}"?`)) {
+    return;
+  }
+
+  try {
+    const results = await Promise.allSettled(transacoes.map(tx =>
+      fetchJWT(`${apiUrl}/${tx.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: novoStatus })
+      })
+    ));
+
+    const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
+    if (falhas > 0) {
+      alert(`${falhas} transação(ões) não puderam ser atualizadas.`);
+    } else {
+      alert('Status atualizado com sucesso.');
+    }
+  } catch (err) {
+    console.error('Erro ao atualizar status do cartão', err);
+    alert('Erro ao atualizar status.');
+  }
+
+  reloadGrid();
+  await refreshPeriodoData();
+}
+
+async function deletarTransacoesCartaoPorForma(formaPagamentoId) {
+  const transacoes = transacoesCartaoCredito.filter(t => t.forma_pagamento_id === formaPagamentoId);
+  if (!transacoes.length) {
+    alert('Nenhuma transação encontrada para este cartão.');
+    return;
+  }
+
+  const nome = transacoes[0].forma_pagamento_nome || 'Cartão de Crédito';
+  const totalValor = transacoes.reduce((sum, t) => sum + (t.parcelado ? Number(t.valor_parcela) : Number(t.valor) || 0), 0);
+  const formatMoeda = totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const msg = `Excluir ${transacoes.length} transação(ões) do cartão "${nome}" totalizando ${formatMoeda}? Esta ação é irreversível.`;
+  if (!confirm(msg)) return;
+
+  try {
+    const results = await Promise.allSettled(transacoes.map(tx =>
+      fetchJWT(`${apiUrl}/${tx.id}`, { method: 'DELETE' })
+    ));
+    const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
+    if (falhas > 0) {
+      alert(`${falhas} transação(ões) não puderam ser excluídas.`);
+    } else {
+      alert('Transações excluídas com sucesso.');
+    }
+  } catch (err) {
+    console.error('Erro ao excluir transações', err);
+    alert('Erro ao excluir transações.');
+  }
+
+  reloadGrid();
+  await refreshPeriodoData();
+}
+
+async function atualizarStatusTodosCartoes(novoStatus) {
+  if (!transacoesCartaoCredito.length) {
+    alert('Nenhuma transação de cartão encontrada.');
+    return;
+  }
+  if (!confirm(`Atualizar ${transacoesCartaoCredito.length} transação(ões) de cartão para "${novoStatus}"?`)) {
+    return;
+  }
+  try {
+    const results = await Promise.allSettled(transacoesCartaoCredito.map(tx =>
+      fetchJWT(`${apiUrl}/${tx.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: novoStatus })
+      })
+    ));
+    const falhas = results.filter(r => r.status === 'rejected' || (r.value && !r.value.ok)).length;
+    if (falhas > 0) {
+      alert(`${falhas} transação(ões) não puderam ser atualizadas.`);
+    } else {
+      alert('Status atualizado para todas as transações de cartão.');
+    }
+  } catch (err) {
+    console.error('Erro ao atualizar status dos cartões', err);
+    alert('Erro ao atualizar status dos cartões.');
+  }
+  reloadGrid();
+  await refreshPeriodoData();
+}
+
+async function refreshPeriodoData() {
+  const range = buildMonthRange(current);
+  await fetchAndRenderSummary(range);
+  await fetchCartaoCreditoDados(range);
 }
 
 // Função para requisições fetch protegidas com token JWT
