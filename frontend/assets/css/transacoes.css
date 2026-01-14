@@ -103,6 +103,59 @@
   flex-wrap: wrap;
 }
 
+/* --- Modal de confirmação genérico --- */
+
+.confirm-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  padding: 1rem;
+}
+
+.confirm-modal-overlay.show {
+  opacity: 1;
+}
+
+.confirm-modal-card {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 25px 60px rgba(15, 23, 42, 0.35);
+  width: min(420px, 100%);
+  overflow: hidden;
+  transform: translateY(10px);
+  transition: transform 0.2s ease;
+}
+
+.confirm-modal-overlay.show .confirm-modal-card {
+  transform: translateY(0);
+}
+
+.confirm-modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.confirm-modal-body {
+  padding: 18px 20px;
+  font-size: 0.95rem;
+  color: #334155;
+  white-space: pre-line;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 14px 20px 18px;
+  background: #f8fafc;
+}
+
 @media (max-width: 768px) {
   .modal-transacao-form {
     min-width: auto;

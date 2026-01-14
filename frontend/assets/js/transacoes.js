@@ -403,6 +403,64 @@ let grid = null;
 let transacoesCartaoCredito = [];
 let cartoesCreditoAgrupados = [];
 
+function showConfirmationModal(options = {}) {
+  const {
+    title = 'Confirmação',
+    message = 'Deseja continuar?',
+    confirmText = 'Confirmar',
+    cancelText = 'Cancelar',
+    confirmVariant = 'primary'
+  } = options;
+
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-modal-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-modal-card">
+        <div class="confirm-modal-header d-flex align-items-center justify-content-between">
+          <h5 class="mb-0">${title}</h5>
+          <button type="button" class="btn-close" aria-label="Fechar"></button>
+        </div>
+        <div class="confirm-modal-body"></div>
+        <div class="confirm-modal-actions">
+          <button type="button" class="btn btn-outline-secondary" data-action="cancel">${cancelText}</button>
+          <button type="button" class="btn btn-${confirmVariant}" data-action="confirm">${confirmText}</button>
+        </div>
+      </div>`;
+
+    const bodyEl = overlay.querySelector('.confirm-modal-body');
+    if (bodyEl) {
+      bodyEl.textContent = message;
+    }
+
+    let resolved = false;
+    const cleanup = (result) => {
+      if (resolved) return;
+      resolved = true;
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.remove(), 200);
+      resolve(result);
+    };
+
+    const confirmBtn = overlay.querySelector('[data-action="confirm"]');
+    const cancelBtn = overlay.querySelector('[data-action="cancel"]');
+    const closeBtn = overlay.querySelector('.btn-close');
+
+    if (confirmBtn) confirmBtn.addEventListener('click', () => cleanup(true));
+    if (cancelBtn) cancelBtn.addEventListener('click', () => cleanup(false));
+    if (closeBtn) closeBtn.addEventListener('click', () => cleanup(false));
+
+    overlay.addEventListener('click', (evt) => {
+      if (evt.target === overlay) {
+        cleanup(false);
+      }
+    });
+
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('show'));
+  });
+}
+
 function createGrid(){
   grid = new gridjs.Grid({
 
@@ -719,7 +777,14 @@ window.abrirModalCartaoCredito = function(formaPagamentoId = null) {
 
       if (deleteBtn) {
         const tid = deleteBtn.getAttribute('data-id');
-        if (!tid || !confirm('Tem certeza que deseja excluir esta transação?')) return;
+        if (!tid) return;
+        const confirmed = await showConfirmationModal({
+          title: 'Excluir transação',
+          message: 'Tem certeza que deseja excluir esta transação?',
+          confirmText: 'Excluir',
+          confirmVariant: 'danger'
+        });
+        if (!confirmed) return;
 
         try {
           const resp = await fetchJWT(`${apiUrl}/${tid}`, { method: 'DELETE' });
@@ -769,12 +834,24 @@ window.deletarTodasTransacoesCartao = async function() {
   
   const msg = `⚠️ ATENÇÃO: Você está prestes a DELETAR ${totalTransacoes} transação(ões) de cartão de crédito no valor total de ${valorFormatado}.\n\nEsta ação NÃO pode ser desfeita!\n\nDeseja realmente continuar?`;
   
-  if (!confirm(msg)) {
+  const primeiraConfirmacao = await showConfirmationModal({
+    title: 'Excluir transações de cartão',
+    message: msg,
+    confirmText: 'Sim, excluir tudo',
+    confirmVariant: 'danger'
+  });
+  if (!primeiraConfirmacao) {
     return;
   }
   
   // Confirmação dupla para segurança
-  if (!confirm('Tem certeza ABSOLUTA? Esta é sua última chance de cancelar.')) {
+  const segundaConfirmacao = await showConfirmationModal({
+    title: 'Confirmação final',
+    message: 'Tem certeza ABSOLUTA? Esta é sua última chance de cancelar.',
+    confirmText: 'Excluir definitivamente',
+    confirmVariant: 'danger'
+  });
+  if (!segundaConfirmacao) {
     return;
   }
   
@@ -961,7 +1038,13 @@ document.getElementById('grid').addEventListener('click', async function(e){
   if (deleteBtn) {
     const id = deleteBtn.getAttribute('data-id');
     if (!id) return;
-    if (!confirm('Deseja realmente excluir esta transação? Esta ação não pode ser desfeita.')) return;
+    const confirmed = await showConfirmationModal({
+      title: 'Excluir transação',
+      message: 'Deseja realmente excluir esta transação? Esta ação não pode ser desfeita.',
+      confirmText: 'Excluir',
+      confirmVariant: 'danger'
+    });
+    if (!confirmed) return;
     try {
       const resp = await fetchJWT(`${apiUrl}/${id}`, {
         method: 'DELETE'
@@ -1136,7 +1219,13 @@ async function atualizarStatusCartaoPorForma(formaPagamentoId, novoStatus) {
   }
 
   const nome = transacoes[0].forma_pagamento_nome || 'Cartão de Crédito';
-  if (!confirm(`Atualizar ${transacoes.length} transação(ões) do cartão "${nome}" para "${novoStatus}"?`)) {
+  const confirmed = await showConfirmationModal({
+    title: 'Atualizar status',
+    message: `Atualizar ${transacoes.length} transação(ões) do cartão "${nome}" para "${novoStatus}"?`,
+    confirmText: 'Atualizar',
+    confirmVariant: 'primary'
+  });
+  if (!confirmed) {
     return;
   }
 
@@ -1174,7 +1263,13 @@ async function deletarTransacoesCartaoPorForma(formaPagamentoId) {
   const totalValor = transacoes.reduce((sum, t) => sum + (t.parcelado ? Number(t.valor_parcela) : Number(t.valor) || 0), 0);
   const formatMoeda = totalValor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   const msg = `Excluir ${transacoes.length} transação(ões) do cartão "${nome}" totalizando ${formatMoeda}? Esta ação é irreversível.`;
-  if (!confirm(msg)) return;
+  const confirmed = await showConfirmationModal({
+    title: 'Excluir transações do cartão',
+    message: msg,
+    confirmText: 'Excluir',
+    confirmVariant: 'danger'
+  });
+  if (!confirmed) return;
 
   try {
     const results = await Promise.allSettled(transacoes.map(tx =>
@@ -1200,7 +1295,13 @@ async function atualizarStatusTodosCartoes(novoStatus) {
     alert('Nenhuma transação de cartão encontrada.');
     return;
   }
-  if (!confirm(`Atualizar ${transacoesCartaoCredito.length} transação(ões) de cartão para "${novoStatus}"?`)) {
+  const confirmed = await showConfirmationModal({
+    title: 'Atualizar todos os cartões',
+    message: `Atualizar ${transacoesCartaoCredito.length} transação(ões) de cartão para "${novoStatus}"?`,
+    confirmText: 'Atualizar',
+    confirmVariant: 'primary'
+  });
+  if (!confirmed) {
     return;
   }
   try {
