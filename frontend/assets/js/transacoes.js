@@ -332,6 +332,8 @@ window.abrirModalEdicao = function(dados) {
 // Updated to use absolute API URL because frontend is served separately (CORS-enabled backend).
 
 const apiUrl = 'http://127.0.0.1:5000/api/transacoes';
+const GRID_PAGE_LIMIT = 30;
+const MODAL_GRID_PAGE_LIMIT = 20;
 
 // Helpers
 function parseDateOnly(dateStr) {
@@ -488,7 +490,7 @@ function createGrid(){
 
     // server.url must be a string (base). Use pagination.server.url to build page requests.
     server: {
-      url: buildUrl(apiUrl, 1, 10),
+      url: buildUrl(apiUrl, 1, GRID_PAGE_LIMIT),
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
         const items = data.items || data.rows || [];
@@ -506,12 +508,12 @@ function createGrid(){
     },
     pagination: {
       enabled: true,
-      limit: 10,
+      limit: GRID_PAGE_LIMIT,
       server: {
         // Grid.js will call this to fetch specific pages; buildUrl adds mes/ano and pagination
         url: (prev, page, limit) => {
           const p = page || 1;
-          const per = limit || 10;
+          const per = limit || GRID_PAGE_LIMIT;
           return buildUrl(apiUrl, p, per);
         }
       }
@@ -651,7 +653,7 @@ window.abrirModalCartaoCredito = function(formaPagamentoId = null) {
     sort: true,
     pagination: {
       enabled: true,
-      limit: 10
+      limit: MODAL_GRID_PAGE_LIMIT
     },
     search: false,
     language: {
@@ -812,7 +814,7 @@ function reloadGrid(){
   // update server config to include current month/year, then force render
   grid.updateConfig({
     server: {
-      url: buildUrl(apiUrl, 1, 10),
+      url: buildUrl(apiUrl, 1, GRID_PAGE_LIMIT),
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
         const items = data.items || data.rows || [];
@@ -830,11 +832,11 @@ function reloadGrid(){
     },
     pagination: {
       enabled: true,
-      limit: 10,
+      limit: GRID_PAGE_LIMIT,
       server: {
         url: (prev, page, limit) => {
           const p = page || 1;
-          const per = limit || 10;
+          const per = limit || GRID_PAGE_LIMIT;
           return buildUrl(apiUrl, p, per);
         }
       }
@@ -871,9 +873,8 @@ document.addEventListener('DOMContentLoaded', function(){
     if (gridContainer && !document.getElementById('btn-nova-transacao')) {
       const btn = document.createElement('button');
       btn.textContent = 'Nova Transação';
-      btn.className = 'btn btn-success mb-3';
+      btn.className = 'btn btn-success btn-sm mb-2';
       btn.id = 'btn-nova-transacao';
-      btn.style.float = 'right';
       btn.onclick = function(){ window.abrirModalEdicao(null); };
       gridContainer.parentNode.insertBefore(btn, gridContainer);
     }

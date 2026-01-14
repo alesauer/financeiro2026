@@ -168,6 +168,82 @@
   font-size: 1rem;
 }
 
+/* --- Grid principal e modal mais compactos --- */
+
+#grid .gridjs-container,
+#grid-cartao-credito .gridjs-container {
+  font-size: 0.85rem;
+}
+
+#grid .gridjs-table th,
+#grid .gridjs-table td,
+#grid-cartao-credito .gridjs-table th,
+#grid-cartao-credito .gridjs-table td {
+  padding: 4px 6px;
+  line-height: 1.15;
+}
+
+#grid .gridjs-table th,
+#grid-cartao-credito .gridjs-table th {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.72rem;
+  color: #475569;
+}
+
+#grid .gridjs-table td,
+#grid-cartao-credito .gridjs-table td {
+  font-size: 0.8rem;
+}
+
+#grid .gridjs-table .btn,
+#grid-cartao-credito .gridjs-table .btn,
+#cartao-credito-panel .btn {
+  padding: 2px 6px;
+  font-size: 0.75rem;
+}
+
+#grid .status-badge {
+  padding: 2px 6px !important;
+  font-size: 0.72rem;
+}
+
+#grid .gridjs-pagination,
+#grid-cartao-credito .gridjs-pagination {
+  margin-top: 4px;
+}
+
+#btn-nova-transacao {
+  float: right;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+  font-weight: 600;
+}
+
+#btn-nova-transacao i {
+  margin-right: 6px;
+}
+
+@media (max-width: 768px) {
+  #btn-nova-transacao {
+    float: none;
+    width: 100%;
+  }
+}
+
+/* --- Tabela do painel de cartões --- */
+
+#cartao-credito-panel table.table {
+  font-size: 0.82rem;
+}
+
+#cartao-credito-panel table.table th,
+#cartao-credito-panel table.table td {
+  padding: 4px 6px;
+}
+
 /* --- Summary cards compaction --- */
 
 #cards-container {
