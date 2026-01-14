@@ -516,7 +516,7 @@ function createGrid(){
         }
       }
     },
-    search: true,
+  search: false,
     sort: true,
     width: '100%'
   });

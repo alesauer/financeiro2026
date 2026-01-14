@@ -160,51 +160,29 @@
   color: #b02a37;
 }
 
-/* --- Grid compaction --- */
-
-#grid .gridjs-table th,
-#grid .gridjs-table td {
-  padding-top: 6px;
-  padding-bottom: 6px;
-  line-height: 1.2;
-}
-
-#grid .gridjs-container {
-  font-size: 0.92rem;
-}
-
-.gridjs-pagination {
-  margin-top: 8px;
-}
-
-#cartao-credito-panel table.table {
-  font-size: 0.92rem;
-}
-
-#cartao-credito-panel table.table td,
-#cartao-credito-panel table.table th {
-  padding-top: 6px;
-  padding-bottom: 6px;
-}
-
-#cartao-credito-panel .btn-group .btn {
-  padding: 4px 6px;
-}
-
 /* --- Summary cards compaction --- */
 
+#cards-container {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
 #cards-container .card {
-  border-radius: 10px;
-  overflow: hidden;
+  border-radius: 12px;
+  min-height: 92px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
 }
 
 #cards-container .card .card-header {
   padding: 6px 12px;
   font-size: 0.9rem;
+  letter-spacing: 0.02em;
 }
 
 #cards-container .card .card-body {
   padding: 10px 12px;
+  display: flex;
+  align-items: center;
 }
 
 #cards-container .card .card-title {
@@ -212,8 +190,12 @@
   margin: 0;
 }
 
-@media (min-width: 992px) {
-  #cards-container .row > [class*='col-'] {
-    margin-bottom: 0.5rem;
+@media (max-width: 576px) {
+  #cards-container .card {
+    min-height: auto;
+  }
+
+  #cards-container .card .card-body {
+    padding: 8px 10px;
   }
 }

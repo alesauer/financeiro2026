@@ -2,12 +2,12 @@
 .navbar-top {
   background-color: #ffffff !important;
   border-bottom: 1px solid #e0e0e0;
-  padding: 0.5rem 1rem;
+  padding: 0.35rem 0.85rem;
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 48px;
   z-index: 1030;
   box-shadow: 0 2px 4px rgba(0,0,0,0.08);
 }
@@ -15,12 +15,12 @@
 .navbar-top .navbar-brand {
   color: #333 !important;
   font-weight: 600;
-  font-size: 1.2rem;
+  font-size: 1.05rem;
 }
 
 .sidebar-toggle {
   color: #333;
-  padding: 0.25rem 0.5rem;
+  padding: 0.15rem 0.4rem;
   text-decoration: none;
 }
 
@@ -31,7 +31,7 @@
 /* ========== SIDEBAR LATERAL ========== */
 .sidebar {
   position: fixed;
-  top: 60px;
+  top: 48px;
   left: 0;
   bottom: 0;
   width: 250px;
@@ -139,7 +139,7 @@
 
 /* ========== AJUSTE DO CONTEÚDO PRINCIPAL ========== */
 body {
-  padding-top: 60px;
+  padding-top: 48px;
   transition: padding-left 0.3s ease;
 }
 
@@ -181,7 +181,7 @@ body.no-sidebar {
   body.sidebar-open::before {
     content: '';
     position: fixed;
-    top: 60px;
+    top: 48px;
     left: 0;
     right: 0;
     bottom: 0;
