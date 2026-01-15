@@ -42,7 +42,7 @@
   <script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
   <script>
     // Carrega categorias do backend
-    let categoriasBanco = [];
+  let categoriasBanco = [];
     let validos = [];
     let gridInstance = null;
     async function carregarCategoriasBanco() {
@@ -54,6 +54,49 @@
       } catch {}
     }
     carregarCategoriasBanco();
+
+    function iniciarAnimacaoProgresso(progressBar) {
+      let percent = 0;
+      progressBar.style.width = '0%';
+      progressBar.innerText = '0%';
+      const interval = setInterval(() => {
+        if (percent >= 90) {
+          return;
+        }
+        percent += 5;
+        progressBar.style.width = percent + '%';
+        progressBar.innerText = percent + '%';
+      }, 200);
+      return () => clearInterval(interval);
+    }
+
+    async function classificarDescricoesLote(descricoes, progressBar) {
+      if (!descricoes.length) {
+        return [];
+      }
+      const stopAnimacao = iniciarAnimacaoProgresso(progressBar);
+      try {
+        const resp = await fetch('http://127.0.0.1:5000/api/ia/classificar_categoria', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ descricoes })
+        });
+        if (!resp.ok) {
+          throw new Error('Falha ao classificar categorias');
+        }
+        const data = await resp.json();
+        const categoriasResp = Array.isArray(data.categorias) ? data.categorias : [];
+        return descricoes.map((_, idx) => categoriasResp[idx] || 'Indefinida');
+      } catch (error) {
+        console.error('Erro ao classificar categorias:', error);
+        alert('Não foi possível classificar automaticamente. Todas as categorias foram marcadas como Indefinida.');
+        return descricoes.map(() => 'Indefinida');
+      } finally {
+        stopAnimacao();
+        progressBar.style.width = '100%';
+        progressBar.innerText = '100%';
+      }
+    }
 
     document.addEventListener('change', function(event) {
       if (!event.target.classList.contains('categoria-select')) {
@@ -85,33 +128,11 @@
           }
           // Extrai descrições para classificação
           const descricoes = results.data.map(row => row.title);
-          let categorias = [];
           // Exibe barra de progresso
           const progressContainer = document.getElementById('progress-container');
           const progressBar = document.getElementById('progress-bar');
           progressContainer.style.display = 'block';
-          progressBar.style.width = '0%';
-          progressBar.innerText = '0%';
-          categorias = [];
-          for (let i = 0; i < descricoes.length; i++) {
-            let categoria = 'Indefinida';
-            try {
-              const resp = await fetch('http://127.0.0.1:5000/api/ia/classificar_categoria', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ descricoes: [descricoes[i]] })
-              });
-              if (resp.ok) {
-                const data = await resp.json();
-                categoria = data.categorias && data.categorias[0] ? data.categorias[0] : 'Indefinida';
-              }
-            } catch {}
-            categorias.push(categoria);
-            // Atualiza barra de progresso
-            const percent = Math.round(((i + 1) / descricoes.length) * 100);
-            progressBar.style.width = percent + '%';
-            progressBar.innerText = percent + '%';
-          }
+          const categorias = await classificarDescricoesLote(descricoes, progressBar);
           // Ao finalizar, exibe alert-success único
           alertsDiv.innerHTML = '';
           const alert = document.createElement('div');

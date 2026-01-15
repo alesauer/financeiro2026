@@ -13,6 +13,22 @@ class Categoria(db.Model):
     def __repr__(self):
         return f"<Categoria {self.nome} ({self.tipo})>"
 
+
+class CategoriaAlias(db.Model):
+    __tablename__ = "categorias_alias"
+
+    id = db.Column(db.Integer, primary_key=True)
+    descricao_normalizada = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    descricao_exemplo = db.Column(db.String(255), nullable=False)
+    categoria_id = db.Column(db.Integer, db.ForeignKey("categorias.id", ondelete="CASCADE"), nullable=False)
+    ocorrencias = db.Column(db.Integer, default=1, nullable=False)
+    atualizado_em = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    categoria = db.relationship("Categoria", lazy=True)
+
+    def __repr__(self):
+        return f"<CategoriaAlias {self.descricao_normalizada} -> {self.categoria_id}>"
+
 class FormaPagamento(db.Model):
     __tablename__ = "formas_pagamento"
 
