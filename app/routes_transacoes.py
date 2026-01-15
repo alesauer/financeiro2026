@@ -434,6 +434,121 @@ def resumo_assinaturas_anual():
     }), 200
 
 
+@bp_transacoes.route("/parcelamentos/summary", methods=["GET"])
+@jwt_required()
+def resumo_parcelamentos():
+    inicio_str = request.args.get("inicio")
+    fim_str = request.args.get("fim")
+
+    if not inicio_str or not fim_str:
+        return jsonify({"error": "Parâmetros 'inicio' e 'fim' são obrigatórios (YYYY-MM-DD)."}), 400
+
+    try:
+        inicio_dt = datetime.strptime(inicio_str, "%Y-%m-%d").date()
+        fim_dt = datetime.strptime(fim_str, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+
+    base_filters = [
+        Transacao.recorrente.is_(True),
+        Transacao.recorrencia_tipo == "Parcelamento",
+        Transacao.tipo == "Despesa",
+        Transacao.parcelado.is_(True),
+        Transacao.data_transacao.between(inicio_dt, fim_dt)
+    ]
+
+    valor_case = case(
+        (Transacao.parcelado == True, Transacao.valor_parcela),
+        else_=Transacao.valor
+    )
+
+    identificador = func.coalesce(
+        Transacao.parcelamento_id,
+        func.concat("TX-", Transacao.id)
+    )
+
+    vigentes = db.session.query(
+        func.count(func.distinct(identificador))
+    ).filter(*base_filters).scalar() or 0
+
+    total_valor = db.session.query(
+        func.coalesce(func.sum(valor_case), 0)
+    ).filter(*base_filters).scalar() or 0
+
+    encerrando_filters = base_filters + [Transacao.parcela_atual == Transacao.total_parcelas]
+    encerrando = db.session.query(
+        func.count(func.distinct(identificador))
+    ).filter(*encerrando_filters).scalar() or 0
+
+    return jsonify({
+        "vigentes": int(vigentes or 0),
+        "valor_total": float(total_valor or 0),
+        "encerrando": int(encerrando or 0)
+    }), 200
+
+
+@bp_transacoes.route("/parcelamentos/annual", methods=["GET"])
+@jwt_required()
+def resumo_parcelamentos_anual():
+    ano = request.args.get("ano", type=int)
+    if not ano:
+        ano = datetime.utcnow().year
+
+    inicio_dt = date(ano, 1, 1)
+    fim_dt = date(ano, 12, 31)
+
+    valor_case = case(
+        (Transacao.parcelado == True, Transacao.valor_parcela),
+        else_=Transacao.valor
+    )
+
+    filtros = [
+        Transacao.recorrente.is_(True),
+        Transacao.recorrencia_tipo == "Parcelamento",
+        Transacao.tipo == "Despesa",
+        Transacao.parcelado.is_(True),
+        Transacao.data_transacao.between(inicio_dt, fim_dt)
+    ]
+
+    transacoes = Transacao.query.filter(*filtros).order_by(Transacao.descricao.asc()).all()
+
+    mensal_totais = {str(m): 0.0 for m in range(1, 13)}
+    linhas_dict = {}
+
+    for tx in transacoes:
+        if not tx.data_transacao:
+            continue
+        mes_idx = str(tx.data_transacao.month)
+        valor = tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else tx.valor
+        valor_float = float(valor or 0)
+        mensal_totais[mes_idx] += valor_float
+
+        chave = tx.parcelamento_id or f"Parcelamento #{tx.id}"
+        descricao = tx.descricao or "Parcelamento"
+        if tx.total_parcelas:
+            descricao = f"{descricao} ({tx.total_parcelas}x)"
+
+        if chave not in linhas_dict:
+            linhas_dict[chave] = {
+                "descricao": descricao,
+                "categoria": tx.categoria.nome if tx.categoria else None,
+                "mensal": {str(m): 0.0 for m in range(1, 13)},
+                "total": 0.0
+            }
+        linhas_dict[chave]["mensal"][mes_idx] += valor_float
+        linhas_dict[chave]["total"] += valor_float
+
+    linhas = sorted(linhas_dict.values(), key=lambda item: item["descricao"].lower())
+    total_ano = sum(mensal_totais.values())
+
+    return jsonify({
+        "ano": ano,
+        "linhas": linhas,
+        "mensal": mensal_totais,
+        "total": total_ano
+    }), 200
+
+
 @bp_transacoes.route("/cartao_credito", methods=["GET"])
 @jwt_required()
 def listar_cartao_credito():
