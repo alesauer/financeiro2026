@@ -38,6 +38,8 @@ class FormaPagamento(db.Model):
     tipo = db.Column(db.String(30), nullable=False)
     # Indica se este método corresponde a um cartão de crédito (útil para relatórios e regras específicas)
     cartao_credito = db.Column(db.Boolean, default=False, nullable=False)
+    dia_fechamento = db.Column(db.Integer, nullable=True)
+    dia_vencimento = db.Column(db.Integer, nullable=True)
     ativo = db.Column(db.Boolean, default=True, nullable=False)
 
     def __repr__(self):
@@ -86,6 +88,7 @@ class Transacao(db.Model):
     parcelamento_id = db.Column(db.String(36), nullable=True)
 
     observacoes = db.Column(db.Text, nullable=True)
+    competencia_fatura = db.Column(db.Date, nullable=True)
 
     def __repr__(self):
         return f"<Transacao {self.tipo} - {self.descricao} R${self.valor}>"

@@ -8,6 +8,7 @@ from sqlalchemy import exc, func, case
 from app.models import FormaPagamento
 from flask_jwt_extended import jwt_required
 import uuid
+from services.fatura_service import aplicar_competencia_transacao
 
 bp_transacoes = Blueprint("transacoes", __name__)
 schema = TransacaoSchema()
@@ -30,6 +31,9 @@ def criar():
     frequencia = validado.get('frequencia')
     data_fim = validado.get('data_fim')
     data_inicial = validado.get('data_transacao')
+    forma_pagamento = None
+    if validado.get('forma_pagamento_id'):
+        forma_pagamento = FormaPagamento.query.get(validado['forma_pagamento_id'])
 
     # Se for recorrente com tipo Assinatura e tiver frequência e data_fim, gera múltiplas transações
     if recorrente and tipo_rec == "Assinatura" and frequencia and data_fim and data_inicial:
@@ -43,6 +47,7 @@ def criar():
             nova = Transacao(**dados_nova)
             if nova.parcelado and nova.total_parcelas:
                 nova.valor_parcela = nova.valor / nova.total_parcelas
+            aplicar_competencia_transacao(nova, forma_pagamento)
             transacoes_geradas.append(nova)
             # Avança para próxima recorrência
             if frequencia == "Mensal":
@@ -76,6 +81,7 @@ def criar():
             dados_parc['parcelamento_id'] = grupo_id
             nova = Transacao(**dados_parc)
             transacoes_geradas.append(nova)
+            aplicar_competencia_transacao(nova, forma_pagamento)
             # incrementa mês a mês
             data_atual += relativedelta(months=1)
         db.session.add_all(transacoes_geradas)
@@ -85,6 +91,7 @@ def criar():
         transacao = Transacao(**validado)
         if transacao.parcelado and transacao.total_parcelas:
             transacao.valor_parcela = transacao.valor / transacao.total_parcelas
+        aplicar_competencia_transacao(transacao, forma_pagamento)
         db.session.add(transacao)
         db.session.commit()
         return jsonify(schema.dump(transacao)), 201
@@ -209,6 +216,13 @@ def atualizar(id):
 
     if transacao.parcelado and transacao.total_parcelas:
         transacao.valor_parcela = transacao.valor / transacao.total_parcelas
+
+    forma_pagamento = transacao.forma_pagamento
+    if 'forma_pagamento_id' in validado:
+        forma_pagamento = None
+        if transacao.forma_pagamento_id:
+            forma_pagamento = FormaPagamento.query.get(transacao.forma_pagamento_id)
+    aplicar_competencia_transacao(transacao, forma_pagamento)
 
     db.session.commit()
     return jsonify(schema.dump(transacao)), 200

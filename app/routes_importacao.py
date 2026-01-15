@@ -4,6 +4,7 @@ from app.models import Transacao, Categoria, FormaPagamento, CategoriaAlias
 from app.schemas import TransacaoSchema
 from datetime import datetime
 from app.utils.texto import normalizar_texto
+from services.fatura_service import aplicar_competencia_transacao
 
 bp_importacao = Blueprint("importacao", __name__)
 
@@ -36,6 +37,7 @@ def importar_transacoes():
                 forma_pagamento_id=fp.id,
                 status="Pago"
             )
+            aplicar_competencia_transacao(transacao, fp)
             db.session.add(transacao)
             chave_normalizada = normalizar_texto(descricao_original)
             if chave_normalizada:

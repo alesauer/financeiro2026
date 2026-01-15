@@ -23,6 +23,8 @@
             <th>Nome</th>
             <th>Tipo</th>
             <th>Cartão Crédito</th>
+            <th>Fechamento</th>
+            <th>Vencimento</th>
             <th>Ativo</th>
             <th>Ações</th>
           </tr>
@@ -59,6 +61,16 @@
             <div class="form-check mb-2">
               <input class="form-check-input" type="checkbox" id="formaCartaoCredito">
               <label class="form-check-label" for="formaCartaoCredito">Cartão de Crédito</label>
+            </div>
+            <div class="row g-2">
+              <div class="col-sm-6">
+                <label for="formaDiaFechamento" class="form-label">Dia de Fechamento (1-31)</label>
+                <input type="number" class="form-control" id="formaDiaFechamento" min="1" max="31" placeholder="Ex.: 10">
+              </div>
+              <div class="col-sm-6">
+                <label for="formaDiaVencimento" class="form-label">Dia de Vencimento (opcional)</label>
+                <input type="number" class="form-control" id="formaDiaVencimento" min="1" max="31" placeholder="Ex.: 20">
+              </div>
             </div>
             <div class="form-check mb-2">
               <input class="form-check-input" type="checkbox" id="formaAtivo" checked>

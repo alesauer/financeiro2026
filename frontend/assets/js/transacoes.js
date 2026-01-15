@@ -474,6 +474,12 @@ function createGrid(){
   { id: 'descricao', name: 'Descrição', sort: true },
   { id: 'categoria_nome', name: 'Categoria', sort: true },
   { id: 'forma_pagamento_nome', name: 'Forma Pagamento', sort: true },
+  {
+    id: 'competencia_fatura',
+    name: 'Competência Fatura',
+    sort: true,
+    formatter: (cell) => cell ? formatDate(cell) : '-'
+  },
       {
         id: 'status',
         name: 'Status',

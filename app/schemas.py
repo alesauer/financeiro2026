@@ -72,6 +72,7 @@ class TransacaoSchema(Schema):
     parcelamento_id = fields.Str(dump_only=True)
 
     observacoes = fields.Str(allow_none=True)
+    competencia_fatura = fields.Date(dump_only=True)
 
     # -------------------
     # Validações customizadas

@@ -1,9 +1,16 @@
 // formas_pagamento.js - CRUD semelhante a categorias
 
+let formasCache = [];
+
 document.addEventListener('DOMContentLoaded', function () {
   carregarFormas();
   document.getElementById('btnAddForma').addEventListener('click', abrirModalAdicionar);
   document.getElementById('saveFormaBtn').addEventListener('click', salvarForma);
+  const cartaoCheckbox = document.getElementById('formaCartaoCredito');
+  if (cartaoCheckbox) {
+    cartaoCheckbox.addEventListener('change', toggleCamposCartao);
+  }
+  toggleCamposCartao();
 });
 
 function fetchJWT(url, options = {}) {
@@ -30,7 +37,10 @@ function carregarFormas() {
       }
       return res.json();
     })
-    .then(data => preencherTabela(data))
+    .then(data => {
+      formasCache = Array.isArray(data) ? data : [];
+      preencherTabela(formasCache);
+    })
     .catch(err => mostrarAlerta('Erro ao carregar formas de pagamento: ' + err.message, 'danger'));
 }
 
@@ -39,15 +49,19 @@ function preencherTabela(formas) {
   tbody.innerHTML = '';
   formas.forEach(fp => {
     const tr = document.createElement('tr');
+    const fechamento = fp.dia_fechamento ? `Dia ${fp.dia_fechamento}` : '-';
+    const vencimento = fp.dia_vencimento ? `Dia ${fp.dia_vencimento}` : '-';
     tr.innerHTML = `
       <td>${fp.id}</td>
       <td>${fp.nome}</td>
       <td>${fp.tipo}</td>
       <td>${fp.cartao_credito ? 'Sim' : 'Não'}</td>
+      <td>${fechamento}</td>
+      <td>${vencimento}</td>
       <td>${fp.ativo ? 'Sim' : 'Não'}</td>
       <td class="text-nowrap">
         <div class="btn-group" role="group" aria-label="Ações">
-          <button class="btn btn-sm btn-warning" onclick="abrirModalEditar(${fp.id}, '${escapeHtml(fp.nome)}', '${escapeHtml(fp.tipo)}', ${fp.cartao_credito}, ${fp.ativo})">Editar</button>
+          <button class="btn btn-sm btn-warning" onclick="abrirModalEditar(${fp.id})">Editar</button>
           <button class="btn btn-sm btn-danger ms-1" onclick="excluirForma(${fp.id})">Excluir</button>
         </div>
       </td>
@@ -62,19 +76,30 @@ function abrirModalAdicionar() {
   document.getElementById('formaNome').value = '';
   document.getElementById('formaTipo').value = '';
   document.getElementById('formaCartaoCredito').checked = false;
+  document.getElementById('formaDiaFechamento').value = '';
+  document.getElementById('formaDiaVencimento').value = '';
   document.getElementById('formaAtivo').checked = true;
   document.getElementById('modalMode').value = 'add';
+  toggleCamposCartao();
   new bootstrap.Modal(document.getElementById('formaModal')).show();
 }
 
-function abrirModalEditar(id, nome, tipo, cartao_credito, ativo) {
+function abrirModalEditar(id) {
+  const forma = formasCache.find(f => f.id === id);
+  if (!forma) {
+    mostrarAlerta('Não foi possível carregar os dados da forma selecionada.', 'danger');
+    return;
+  }
   document.getElementById('formaModalLabel').textContent = 'Editar Forma';
   document.getElementById('formaId').value = id;
-  document.getElementById('formaNome').value = nome;
-  document.getElementById('formaTipo').value = tipo;
-  document.getElementById('formaCartaoCredito').checked = !!cartao_credito;
-  document.getElementById('formaAtivo').checked = !!ativo;
+  document.getElementById('formaNome').value = forma.nome || '';
+  document.getElementById('formaTipo').value = forma.tipo || '';
+  document.getElementById('formaCartaoCredito').checked = !!forma.cartao_credito;
+  document.getElementById('formaDiaFechamento').value = forma.dia_fechamento ?? '';
+  document.getElementById('formaDiaVencimento').value = forma.dia_vencimento ?? '';
+  document.getElementById('formaAtivo').checked = !!forma.ativo;
   document.getElementById('modalMode').value = 'edit';
+  toggleCamposCartao();
   new bootstrap.Modal(document.getElementById('formaModal')).show();
 }
 
@@ -85,11 +110,20 @@ function salvarForma() {
   const tipo = document.getElementById('formaTipo').value.trim();
   const cartao_credito = document.getElementById('formaCartaoCredito').checked;
   const ativo = document.getElementById('formaAtivo').checked;
+  const diaFechamentoInput = document.getElementById('formaDiaFechamento').value;
+  const diaVencimentoInput = document.getElementById('formaDiaVencimento').value;
   if (!nome || !tipo) {
     mostrarAlerta('Preencha Nome e Tipo!', 'warning');
     return;
   }
   const payload = { nome, tipo, cartao_credito, ativo };
+  if (cartao_credito) {
+    payload.dia_fechamento = diaFechamentoInput ? Number(diaFechamentoInput) : null;
+    payload.dia_vencimento = diaVencimentoInput ? Number(diaVencimentoInput) : null;
+  } else {
+    payload.dia_fechamento = null;
+    payload.dia_vencimento = null;
+  }
   let url = API_BASE;
   let metodo = 'POST';
   if (modo === 'edit') {
@@ -136,6 +170,16 @@ function mostrarAlerta(msg, tipo) {
     <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
   </div>`;
   setTimeout(() => { alertArea.innerHTML = ''; }, 4000);
+}
+
+function toggleCamposCartao() {
+  const isCartao = document.getElementById('formaCartaoCredito').checked;
+  document.getElementById('formaDiaFechamento').disabled = !isCartao;
+  document.getElementById('formaDiaVencimento').disabled = !isCartao;
+  if (!isCartao) {
+    document.getElementById('formaDiaFechamento').value = '';
+    document.getElementById('formaDiaVencimento').value = '';
+  }
 }
 
 function escapeHtml(str) {
