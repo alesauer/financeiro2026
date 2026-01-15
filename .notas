@@ -16,3 +16,7 @@ git push -u origin main
 
 
 chave mailgun: 330672c490f4d58ce72c5eae64987a89-42b8ce75-741097d8
+
+
+Gerar dados:
+ cd /c/scripts/python/financas; python scripts/seed_transacoes_anuais.py --ano 2025

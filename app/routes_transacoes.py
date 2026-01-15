@@ -166,6 +166,9 @@ def listar():
                 query = query.order_by(sort_col.desc())
             else:
                 query = query.order_by(sort_col.asc())
+    else:
+        # Ordenação padrão por tipo (desc) para a grid de transações
+        query = query.order_by(Transacao.tipo.desc())
     # --- fim da ordenação ---
 
     paginated_results = query.paginate(page=page, per_page=per_page, error_out=False)

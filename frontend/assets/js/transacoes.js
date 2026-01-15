@@ -392,7 +392,7 @@ function buildUrl(base, page, per_page){
   // compute last day of month
   const lastDay = new Date(year, current.mes, 0).getDate();
   const fim = `${year}-${month}-${String(lastDay).padStart(2,'0')}`;
-  return `${base}?inicio=${inicio}&fim=${fim}&page=${page}&per_page=${per_page}&cartao_credito=false`;
+  return `${base}?inicio=${inicio}&fim=${fim}&page=${page}&per_page=${per_page}&cartao_credito=false&sort_field=tipo&sort_order=desc`;
 }
 
 // Create initial grid instance variable so we can update config later
@@ -551,6 +551,19 @@ function createGrid(){
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
         const items = data.items || data.rows || [];
+        const tipoPrioridade = {
+          'Receita': 2,
+          'Despesa': 1
+        };
+        items.sort((a, b) => {
+          const priA = tipoPrioridade[a.tipo] || 0;
+          const priB = tipoPrioridade[b.tipo] || 0;
+          if (priA === priB) {
+            // fallback mantém ordem natural de chegada
+            return 0;
+          }
+          return priB - priA;
+        });
         return items.map(row => [
           row.id,
           formatDate(row.data_transacao || row.data || row.data_transacao),
@@ -891,6 +904,18 @@ function reloadGrid(){
       fetch: (url, opts) => fetchJWT(url, opts),
       then: data => {
         const items = data.items || data.rows || [];
+        const tipoPrioridade = {
+          'Receita': 2,
+          'Despesa': 1
+        };
+        items.sort((a, b) => {
+          const priA = tipoPrioridade[a.tipo] || 0;
+          const priB = tipoPrioridade[b.tipo] || 0;
+          if (priA === priB) {
+            return 0;
+          }
+          return priB - priA;
+        });
         return items.map(row => [
           row.id,
           formatDate(row.data_transacao || row.data || row.data_transacao),
