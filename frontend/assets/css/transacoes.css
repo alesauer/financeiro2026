@@ -266,8 +266,19 @@
   margin-top: 4px;
 }
 
+#acoes-transacoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.acoes-dropdown {
+  position: relative;
+}
+
+#btn-acoes-transacoes,
 #btn-nova-transacao {
-  float: right;
   padding: 4px 12px;
   border-radius: 999px;
   font-size: 0.82rem;
@@ -275,14 +286,71 @@
   font-weight: 600;
 }
 
+#btn-acoes-transacoes {
+  background-color: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.25);
+}
+
+#btn-acoes-transacoes:hover,
+#btn-acoes-transacoes:focus {
+  background-color: #1d4ed8;
+  border-color: #1d4ed8;
+  color: #fff;
+}
+
+#btn-nova-transacao {
+  box-shadow: 0 6px 16px rgba(16, 185, 129, 0.25);
+}
+
 #btn-nova-transacao i {
   margin-right: 6px;
 }
 
+#acoes-transacoes .dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  padding: 6px 0;
+  border-radius: 12px;
+  border: none;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.15);
+  background: #fff;
+  display: none;
+  z-index: 1000;
+}
+
+#acoes-transacoes .dropdown-menu.show {
+  display: block;
+}
+
+#acoes-transacoes .dropdown-item {
+  font-size: 0.82rem;
+  padding: 8px 16px;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+#acoes-transacoes .dropdown-item:hover {
+  background-color: #f1f5f9;
+}
+
 @media (max-width: 768px) {
+  #acoes-transacoes {
+    justify-content: flex-start;
+  }
+
+  .acoes-dropdown,
   #btn-nova-transacao {
-    float: none;
     width: 100%;
+  }
+
+  #acoes-transacoes .dropdown-menu {
+    position: static;
+    width: 100%;
+    margin-top: 8px;
   }
 }
 

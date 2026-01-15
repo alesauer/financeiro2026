@@ -965,16 +965,76 @@ document.addEventListener('DOMContentLoaded', function(){
     btnMarcarPagoTodos.addEventListener('click', () => atualizarStatusTodosCartoes('Pago'));
   }
   
-  // Adiciona botão Nova Transação acima da grid
+  // Adiciona botões de ação acima da grid
   setTimeout(function() {
     const gridContainer = document.getElementById('grid');
     if (gridContainer && !document.getElementById('btn-nova-transacao')) {
-      const btn = document.createElement('button');
-      btn.textContent = 'Nova Transação';
-      btn.className = 'btn btn-success btn-sm mb-2';
-      btn.id = 'btn-nova-transacao';
-      btn.onclick = function(){ window.abrirModalEdicao(null); };
-      gridContainer.parentNode.insertBefore(btn, gridContainer);
+      const actionsWrapper = document.createElement('div');
+      actionsWrapper.className = 'd-flex gap-2 mb-2 flex-wrap';
+      actionsWrapper.id = 'acoes-transacoes';
+
+      const dropdownWrapper = document.createElement('div');
+      dropdownWrapper.className = 'acoes-dropdown';
+
+      const dropdownButton = document.createElement('button');
+      dropdownButton.textContent = 'Ações';
+      dropdownButton.className = 'btn btn-primary btn-sm dropdown-toggle';
+      dropdownButton.id = 'btn-acoes-transacoes';
+      dropdownButton.type = 'button';
+
+      const dropdownMenu = document.createElement('ul');
+      dropdownMenu.className = 'dropdown-menu';
+      dropdownMenu.id = 'menu-acoes-transacoes';
+
+      const actionLinks = [
+        { text: 'Importar Cartões', href: 'importar_cartao.html' },
+        { text: 'Categorias', href: 'categorias.html' },
+        { text: 'Formas Pagamentos', href: 'formas_pagamento.html' }
+      ];
+
+      actionLinks.forEach(({ text, href }) => {
+        const item = document.createElement('li');
+        const link = document.createElement('a');
+        link.className = 'dropdown-item';
+        link.textContent = text;
+        link.href = href;
+        item.appendChild(link);
+        dropdownMenu.appendChild(item);
+      });
+
+      dropdownButton.addEventListener('click', function(event) {
+        event.stopPropagation();
+        dropdownMenu.classList.toggle('show');
+      });
+
+      dropdownMenu.addEventListener('click', function(event) {
+        event.stopPropagation();
+      });
+
+      if (!window.__acoesDropdownGlobalHandler) {
+        document.addEventListener('click', function() {
+          const menu = document.getElementById('menu-acoes-transacoes');
+          if (menu) {
+            menu.classList.remove('show');
+          }
+        });
+        window.__acoesDropdownGlobalHandler = true;
+      }
+
+      dropdownWrapper.appendChild(dropdownButton);
+      dropdownWrapper.appendChild(dropdownMenu);
+
+      const btnNova = document.createElement('button');
+      btnNova.textContent = 'Nova Transação';
+      btnNova.className = 'btn btn-success btn-sm';
+      btnNova.id = 'btn-nova-transacao';
+      btnNova.type = 'button';
+      btnNova.onclick = function(){ window.abrirModalEdicao(null); };
+
+  actionsWrapper.appendChild(dropdownWrapper);
+      actionsWrapper.appendChild(btnNova);
+
+      gridContainer.parentNode.insertBefore(actionsWrapper, gridContainer);
     }
   }, 100);
 
