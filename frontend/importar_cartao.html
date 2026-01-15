@@ -43,6 +43,8 @@
   <script>
     // Carrega categorias do backend
     let categoriasBanco = [];
+    let validos = [];
+    let gridInstance = null;
     async function carregarCategoriasBanco() {
       try {
         const resp = await fetch('http://127.0.0.1:5000/api/categorias/');
@@ -52,6 +54,16 @@
       } catch {}
     }
     carregarCategoriasBanco();
+
+    document.addEventListener('change', function(event) {
+      if (!event.target.classList.contains('categoria-select')) {
+        return;
+      }
+      const idx = parseInt(event.target.getAttribute('data-idx'));
+      if (!Number.isNaN(idx) && validos[idx]) {
+        validos[idx].categoria = event.target.value || 'Indefinida';
+      }
+    });
 
     document.getElementById('form-import-csv').addEventListener('submit', async function(ev) {
       ev.preventDefault();
@@ -112,12 +124,9 @@
           // Validação dos dados
           const errosDiv = document.getElementById('import-errors');
           errosDiv.innerHTML = '';
-          let validos = [];
+          validos = [];
           let invalidos = [];
-          const rows = results.data.map((row, idx) => {
-            validos.push({ ...row, categoria: categorias[idx] });
-            return [row.date, row.title, row.amount, categorias[idx] || 'Indefinida'];
-          });
+          validos = results.data.map((row, idx) => ({ ...row, categoria: categorias[idx] || 'Indefinida' }));
 
           // Exibe erros
           if (invalidos.length > 0) {
@@ -147,15 +156,26 @@
             row.title,
             row.amount,
             categorias[idx] || 'Indefinida',
-            selectCategoriaHTML(categorias[idx], idx)
+            idx
           ]);
-          new gridjs.Grid({
+          if (gridInstance) {
+            gridInstance.destroy();
+          }
+          gridInstance = new gridjs.Grid({
             columns: [
               { id: 'date', name: 'Data' },
               { id: 'title', name: 'Descrição' },
               { id: 'amount', name: 'Valor', formatter: v => `R$ ${parseFloat(v).toFixed(2)}` },
               { id: 'categoria_sugerida', name: 'Categoria Sugerida' },
-              { id: 'categoria_select', name: 'Categoria (Editar)', formatter: cell => gridjs.html(cell) }
+              {
+                id: 'categoria_select',
+                name: 'Categoria (Editar)',
+                formatter: cell => {
+                  const idx = typeof cell === 'number' ? cell : parseInt(cell);
+                  const selecionada = validos[idx] ? validos[idx].categoria : 'Indefinida';
+                  return gridjs.html(selectCategoriaHTML(selecionada, idx));
+                }
+              }
             ],
             data: gridRows,
             pagination: { enabled: true, limit: 20 },
@@ -169,14 +189,6 @@
           if (validos.length > 0) {
             importConfirm.style.display = 'block';
             document.getElementById('btn-importar').onclick = async function() {
-              // Atualiza categoria de cada registro conforme select
-              const selects = document.querySelectorAll('.categoria-select');
-              selects.forEach(sel => {
-                const idx = parseInt(sel.getAttribute('data-idx'));
-                if (validos[idx]) {
-                  validos[idx].categoria = sel.value || validos[idx].categoria;
-                }
-              });
               // Envia os registros válidos para o backend
               try {
                 const resp = await fetch('http://127.0.0.1:5000/api/importar_transacoes', {
