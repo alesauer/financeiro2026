@@ -392,7 +392,7 @@ function buildUrl(base, page, per_page){
   // compute last day of month
   const lastDay = new Date(year, current.mes, 0).getDate();
   const fim = `${year}-${month}-${String(lastDay).padStart(2,'0')}`;
-  return `${base}?inicio=${inicio}&fim=${fim}&page=${page}&per_page=${per_page}&cartao_credito=false&sort_field=tipo&sort_order=desc`;
+  return `${base}?inicio=${inicio}&fim=${fim}&page=${page}&per_page=${per_page}&cartao_credito=false&sort_field=data_transacao&sort_order=desc`;
 }
 
 // Create initial grid instance variable so we can update config later
@@ -470,16 +470,10 @@ function createGrid(){
         sort: false,
         formatter: () => gridjs.html('')
       },
-  { id: 'data_transacao', name: 'Data', sort: true },
-  { id: 'descricao', name: 'Descrição', sort: true },
-  { id: 'categoria_nome', name: 'Categoria', sort: true },
-  { id: 'forma_pagamento_nome', name: 'Forma Pagamento', sort: true },
-  {
-    id: 'competencia_fatura',
-    name: 'Competência Fatura',
-    sort: true,
-    formatter: (cell) => cell ? formatDate(cell) : '-'
-  },
+      { id: 'data_transacao', name: 'Data', sort: true },
+      { id: 'descricao', name: 'Descrição', sort: true },
+      { id: 'categoria_nome', name: 'Categoria', sort: true },
+      { id: 'forma_pagamento_nome', name: 'Forma Pagamento', sort: true },
       {
         id: 'status',
         name: 'Status',
@@ -522,8 +516,7 @@ function createGrid(){
           const color = num < 0 ? 'red' : 'green';
           return gridjs.html(`<span style="color:${color}; font-weight:bold;">${cell}</span>`);
         }
-      }
-    ,
+      },
       {
         id: 'acoes',
         name: 'Ações',
@@ -578,7 +571,8 @@ function createGrid(){
           row.forma_pagamento_nome || '',
           row.status || '',
           row.tipo || '',
-          formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor)
+          formatCurrency((row && row.parcelado) ? row.valor_parcela : row.valor),
+          ''
         ]);
       }
     },

@@ -52,22 +52,22 @@ ENTRADAS: tuple[EntradaBase, ...] = (
     # Despesas fixas
     EntradaBase("Despesa", 5, "Batista", "Filho", "R$ 2.200,00", "Pix"),
     EntradaBase("Despesa", 5, "Iate", "Lazer", "R$ 450,00", "Pix"),
-    EntradaBase("Despesa", 5, "Kiki", "Temp", "R$ 1.000,00", "Pix"),
+    EntradaBase("Despesa", 5, "Kiki", "Moradia", "R$ 1.000,00", "Pix"),
     EntradaBase("Despesa", 5, "Condomínio", "Moradia", "R$ 750,00", "Pix"),
     EntradaBase("Despesa", 5, "Mei Kiki", "Imposto", "R$ 80,90", "Pix"),
     EntradaBase("Despesa", 5, "Vivo Kiki", "Celular", "R$ 55,00", "Pix"),
     EntradaBase("Despesa", 5, "Faxineira", "Moradia", "R$ 360,00", "Pix"),
-    EntradaBase("Despesa", 15, "IPTU - Link", "Moradia", "R$ 190,00", "Pix"),
-    EntradaBase("Despesa", 4, "CEMIG (Link)", "Energia", "R$ 104,75", "Pix"),
+    EntradaBase("Despesa", 15, "IPTU", "Moradia", "R$ 190,00", "Pix"),
+    EntradaBase("Despesa", 4, "CEMIG", "Energia", "R$ 104,75", "Pix"),
     EntradaBase("Despesa", 10, "Blink", "Internet", "R$ 118,90", "Pix"),
     EntradaBase("Despesa", 10, "ÓRIGO", "Energia", "R$ 379,76", "Pix"),
     EntradaBase("Despesa", 5, "Natação tico", "Filho", "R$ 250,00", "Pix", "PIX: 31 99767-6200"),
-    # Data original não informada -> assumimos dia 7 para distribuir no mês
     EntradaBase("Despesa", 7, "Psicóloga", "Filho", "R$ 720,00", "Pix", "Pagamento via Pix - 31998855177"),
     EntradaBase("Despesa", 5, "Integrar", "Filho", "R$ 200,00", "Pix"),
     EntradaBase("Despesa", 1, "IPRF", "Imposto", "R$ 0,00", "Pix"),
     EntradaBase("Despesa", 5, "Pagamento Mãe", "Repasse", "R$ 1.100,00", "Pix"),
 )
+
 
 FORMA_DEFAULT_POR_TIPO: Dict[str, str] = {
     "Receita": "Transferência",
