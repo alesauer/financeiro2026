@@ -300,6 +300,8 @@ def resumo_mes():
         Transacao.data_transacao.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
+    competencia_ou_data = func.coalesce(Transacao.competencia_fatura, Transacao.data_transacao)
+
     cartao_credito_sum = db.session.query(func.coalesce(func.sum(
         case(
             (Transacao.parcelado == True, Transacao.valor_parcela),
@@ -307,7 +309,7 @@ def resumo_mes():
         )
     ), 0)).join(FormaPagamento).filter(
         FormaPagamento.cartao_credito.is_(True),
-        Transacao.data_transacao.between(inicio_dt, fim_dt)
+        competencia_ou_data.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
     # Garantir que despesas exibidas como valor positivo
@@ -342,10 +344,16 @@ def listar_cartao_credito():
     except ValueError:
         return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
+    competencia_ou_data = func.coalesce(Transacao.competencia_fatura, Transacao.data_transacao)
+
     query = Transacao.query.join(FormaPagamento).filter(
         FormaPagamento.cartao_credito.is_(True),
-        Transacao.data_transacao.between(inicio_dt, fim_dt)
-    ).order_by(Transacao.forma_pagamento_id.asc(), Transacao.data_transacao.asc(), Transacao.id.asc())
+        competencia_ou_data.between(inicio_dt, fim_dt)
+    ).order_by(
+        Transacao.forma_pagamento_id.asc(),
+        competencia_ou_data.asc(),
+        Transacao.id.asc()
+    )
 
     transacoes = query.all()
     payload = schemas.dump(transacoes)

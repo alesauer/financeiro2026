@@ -20,6 +20,13 @@
           <label for="arquivoCartao" class="form-label">Selecione o arquivo do cartão (.csv):</label>
           <input class="form-control" type="file" id="arquivoCartao" accept=".csv">
         </div>
+        <div class="mb-3">
+          <label for="formaCartaoSelect" class="form-label">Cartão de crédito utilizado:</label>
+          <select class="form-select" id="formaCartaoSelect" required>
+            <option value="">Carregando cartões...</option>
+          </select>
+          <div class="form-text">Usado para calcular a competência conforme o dia de fechamento configurado.</div>
+        </div>
         <button type="submit" class="btn btn-primary">Visualizar</button>
       </form>
     </div>
@@ -43,19 +50,76 @@
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/gridjs/dist/gridjs.umd.js"></script>
   <script>
-    // Carrega categorias do backend
-  let categoriasBanco = [];
+    if (!localStorage.getItem('access_token')) {
+      window.location.href = 'login.html';
+    }
+
+    function fetchJWT(url, options = {}) {
+      const token = localStorage.getItem('access_token');
+      const opts = { ...options };
+      opts.headers = opts.headers ? { ...opts.headers } : {};
+      if (token) {
+        opts.headers['Authorization'] = `Bearer ${token}`;
+      }
+      return fetch(url, opts);
+    }
+
+    // Carrega categorias e formas de pagamento
+    const selectCartao = document.getElementById('formaCartaoSelect');
+    let categoriasBanco = [];
+    let formasCartao = [];
+    let formaCartaoSelecionada = '';
     let validos = [];
     let gridInstance = null;
     async function carregarCategoriasBanco() {
       try {
-        const resp = await fetch('http://127.0.0.1:5000/api/categorias/');
+        const resp = await fetch('http://127.0.0.1:5000/api/categorias?tipo=Despesa');
         if (resp.ok) {
           categoriasBanco = await resp.json();
         }
       } catch {}
     }
     carregarCategoriasBanco();
+
+    async function carregarFormasCartao() {
+      try {
+        const resp = await fetchJWT('http://127.0.0.1:5000/api/formas_pagamento?cartao_credito=true&ativo=true');
+        if (!resp.ok) {
+          throw new Error('Falha ao carregar cartões');
+        }
+        formasCartao = await resp.json();
+      } catch (error) {
+        console.error('Erro ao carregar cartões de crédito:', error);
+        formasCartao = [];
+      } finally {
+        popularSelectCartao();
+      }
+    }
+
+    function popularSelectCartao() {
+      if (!selectCartao) return;
+      selectCartao.innerHTML = '';
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = formasCartao.length ? 'Selecione o cartão utilizado' : 'Nenhum cartão de crédito encontrado';
+      selectCartao.appendChild(defaultOpt);
+      formasCartao.forEach(fp => {
+        const opt = document.createElement('option');
+        opt.value = fp.id;
+        const fechamento = fp.dia_fechamento ? ` (fecha dia ${fp.dia_fechamento})` : '';
+        opt.textContent = `${fp.nome}${fechamento}`;
+        selectCartao.appendChild(opt);
+      });
+      selectCartao.disabled = formasCartao.length === 0;
+    }
+
+    if (selectCartao) {
+      selectCartao.addEventListener('change', (ev) => {
+        formaCartaoSelecionada = ev.target.value || '';
+      });
+    }
+
+    carregarFormasCartao();
 
     function iniciarAnimacaoProgresso(progressBar) {
       let percent = 0;
@@ -212,12 +276,19 @@
           if (validos.length > 0) {
             importConfirm.style.display = 'block';
             document.getElementById('btn-importar').onclick = async function() {
+              if (!formaCartaoSelecionada) {
+                alert('Selecione o cartão de crédito que deseja usar para esta importação.');
+                return;
+              }
               // Envia os registros válidos para o backend
               try {
                 const resp = await fetch('http://127.0.0.1:5000/api/importar_transacoes', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ transacoes: validos })
+                  body: JSON.stringify({
+                    forma_pagamento_id: parseInt(formaCartaoSelecionada, 10),
+                    transacoes: validos
+                  })
                 });
                 if (resp.ok) {
                   const data = await resp.json();

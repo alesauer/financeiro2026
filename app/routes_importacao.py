@@ -12,6 +12,12 @@ bp_importacao = Blueprint("importacao", __name__)
 def importar_transacoes():
     data = request.get_json()
     transacoes = data.get("transacoes", [])
+    forma_pagamento_id = data.get("forma_pagamento_id")
+    forma_pagamento_padrao = None
+    if forma_pagamento_id:
+        forma_pagamento_padrao = FormaPagamento.query.get(forma_pagamento_id)
+        if not forma_pagamento_padrao:
+            return jsonify({"erro": "Forma de pagamento selecionada não encontrada"}), 400
     inseridas = []
     erros = []
     for idx, t in enumerate(transacoes):
@@ -21,11 +27,13 @@ def importar_transacoes():
             if not categoria:
                 raise Exception(f"Categoria '{t.get('categoria')}' não encontrada.")
             # Mapeia forma de pagamento (aqui assumimos cartão de crédito)
-            fp = FormaPagamento.query.filter_by(tipo="Cartão de Crédito").first()
+            fp = forma_pagamento_padrao
             if not fp:
-                fp = FormaPagamento(nome="Cartão de Crédito", tipo="Cartão de Crédito", cartao_credito=True)
-                db.session.add(fp)
-                db.session.flush()
+                fp = FormaPagamento.query.filter_by(tipo="Cartão de Crédito").first()
+                if not fp:
+                    fp = FormaPagamento(nome="Cartão de Crédito", tipo="Cartão de Crédito", cartao_credito=True)
+                    db.session.add(fp)
+                    db.session.flush()
 
             descricao_original = t.get("title") or ""
             transacao = Transacao(

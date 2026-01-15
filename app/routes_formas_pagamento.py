@@ -35,12 +35,16 @@ schemas = FormaPagamentoSchema(many=True)
 def listar():
     tipo = request.args.get("tipo")
     ativo = request.args.get("ativo")
+    cartao_credito = request.args.get("cartao_credito")
     query = FormaPagamento.query
     if tipo:
         query = query.filter(FormaPagamento.tipo == tipo)
     if ativo is not None:
         val = str(ativo).lower() in ("1", "true", "t", "yes")
         query = query.filter(FormaPagamento.ativo == val)
+    if cartao_credito is not None:
+        val = str(cartao_credito).lower() in ("1", "true", "t", "yes")
+        query = query.filter(FormaPagamento.cartao_credito.is_(val))
     items = query.order_by(FormaPagamento.nome.asc()).all()
     return jsonify(schemas.dump(items)), 200
 
