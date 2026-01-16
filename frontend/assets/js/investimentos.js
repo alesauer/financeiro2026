@@ -3,6 +3,7 @@
 let state = {
   page: 1,
   per_page: 10,
+  ano: new Date().getFullYear(),
   inicio: null,
   fim: null,
   categoria_id: '',
@@ -38,34 +39,51 @@ function headersAuth(){
 }
 
 function periodoDefault(){
-  const hoje = new Date();
-  const ano = hoje.getFullYear();
-  const mes = hoje.getMonth();
-  const inicio = new Date(ano, mes, 1);
-  const fim = new Date(ano, mes+1, 0);
+  const ano = new Date().getFullYear();
   return {
-    inicio: inicio.toISOString().slice(0,10),
-    fim: fim.toISOString().slice(0,10),
-    ano: ano,
-    mes: mes+1
+    ano,
+    inicio: `${ano}-01-01`,
+    fim: `${ano}-12-31`
   };
+}
+
+function anosDisponiveis(){
+  const atual = new Date().getFullYear();
+  const anos = [];
+  for(let ano = atual + 1; ano >= atual - 5; ano--){
+    anos.push(ano);
+  }
+  return anos;
+}
+
+function preencherSelectAno(selectedAno){
+  const select = document.getElementById('filtro-ano');
+  if(!select) return;
+  select.innerHTML = '';
+  anosDisponiveis().forEach((ano)=>{
+    const option = document.createElement('option');
+    option.value = ano;
+    option.textContent = ano;
+    if(Number(selectedAno) === Number(ano)){
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
 }
 
 async function init(){
   // set default period
   const p = periodoDefault();
-  const elInicio = document.getElementById('inicio');
-  const elFim = document.getElementById('fim');
-  if(elInicio) elInicio.value = p.inicio;
-  if(elFim) elFim.value = p.fim;
+  state.ano = p.ano;
   state.inicio = p.inicio;
   state.fim = p.fim;
+  preencherSelectAno(state.ano);
 
   // carregar categorias
   await carregarCategorias();
 
   // carregar KPIs e gráficos
-  await carregarResumoMes(p.ano, p.mes);
+  await carregarResumoAnual(state.ano);
   await carregarKpisPeriodo();
 
   // carregar tabela
@@ -75,10 +93,13 @@ async function init(){
   const btnAplicar = document.getElementById('btn-aplicar');
   if(btnAplicar){
     btnAplicar.addEventListener('click', async ()=>{
-      state.inicio = (document.getElementById('inicio')||{}).value || p.inicio;
-      state.fim = (document.getElementById('fim')||{}).value || p.fim;
+      const anoSelecionado = Number((document.getElementById('filtro-ano')||{}).value) || state.ano;
+      state.ano = anoSelecionado;
+      state.inicio = `${state.ano}-01-01`;
+      state.fim = `${state.ano}-12-31`;
       state.categoria_id = (document.getElementById('filtro-categoria')||{}).value || '';
       state.page = 1;
+      await carregarResumoAnual(state.ano);
       await carregarKpisPeriodo();
       await carregarTabela();
       await carregarGraficoCategorias();
@@ -96,7 +117,7 @@ async function init(){
 
 async function carregarCategorias(){
   try{
-    const r = await fetch(api('/api/categorias'));
+    const r = await fetch(api('/api/categorias?tipo=Investimento'));
     const data = await r.json();
     const selFiltro = document.getElementById('filtro-categoria');
     const selNv = document.getElementById('nv-categoria');
@@ -108,16 +129,17 @@ async function carregarCategorias(){
   }catch(e){ console.error('categorias', e); }
 }
 
-async function carregarResumoMes(ano, mes){
+async function carregarResumoAnual(ano){
   try{
-    const r = await fetch(api(`/api/relatorios/resumo?ano=${ano}&mes=${mes}`));
+    const r = await fetch(api(`/api/relatorios/sumario_anual?ano=${ano}`));
     const data = await r.json();
     state.ultimoResumo = data;
-    const totalMes = (data.acum_invest && data.acum_invest.length) ? data.acum_invest[data.acum_invest.length-1] : 0;
-    const kpiMes = document.getElementById('kpi-total-mes');
-    if(kpiMes) kpiMes.textContent = fmtBRL(totalMes);
-    desenharGraficoEvolucao(data.dias, data.acum_invest);
-  }catch(e){ console.error('resumo mes', e); }
+    const valoresInvest = Array.isArray(data?.investimento) ? data.investimento : [];
+    const totalAno = valoresInvest.reduce((acc, val)=>acc + Number(val||0), 0);
+    const kpiAno = document.getElementById('kpi-total-mes');
+    if(kpiAno) kpiAno.textContent = fmtBRL(totalAno);
+    desenharGraficoEvolucao(data?.meses || [], valoresInvest);
+  }catch(e){ console.error('resumo anual', e); }
 }
 
 async function carregarKpisPeriodo(){
@@ -209,7 +231,7 @@ function desenharGraficoEvolucao(labels, data){
     data: {
       labels,
       datasets: [{
-        label: 'Acúmulo (mês)',
+        label: 'Investimentos por mês',
         data,
         borderColor: '#0d6efd',
         backgroundColor: 'rgba(13,110,253,0.1)',
