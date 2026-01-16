@@ -10,6 +10,7 @@ let state = {
   ultimoResumo: null,
   chartEvolucao: null,
   chartCategorias: null,
+  chartHistorico: null,
 };
 
 function fmtBRL(v){
@@ -89,6 +90,8 @@ async function init(){
   // carregar tabela
   await carregarTabela();
 
+  await carregarHistoricoCincoAnos();
+
   // bind eventos
   const btnAplicar = document.getElementById('btn-aplicar');
   if(btnAplicar){
@@ -129,6 +132,28 @@ async function carregarCategorias(){
   }catch(e){ console.error('categorias', e); }
 }
 
+async function carregarHistoricoCincoAnos(){
+  try{
+    const anoAtual = new Date().getFullYear();
+    const anos = [];
+    for(let a = anoAtual - 4; a <= anoAtual; a++){
+      anos.push(a);
+    }
+
+    const respostas = await Promise.all(anos.map(async ano => {
+      const r = await fetch(api(`/api/relatorios/sumario_anual?ano=${ano}`));
+      return r.json();
+    }));
+
+    const valores = respostas.map(data => {
+      const investimentos = Array.isArray(data?.investimento) ? data.investimento : [];
+      return investimentos.reduce((acc, val)=>acc + Number(val||0), 0);
+    });
+
+    desenharGraficoHistorico(anos, valores);
+  }catch(e){ console.error('historico 5 anos', e); }
+}
+
 async function carregarResumoAnual(ano){
   try{
     const r = await fetch(api(`/api/relatorios/sumario_anual?ano=${ano}`));
@@ -138,7 +163,13 @@ async function carregarResumoAnual(ano){
     const totalAno = valoresInvest.reduce((acc, val)=>acc + Number(val||0), 0);
     const kpiAno = document.getElementById('kpi-total-mes');
     if(kpiAno) kpiAno.textContent = fmtBRL(totalAno);
-    desenharGraficoEvolucao(data?.meses || [], valoresInvest);
+    const acumulado = [];
+    valoresInvest.reduce((soma, valorAtual, index)=>{
+      const novoTotal = soma + Number(valorAtual || 0);
+      acumulado[index] = novoTotal;
+      return novoTotal;
+    }, 0);
+    desenharGraficoEvolucao(data?.meses || [], acumulado);
   }catch(e){ console.error('resumo anual', e); }
 }
 
@@ -149,9 +180,17 @@ async function carregarKpisPeriodo(){
     const arr = await r.json();
     const inv = (arr||[]).find(x=>x.tipo==='Investimento');
     totalPeriodo = inv ? Number(inv.total) : 0;
-    const kpiPeriodo = document.getElementById('kpi-total-periodo');
-    if(kpiPeriodo) kpiPeriodo.textContent = fmtBRL(totalPeriodo);
   }catch(e){ console.error('totais', e); }
+
+  try{
+    const rTotalGeral = await fetch(api('/api/relatorios/totais'));
+    const arrGeral = await rTotalGeral.json();
+    const totalGeral = Array.isArray(arrGeral)
+      ? (arrGeral.find(item => item.tipo === 'Investimento')?.total || 0)
+      : 0;
+    const kpiGeral = document.getElementById('kpi-total-geral');
+    if(kpiGeral) kpiGeral.textContent = fmtBRL(totalGeral);
+  }catch(e){ console.error('total geral investimentos', e); }
 
   try{
     const url = new URL(api('/api/transacoes'));
@@ -163,7 +202,7 @@ async function carregarKpisPeriodo(){
     const js = await r.json();
     const qtde = js && js.total_items ? Number(js.total_items) : 0;
     const elQtde = document.getElementById('kpi-qtde'); if(elQtde) elQtde.textContent = qtde;
-    const medio = qtde>0 ? (totalPeriodo/qtde) : 0;
+  const medio = qtde>0 ? (totalPeriodo/qtde) : 0;
     const elMedio = document.getElementById('kpi-medio'); if(elMedio) elMedio.textContent = fmtBRL(medio);
   }catch(e){ console.error('listar inv', e); }
 
@@ -231,7 +270,7 @@ function desenharGraficoEvolucao(labels, data){
     data: {
       labels,
       datasets: [{
-        label: 'Investimentos por mês',
+        label: 'Investimentos acumulados',
         data,
         borderColor: '#0d6efd',
         backgroundColor: 'rgba(13,110,253,0.1)',
@@ -252,6 +291,38 @@ function desenharGraficoCategorias(labels, data){
     type: 'doughnut',
     data: { labels, datasets:[{ data, backgroundColor: colors }] },
     options: {responsive:true}
+  });
+}
+
+function desenharGraficoHistorico(labels, data){
+  const ctx = document.getElementById('grafico-historico');
+  if(!ctx) return;
+  if(state.chartHistorico){ state.chartHistorico.destroy(); }
+  state.chartHistorico = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Investimento anual',
+        data,
+        backgroundColor: 'rgba(14,165,233,0.5)',
+        borderColor: '#0ea5e9',
+        borderWidth: 1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback: value => fmtBRL(value)
+          }
+        }
+      }
+    }
   });
 }
 
