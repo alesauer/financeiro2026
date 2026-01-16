@@ -405,7 +405,8 @@
                   const alert = document.createElement('div');
                   alert.className = 'alert alert-success';
                   alert.role = 'alert';
-                  alert.innerText = `Importação realizada com sucesso! ${data.sucesso} registro(s) importado(s).`;
+                  const parcelasExtras = data.parcelas_geradas ? ` ${data.parcelas_geradas} parcela(s) futura(s) gerada(s).` : '';
+                  alert.innerText = `Importação realizada com sucesso! ${data.sucesso} registro(s) importado(s).${parcelasExtras}`;
                   alertsDiv.appendChild(alert);
                 } else {
                   alert('Erro ao importar registros.');

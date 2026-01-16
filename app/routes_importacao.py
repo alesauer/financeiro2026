@@ -6,6 +6,7 @@ from datetime import datetime
 from app.utils.texto import normalizar_texto
 from services.fatura_service import aplicar_competencia_transacao
 from uuid import uuid4
+from dateutil.relativedelta import relativedelta
 import re
 
 bp_importacao = Blueprint("importacao", __name__)
@@ -15,6 +16,41 @@ def limpar_marcador_parcela(texto: str | None) -> str:
     if not texto:
         return ""
     return re.sub(r"parc(?:ela)?\.?\s*(\(?\s*\d{1,2}\s*\/\s*\d{1,2}\s*\)?)", "", texto, flags=re.IGNORECASE).strip()
+
+
+def gerar_parcelas_restantes(transacao_base: Transacao, forma_pagamento: FormaPagamento, total_parcelas: int) -> int:
+    if not transacao_base.parcelado or not transacao_base.data_transacao:
+        return 0
+    parcelas_criadas = 0
+    parcela_atual = transacao_base.parcela_atual or 1
+    for numero in range(parcela_atual + 1, (total_parcelas or parcela_atual) + 1):
+        existe = Transacao.query.filter_by(
+            parcelamento_id=transacao_base.parcelamento_id,
+            parcela_atual=numero
+        ).first()
+        if existe:
+            continue
+        nova_data = transacao_base.data_transacao + relativedelta(months=numero - parcela_atual)
+        nova = Transacao(
+            tipo=transacao_base.tipo,
+            categoria_id=transacao_base.categoria_id,
+            descricao=transacao_base.descricao,
+            valor=transacao_base.valor,
+            data_transacao=nova_data,
+            forma_pagamento_id=forma_pagamento.id,
+            status=transacao_base.status
+        )
+        nova.parcelado = True
+        nova.total_parcelas = total_parcelas
+        nova.parcela_atual = numero
+        nova.valor_parcela = transacao_base.valor_parcela or transacao_base.valor
+        nova.parcelamento_id = transacao_base.parcelamento_id
+        nova.recorrente = True
+        nova.recorrencia_tipo = "Parcelamento"
+        aplicar_competencia_transacao(nova, forma_pagamento)
+        db.session.add(nova)
+        parcelas_criadas += 1
+    return parcelas_criadas
 
 @bp_importacao.route("/importar_transacoes", methods=["POST"])
 def importar_transacoes():
@@ -27,6 +63,7 @@ def importar_transacoes():
         if not forma_pagamento_padrao:
             return jsonify({"erro": "Forma de pagamento selecionada não encontrada"}), 400
     inseridas = []
+    parcelas_geradas_total = 0
     erros = []
     for idx, t in enumerate(transacoes):
         try:
@@ -82,6 +119,8 @@ def importar_transacoes():
 
             aplicar_competencia_transacao(transacao, fp)
             db.session.add(transacao)
+            if transacao.parcelado and (transacao.total_parcelas or 1) > (transacao.parcela_atual or 1):
+                parcelas_geradas_total += gerar_parcelas_restantes(transacao, fp, transacao.total_parcelas or transacao.parcela_atual)
             chave_normalizada = normalizar_texto(descricao_limpa or descricao_original)
             if chave_normalizada:
                 alias = CategoriaAlias.query.filter_by(descricao_normalizada=chave_normalizada).first()
@@ -100,6 +139,10 @@ def importar_transacoes():
             inseridas.append(transacao)
         except Exception as e:
             erros.append({"linha": idx+1, "erro": str(e)})
-    if inseridas:
+    if inseridas or parcelas_geradas_total:
         db.session.commit()
-    return jsonify({"sucesso": len(inseridas), "erros": erros}), 200
+    return jsonify({
+        "sucesso": len(inseridas),
+        "parcelas_geradas": parcelas_geradas_total,
+        "erros": erros
+    }), 200
