@@ -5,8 +5,16 @@ from app.schemas import TransacaoSchema
 from datetime import datetime
 from app.utils.texto import normalizar_texto
 from services.fatura_service import aplicar_competencia_transacao
+from uuid import uuid4
+import re
 
 bp_importacao = Blueprint("importacao", __name__)
+
+
+def limpar_marcador_parcela(texto: str | None) -> str:
+    if not texto:
+        return ""
+    return re.sub(r"parc(?:ela)?\.?\s*(\(?\s*\d{1,2}\s*\/\s*\d{1,2}\s*\)?)", "", texto, flags=re.IGNORECASE).strip()
 
 @bp_importacao.route("/importar_transacoes", methods=["POST"])
 def importar_transacoes():
@@ -36,18 +44,45 @@ def importar_transacoes():
                     db.session.flush()
 
             descricao_original = t.get("title") or ""
+            descricao_limpa = t.get("descricao_limpa") or limpar_marcador_parcela(descricao_original)
+            valor_transacao = float(t.get("amount"))
+
+            parcelado = bool(t.get("parcelado"))
+            parcela_atual = int(t.get("parcela_atual") or 1)
+            total_parcelas = int(t.get("total_parcelas") or (parcela_atual if parcela_atual > 1 else 1))
+            valor_parcela = float(t.get("valor_parcela")) if t.get("valor_parcela") is not None else valor_transacao
+            parcelamento_id = t.get("parcelamento_id") if t.get("parcelamento_id") else (str(uuid4()) if parcelado else None)
+
             transacao = Transacao(
                 tipo=categoria.tipo,  # Usa o tipo da categoria
                 categoria_id=categoria.id,
-                descricao=descricao_original,
-                valor=float(t.get("amount")),
+                descricao=descricao_limpa or descricao_original,
+                valor=valor_transacao,
                 data_transacao=datetime.strptime(t.get("date"), "%Y-%m-%d").date() if t.get("date") else None,
                 forma_pagamento_id=fp.id,
                 status="Pago"
             )
+
+            if parcelado and total_parcelas > 1:
+                transacao.parcelado = True
+                transacao.parcela_atual = parcela_atual
+                transacao.total_parcelas = total_parcelas
+                transacao.valor_parcela = valor_parcela
+                transacao.parcelamento_id = parcelamento_id
+                transacao.recorrente = True
+                transacao.recorrencia_tipo = "Parcelamento"
+            else:
+                transacao.parcelado = False
+                transacao.parcela_atual = 1
+                transacao.total_parcelas = None
+                transacao.valor_parcela = None
+                transacao.parcelamento_id = None
+                transacao.recorrente = False
+                transacao.recorrencia_tipo = None
+
             aplicar_competencia_transacao(transacao, fp)
             db.session.add(transacao)
-            chave_normalizada = normalizar_texto(descricao_original)
+            chave_normalizada = normalizar_texto(descricao_limpa or descricao_original)
             if chave_normalizada:
                 alias = CategoriaAlias.query.filter_by(descricao_normalizada=chave_normalizada).first()
                 if alias:

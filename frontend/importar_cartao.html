@@ -99,6 +99,85 @@
       }
     }
 
+    function removerAcentos(texto = '') {
+      return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    }
+
+    function normalizarValorNumerico(valor) {
+      if (typeof valor === 'number' && Number.isFinite(valor)) {
+        return valor;
+      }
+      if (valor === null || valor === undefined) {
+        return 0;
+      }
+      const texto = String(valor).trim().replace(/\s+/g, '');
+      const somentePermitidos = texto.replace(/[^0-9,.-]/g, '');
+      const temVirgula = somentePermitidos.includes(',');
+      const semSeparadores = temVirgula
+        ? somentePermitidos.replace(/\./g, '')
+        : somentePermitidos;
+      const normalizado = semSeparadores.replace(/,/g, '.');
+      const parsed = parseFloat(normalizado);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function normalizarDescricaoParcelada(texto = '') {
+      return removerAcentos(texto)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '') || 'descricao';
+    }
+
+    function gerarParcelamentoId(descricao = '', totalParcelas = 1, valorParcela = 0) {
+      const slug = normalizarDescricaoParcelada(descricao);
+      const total = totalParcelas || 1;
+      const valorTotal = Math.round(Math.abs(Number(valorParcela) || 0) * total * 100);
+      return `${slug}-${total}x-${valorTotal}`;
+    }
+
+    function detectarParcelamento(descricao = '', valorParcela = 0) {
+      const padraoValor = normalizarValorNumerico(valorParcela);
+      const resultBase = {
+        parcelado: false,
+        parcelaAtual: 1,
+        totalParcelas: 1,
+        valorParcela: padraoValor,
+        parcelamentoId: null,
+        descricaoLimpa: descricao?.trim() || ''
+      };
+      if (!descricao) {
+        return resultBase;
+      }
+      const padroes = [
+        /parcela\s*\(\s*(\d{1,2})\s*\/\s*(\d{1,2})\s*\)/i,
+        /parc\.?\s*(\d{1,2})\s*\/\s*(\d{1,2})/i,
+        /(?:-|\s)parcela\s*(\d{1,2})\s*\/\s*(\d{1,2})/i,
+        /(\d{1,2})\s*\/\s*(\d{1,2})\s*parc(?:elas)?/i
+      ];
+      for (const regex of padroes) {
+        const match = descricao.match(regex);
+        if (match) {
+          const parcelaAtual = parseInt(match[1], 10) || 1;
+          const totalParcelas = parseInt(match[2], 10) || parcelaAtual || 1;
+          const descricaoLimpa = descricao
+            .replace(regex, '')
+            .replace(/\s{2,}/g, ' ')
+            .replace(/-\s*-/, '-')
+            .replace(/\s+-\s+/g, ' - ')
+            .trim();
+          return {
+            parcelado: totalParcelas > 1,
+            parcelaAtual,
+            totalParcelas,
+            valorParcela: padraoValor,
+            parcelamentoId: gerarParcelamentoId(descricaoLimpa || descricao, totalParcelas, padraoValor),
+            descricaoLimpa: descricaoLimpa || descricao.trim()
+          };
+        }
+      }
+      return resultBase;
+    }
+
     function popularSelectCartao() {
       if (!selectCartao) return;
       selectCartao.innerHTML = '';
@@ -216,7 +295,21 @@
           errosDiv.innerHTML = '';
           validos = [];
           let invalidos = [];
-          validos = results.data.map((row, idx) => ({ ...row, categoria: categorias[idx] || 'Indefinida' }));
+          validos = results.data.map((row, idx) => {
+            const valorNumerico = normalizarValorNumerico(row.amount);
+            const analiseParcelamento = detectarParcelamento(row.title || '', valorNumerico);
+            return {
+              ...row,
+              amount: valorNumerico,
+              categoria: categorias[idx] || 'Indefinida',
+              parcelado: analiseParcelamento.parcelado,
+              parcela_atual: analiseParcelamento.parcelaAtual,
+              total_parcelas: analiseParcelamento.totalParcelas,
+              parcelamento_id: analiseParcelamento.parcelamentoId,
+              valor_parcela: analiseParcelamento.valorParcela,
+              descricao_limpa: analiseParcelamento.descricaoLimpa
+            };
+          });
 
           // Exibe erros
           if (invalidos.length > 0) {
@@ -241,13 +334,19 @@
             html += `</select>`;
             return html;
           }
-          const gridRows = results.data.map((row, idx) => [
-            row.date,
-            row.title,
-            row.amount,
-            categorias[idx] || 'Indefinida',
-            idx
-          ]);
+          const gridRows = validos.map((row, idx) => {
+            const labelParcelamento = row.parcelado
+              ? `Parc. ${row.parcela_atual}/${row.total_parcelas}`
+              : 'À vista';
+            return [
+              row.date,
+              row.title,
+              row.amount,
+              row.categoria || 'Indefinida',
+              labelParcelamento,
+              idx
+            ];
+          });
           if (gridInstance) {
             gridInstance.destroy();
           }
@@ -257,6 +356,7 @@
               { id: 'title', name: 'Descrição' },
               { id: 'amount', name: 'Valor', formatter: v => `R$ ${parseFloat(v).toFixed(2)}` },
               { id: 'categoria_sugerida', name: 'Categoria Sugerida' },
+              { id: 'parcelamento', name: 'Parcelamento' },
               {
                 id: 'categoria_select',
                 name: 'Categoria (Editar)',
