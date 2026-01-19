@@ -309,6 +309,7 @@ def resumo_mes():
         )
     ), 0)).join(FormaPagamento).filter(
         FormaPagamento.cartao_credito.is_(True),
+        Transacao.status == "Pago",
         competencia_ou_data.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
@@ -589,27 +590,34 @@ def listar_cartao_credito():
                 "pagas": 0,
                 "pendentes": 0,
                 "total": 0.0,
+                "total_pagas": 0.0,
+                "total_pendentes": 0.0,
                 "ultima_data": None
             }
 
         entry = agregados[forma_id]
         entry["quantidade"] += 1
         status_lower = (tx.status or "").lower()
+        valor = tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else tx.valor
+        valor_float = float(valor or 0)
         if status_lower == "pago":
             entry["pagas"] += 1
+            entry["total_pagas"] += valor_float
         else:
             entry["pendentes"] += 1
+            entry["total_pendentes"] += valor_float
 
-        valor = tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else tx.valor
-        entry["total"] += float(valor or 0)
+        entry["total"] = entry["total_pagas"]
 
         if tx.data_transacao and (entry["ultima_data"] is None or tx.data_transacao > entry["ultima_data"]):
             entry["ultima_data"] = tx.data_transacao
 
     cartoes = []
     total_geral = 0.0
+    total_geral_pendentes = 0.0
     for entry in agregados.values():
-        total_geral += entry["total"]
+        total_geral += entry["total_pagas"]
+        total_geral_pendentes += entry["total_pendentes"]
         if entry["ultima_data"]:
             entry["ultima_data"] = entry["ultima_data"].isoformat()
         cartoes.append(entry)
@@ -617,5 +625,6 @@ def listar_cartao_credito():
     return jsonify({
         "transacoes": payload,
         "cartoes": cartoes,
-        "total_geral": total_geral
+        "total_geral": total_geral,
+        "total_geral_pendentes": total_geral_pendentes
     }), 200

@@ -69,7 +69,8 @@
 
     // Carrega categorias e formas de pagamento
     const selectCartao = document.getElementById('formaCartaoSelect');
-    let categoriasBanco = [];
+  let categoriasBanco = [];
+  let mapaCategorias = new Map();
     let formasCartao = [];
     let formaCartaoSelecionada = '';
     let validos = [];
@@ -79,9 +80,24 @@
         const resp = await fetch('http://127.0.0.1:5000/api/categorias?tipo=Despesa');
         if (resp.ok) {
           categoriasBanco = await resp.json();
+          atualizarMapaCategorias();
         }
       } catch {}
     }
+    function atualizarMapaCategorias() {
+      mapaCategorias.clear();
+      (categoriasBanco || []).forEach(cat => {
+        if (cat?.nome) {
+          mapaCategorias.set(cat.nome.trim().toLowerCase(), cat);
+        }
+      });
+    }
+
+    function encontrarCategoriaPorNome(nome = '') {
+      if (!nome) return null;
+      return mapaCategorias.get(nome.trim().toLowerCase()) || null;
+    }
+
     carregarCategoriasBanco();
 
     async function carregarFormasCartao() {
@@ -252,7 +268,15 @@
       }
       const idx = parseInt(event.target.getAttribute('data-idx'));
       if (!Number.isNaN(idx) && validos[idx]) {
-        validos[idx].categoria = event.target.value || 'Indefinida';
+        const selecionadaId = Number(event.target.value) || null;
+        const catInfo = categoriasBanco.find(cat => cat.id === selecionadaId);
+        if (catInfo) {
+          validos[idx].categoria_id = catInfo.id;
+          validos[idx].categoria = catInfo.nome;
+        } else {
+          validos[idx].categoria_id = null;
+          validos[idx].categoria = 'Indefinida';
+        }
       }
     });
 
@@ -298,10 +322,13 @@
           validos = results.data.map((row, idx) => {
             const valorNumerico = normalizarValorNumerico(row.amount);
             const analiseParcelamento = detectarParcelamento(row.title || '', valorNumerico);
+            const categoriaSugerida = categorias[idx] || 'Indefinida';
+            const categoriaEncontrada = encontrarCategoriaPorNome(categoriaSugerida);
             return {
               ...row,
               amount: valorNumerico,
-              categoria: categorias[idx] || 'Indefinida',
+              categoria: categoriaEncontrada ? categoriaEncontrada.nome : (categoriaSugerida || 'Indefinida'),
+              categoria_id: categoriaEncontrada ? categoriaEncontrada.id : null,
               parcelado: analiseParcelamento.parcelado,
               parcela_atual: analiseParcelamento.parcelaAtual,
               total_parcelas: analiseParcelamento.totalParcelas,
@@ -328,8 +355,8 @@
             let html = `<select class='form-select form-select-sm categoria-select' data-idx='${idx}'>`;
             html += `<option value=''>Selecione</option>`;
             categoriasBanco.forEach(cat => {
-              const selected = cat.nome === sugerida ? 'selected' : '';
-              html += `<option value='${cat.nome}' ${selected}>${cat.nome}</option>`;
+              const selected = validos[idx]?.categoria_id === cat.id ? 'selected' : '';
+              html += `<option value='${cat.id}' ${selected}>${cat.nome}</option>`;
             });
             html += `</select>`;
             return html;
@@ -390,7 +417,10 @@
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
                     forma_pagamento_id: parseInt(formaCartaoSelecionada, 10),
-                    transacoes: validos
+                    transacoes: validos.map(item => ({
+                      ...item,
+                      categoria_id: item.categoria_id || null
+                    }))
                   })
                 });
                 if (resp.ok) {
@@ -405,7 +435,7 @@
                   const alert = document.createElement('div');
                   alert.className = 'alert alert-success';
                   alert.role = 'alert';
-                  const parcelasExtras = data.parcelas_geradas ? ` ${data.parcelas_geradas} parcela(s) futura(s) gerada(s).` : '';
+                  const parcelasExtras = data.parcelas_geradas ? ` ${data.parcelas_geradas} parcela(s) futura(s) gerada(s) como pendente(s).` : '';
                   alert.innerText = `Importação realizada com sucesso! ${data.sucesso} registro(s) importado(s).${parcelasExtras}`;
                   alertsDiv.appendChild(alert);
                 } else {

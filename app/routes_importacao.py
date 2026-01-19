@@ -7,6 +7,7 @@ from app.utils.texto import normalizar_texto
 from services.fatura_service import aplicar_competencia_transacao
 from uuid import uuid4
 from dateutil.relativedelta import relativedelta
+from sqlalchemy import func
 import re
 
 bp_importacao = Blueprint("importacao", __name__)
@@ -38,7 +39,7 @@ def gerar_parcelas_restantes(transacao_base: Transacao, forma_pagamento: FormaPa
             valor=transacao_base.valor,
             data_transacao=nova_data,
             forma_pagamento_id=forma_pagamento.id,
-            status=transacao_base.status
+            status="Pendente"
         )
         nova.parcelado = True
         nova.total_parcelas = total_parcelas
@@ -65,12 +66,26 @@ def importar_transacoes():
     inseridas = []
     parcelas_geradas_total = 0
     erros = []
+    categoria_padrao = Categoria.query.filter_by(nome="Outros", tipo="Despesa").first()
     for idx, t in enumerate(transacoes):
         try:
-            # Busca categoria pelo nome
-            categoria = Categoria.query.filter_by(nome=t.get("categoria")).first()
+            categoria = None
+            categoria_id_payload = t.get("categoria_id")
+            if categoria_id_payload:
+                categoria = Categoria.query.get(int(categoria_id_payload))
+
+            nome_categoria = (t.get("categoria") or "").strip()
+            if not categoria and nome_categoria:
+                categoria = Categoria.query.filter(func.lower(Categoria.nome) == nome_categoria.lower()).first()
+
+            if not categoria and categoria_padrao:
+                categoria = categoria_padrao
+
             if not categoria:
-                raise Exception(f"Categoria '{t.get('categoria')}' não encontrada.")
+                categoria = Categoria.query.filter_by(tipo="Despesa").first()
+
+            if not categoria:
+                raise Exception("Nenhuma categoria de despesa disponível para associar a transação.")
             # Mapeia forma de pagamento (aqui assumimos cartão de crédito)
             fp = forma_pagamento_padrao
             if not fp:
