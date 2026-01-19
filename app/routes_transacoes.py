@@ -232,6 +232,30 @@ def atualizar(id):
 @jwt_required()
 def deletar(id):
     transacao = Transacao.query.get_or_404(id)
+    apagar_assinaturas_futuras = request.args.get("assinaturas_futuras", "false").lower() == "true"
+
+    if apagar_assinaturas_futuras and transacao.recorrente and transacao.recorrencia_tipo == "Assinatura":
+        filtros = [
+            Transacao.recorrente.is_(True),
+            Transacao.recorrencia_tipo == "Assinatura",
+            Transacao.tipo == transacao.tipo,
+            Transacao.categoria_id == transacao.categoria_id,
+            Transacao.forma_pagamento_id == transacao.forma_pagamento_id,
+            Transacao.descricao == transacao.descricao,
+            Transacao.data_transacao >= transacao.data_transacao
+        ]
+
+        if transacao.frequencia:
+            filtros.append(Transacao.frequencia == transacao.frequencia)
+        if transacao.data_fim:
+            filtros.append(Transacao.data_fim == transacao.data_fim)
+        if transacao.valor is not None:
+            filtros.append(Transacao.valor == transacao.valor)
+
+        deletadas = Transacao.query.filter(*filtros).delete(synchronize_session=False)
+        db.session.commit()
+        return jsonify({"message": "Assinaturas futuras deletadas com sucesso", "qtd": deletadas}), 200
+
     deletadas = 0
     if transacao.parcelado:
         # Se tiver parcelamento_id, deletar todas as futuras (inclui a atual)

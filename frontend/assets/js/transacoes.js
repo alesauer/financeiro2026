@@ -460,6 +460,120 @@ function showConfirmationModal(options = {}) {
   });
 }
 
+function showAssinaturaDeleteModal(transacao) {
+  const descricao = transacao?.descricao || 'Assinatura';
+  const dataFormatada = formatDate(transacao?.data_transacao);
+  const valorBase = transacao?.parcelado ? transacao?.valor_parcela : transacao?.valor;
+  const valorFormatado = formatCurrency(valorBase);
+
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-modal-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-modal-card">
+        <div class="confirm-modal-header d-flex align-items-center justify-content-between">
+          <h5 class="mb-0">Excluir assinatura</h5>
+          <button type="button" class="btn-close" aria-label="Fechar"></button>
+        </div>
+        <div class="confirm-modal-body">
+          <p class="mb-2"><strong>${descricao}</strong></p>
+          <ul class="mb-3 ps-3">
+            <li>Data da cobrança: ${dataFormatada}</li>
+            <li>Valor desta cobrança: ${valorFormatado}</li>
+            <li>Frequência: ${transacao?.frequencia || '-'}${transacao?.data_fim ? ` (até ${formatDate(transacao.data_fim)})` : ''}</li>
+          </ul>
+          <p class="mb-3">Escolha o que deseja excluir:</p>
+        </div>
+        <div class="confirm-modal-actions d-flex flex-column gap-2 mt-3 w-100 px-1 pb-2">
+          <button type="button" class="btn btn-success w-100" data-action="single">Apenas esta cobrança</button>
+          <button type="button" class="btn btn-danger w-100" data-action="future">Esta e todas as próximas cobranças</button>
+          <button type="button" class="btn btn-link text-muted w-100" data-action="cancel">Cancelar</button>
+        </div>
+      </div>`;
+
+    let resolved = false;
+    const cleanup = (choice) => {
+      if (resolved) return;
+      resolved = true;
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.remove(), 200);
+      resolve(choice);
+    };
+
+    const singleBtn = overlay.querySelector('[data-action="single"]');
+    const futureBtn = overlay.querySelector('[data-action="future"]');
+    const cancelBtn = overlay.querySelector('[data-action="cancel"]');
+    const closeBtn = overlay.querySelector('.btn-close');
+
+    if (singleBtn) singleBtn.addEventListener('click', () => cleanup('single'));
+    if (futureBtn) futureBtn.addEventListener('click', () => cleanup('future'));
+    if (cancelBtn) cancelBtn.addEventListener('click', () => cleanup(null));
+    if (closeBtn) closeBtn.addEventListener('click', () => cleanup(null));
+
+    overlay.addEventListener('click', (evt) => {
+      if (evt.target === overlay) {
+        cleanup(null);
+      }
+    });
+
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('show'));
+  });
+}
+
+async function confirmarEExcluirTransacao(id) {
+  if (!id) return false;
+
+  let detalhes = null;
+  try {
+    const respDetalhe = await fetchJWT(`${apiUrl}/${id}`);
+    if (respDetalhe && respDetalhe.ok) {
+      detalhes = await respDetalhe.json();
+    }
+  } catch (err) {
+    console.error('Erro ao carregar detalhes da transação antes da exclusão', err);
+  }
+
+  const isAssinatura = detalhes && detalhes.recorrente && detalhes.recorrencia_tipo === 'Assinatura';
+  let deleteUrl = `${apiUrl}/${id}`;
+  let confirmado = false;
+
+  if (isAssinatura) {
+    const escolha = await showAssinaturaDeleteModal(detalhes);
+    if (escolha === 'single') {
+      confirmado = true;
+    } else if (escolha === 'future') {
+      deleteUrl = `${deleteUrl}?assinaturas_futuras=true`;
+      confirmado = true;
+    } else {
+      confirmado = false;
+    }
+  } else {
+    confirmado = await showConfirmationModal({
+      title: 'Excluir transação',
+      message: 'Deseja realmente excluir esta transação? Esta ação não pode ser desfeita.',
+      confirmText: 'Excluir',
+      confirmVariant: 'danger'
+    });
+  }
+
+  if (!confirmado) return false;
+
+  try {
+    const resp = await fetchJWT(deleteUrl, { method: 'DELETE' });
+    if (!resp || !resp.ok) {
+      alert('Erro ao excluir transação.');
+      return false;
+    }
+    await resp.json().catch(() => ({}));
+    return true;
+  } catch (err) {
+    console.error('Erro de rede ao excluir transação.', err);
+    alert('Erro de rede ao excluir transação.');
+    return false;
+  }
+}
+
 function createGrid(){
   grid = new gridjs.Grid({
 
@@ -790,27 +904,11 @@ window.abrirModalCartaoCredito = function(formaPagamentoId = null) {
       if (deleteBtn) {
         const tid = deleteBtn.getAttribute('data-id');
         if (!tid) return;
-        const confirmed = await showConfirmationModal({
-          title: 'Excluir transação',
-          message: 'Tem certeza que deseja excluir esta transação?',
-          confirmText: 'Excluir',
-          confirmVariant: 'danger'
-        });
-        if (!confirmed) return;
-
-        try {
-          const resp = await fetchJWT(`${apiUrl}/${tid}`, { method: 'DELETE' });
-          if (resp.ok) {
-            fecharModalCartaoCredito();
-            reloadGrid();
-            refreshPeriodoData();
-          } else {
-            alert('Erro ao excluir transação');
-          }
-        } catch (err) {
-          console.error('Erro ao excluir', err);
-          alert('Erro ao excluir transação');
-        }
+        const deletou = await confirmarEExcluirTransacao(tid);
+        if (!deletou) return;
+        fecharModalCartaoCredito();
+        reloadGrid();
+        refreshPeriodoData();
       }
     });
   }, 100);
@@ -1119,27 +1217,10 @@ document.getElementById('grid').addEventListener('click', async function(e){
   if (deleteBtn) {
     const id = deleteBtn.getAttribute('data-id');
     if (!id) return;
-    const confirmed = await showConfirmationModal({
-      title: 'Excluir transação',
-      message: 'Deseja realmente excluir esta transação? Esta ação não pode ser desfeita.',
-      confirmText: 'Excluir',
-      confirmVariant: 'danger'
-    });
-    if (!confirmed) return;
-    try {
-      const resp = await fetchJWT(`${apiUrl}/${id}`, {
-        method: 'DELETE'
-      });
-      if (!resp.ok) {
-        alert('Erro ao excluir transação.');
-        return;
-      }
-  await resp.json();
-      reloadGrid();
-  refreshPeriodoData();
-    } catch (err) {
-      alert('Erro de rede ao excluir transação.');
-    }
+    const deletou = await confirmarEExcluirTransacao(id);
+    if (!deletou) return;
+    reloadGrid();
+    refreshPeriodoData();
     return;
   }
 
