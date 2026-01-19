@@ -14,6 +14,7 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 - **Classificação automática (IA)**: Sugestão de categorias baseada em inteligência artificial.
 - **CRUD de Categorias**: Criar, listar, editar e excluir categorias.
 - **CRUD de Transações**: Gerenciar receitas e despesas.
+- **Assinaturas e Parcelamentos**: Cadastre e administre recorrências com opção de excluir somente a ocorrência atual ou todas as futuras direto na UI ou via API.
 - **CRUD de Usuários**: Cadastro, login, edição e exclusão de usuários.
 - **Relatórios**: Visualização de dados por período, categoria, tipo, etc.
 - **Configurações Avançadas (Outros)**: Página de configurações com layout moderno (Bootstrap), switches, selects e ações administrativas.
@@ -87,6 +88,23 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 - **HTML5, Bootstrap 5, JavaScript**
 - **AJAX/fetch** para integração com backend
 - Telas: Dashboard, Categorias, Transações, Relatórios, Usuários, Configurações (Outros)
+- Telas dedicadas para **assinaturas** e **parcelamentos** com modais de confirmação que respeitam o comportamento descrito abaixo.
+
+---
+
+## Assinaturas e Parcelamentos recorrentes
+
+### Exclusão pela interface
+- Ao excluir uma assinatura ou parcelamento recorrente, o modal pergunta se deseja remover **apenas a cobrança/parcela atual** ou **todas as futuras**.
+- Para assinaturas o botão verde remove somente a cobrança selecionada; o botão vermelho remove a atual e todas as próximas ocorrências previstas.
+- Para parcelamentos a mesma lógica se aplica às parcelas, exibindo a posição atual e o total para evitar enganos.
+
+### Exclusão via API
+- `DELETE /api/transacoes/<id>?assinaturas_futuras=true` remove a cobrança alvo e todas as futuras da mesma assinatura (descrição, forma de pagamento, categoria e frequência iguais).
+- `DELETE /api/transacoes/<id>?parcelamentos_futuros=true` remove a parcela atual e todas as próximas pertencentes ao mesmo parcelamento (usando `parcelamento_id` ou os campos equivalentes).
+- Sem os parâmetros acima, o backend apaga somente a transação solicitada, preservando o restante da recorrência.
+
+> Dica: use esses parâmetros também nos scripts de automação (ex.: ao limpar dados gerados em massa).
 
 ---
 
@@ -135,57 +153,76 @@ flask db upgrade
 python run.py
 ```
 
-### 7. Acesse o frontend
-Basta abrir os arquivos HTML da pasta `frontend/` no navegador (recomenda-se usar um servidor local para AJAX funcionar corretamente).
+---
+
+## Scripts úteis
+
+- Executar categorização automática com IA/aliases:
+   ```bash
+   python scripts/categorize.py --rules config/rules.yml --input data/transactions_clean.csv
+   ```
+- Popular rapidamente o banco com transações recorrentes para um ano específico:
+   ```bash
+   python scripts/seed_transacoes_anuais.py --ano 2027
+   ```
+- Smoke tests básicos da API:
+   ```bash
+   python scripts/smoke_tests.py
+   ```
 
 ---
 
-## Testes
+## Configuração adicional
 
-Testes HTTP disponíveis em `testes_http/` para validação dos endpoints.
-
----
-
-## Observações
-
-- Para produção, configure variáveis de ambiente e HTTPS.
-- O frontend pode ser adaptado para frameworks modernos (React, Vue, etc).
-- O backend está pronto para deploy em serviços como Heroku, Railway, etc.
+- Variáveis sensíveis e caminhos residem no `.env` (use `.env.example` como modelo).
+- Regras de categorização: `config/rules.yml`.
+- Ajustes de relatórios/painéis: `config/report.yml`.
+- Para usar PyMySQL, mantenha a URL no formato `mysql+pymysql://usuario:senha@localhost:3306/gestao_financeira`.
 
 ---
 
-## 📧 Integração de E-mail (Mailgun)
+## Instalação – notas para Windows
 
-O projeto inclui um serviço de envio de e-mails via Mailgun.
+No Windows a instalação do driver nativo `mysqlclient` pode exigir Visual C++ Build Tools. Se preferir evitar compilações, use PyMySQL (já listado no `requirements.txt`).
 
-### Variáveis de ambiente necessárias (.env)
+```bash
+# criar e ativar venv
+python -m venv .venv
+source .venv/bin/activate   # em git-bash/WSL use "source"
 
-```
-MAILGUN_API_KEY=your-mailgun-key
-MAILGUN_DOMAIN=mg.seudominio.com
-# Para região EU, defina a base URL:
-# MAILGUN_BASE_URL=https://api.eu.mailgun.net
-# Opcional: remetente padrão
-MAILGUN_FROM=postmaster@mg.seudominio.com
-```
+# instalar dependências
+pip install -r requirements.txt
 
-### Uso no código (backend)
+# criar arquivo .env com base no exemplo
+cp .env.example .env
+# editar .env e ajustar DATABASE_URL e SECRET_KEY
 
-```python
-from app.services import send_email
+# Exemplo de DATABASE_URL usando PyMySQL
+# DATABASE_URL=mysql+pymysql://usuario:senha@localhost:3306/gestao_financeira
 
-send_email(
-   to="destinatario@exemplo.com",
-   subject="Assunto",
-   text="Corpo em texto",
-   html="<p>Corpo em <b>HTML</b></p>",
-)
+# executar a aplicação
+python run.py
 ```
 
-Suporta anexos (lista de tuplas `(filename, bytes)`), `cc`/`bcc` e timeout configurável.
+**Dicas rápidas**
+- Se optar por `mysqlclient`, instale os build tools do Visual Studio ou utilize WSL.
+- Com PyMySQL basta manter `mysql+pymysql://...` na URL de conexão.
 
-### Teste rápido (script)
+---
 
+## Contribuição
+
+- Abra uma issue para discutir mudanças grandes.
+- Crie uma branch com nome descritivo e envie PR contendo descrição e testes mínimos.
+- Siga o guia PEP8 e mantenha o `requirements.txt`/`README.md` atualizados ao introduzir novos fluxos.
+
+## Licença
+
+- MIT (ou ajuste conforme a necessidade do projeto).
+
+## Suporte
+
+- Abra uma issue no repositório para reportar bugs, dúvidas ou pedir melhorias.
 Configure o destinatário:
 
 ```

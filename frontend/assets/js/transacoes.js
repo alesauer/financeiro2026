@@ -521,6 +521,68 @@ function showAssinaturaDeleteModal(transacao) {
   });
 }
 
+function showParcelamentoDeleteModal(transacao) {
+  const descricao = transacao?.descricao || 'Parcelamento';
+  const parcelaAtual = transacao?.parcela_atual || 1;
+  const totalParcelas = transacao?.total_parcelas || 1;
+  const valorFormatado = formatCurrency(transacao?.valor_parcela || transacao?.valor);
+  const restante = totalParcelas - parcelaAtual + 1;
+
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-modal-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-modal-card">
+        <div class="confirm-modal-header d-flex align-items-center justify-content-between">
+          <h5 class="mb-0">Excluir parcelamento</h5>
+          <button type="button" class="btn-close" aria-label="Fechar"></button>
+        </div>
+        <div class="confirm-modal-body">
+          <p class="mb-2"><strong>${descricao}</strong></p>
+          <ul class="mb-3 ps-3">
+            <li>Parcela atual: ${parcelaAtual}/${totalParcelas}</li>
+            <li>Valor da parcela: ${valorFormatado}</li>
+            <li>Parcelas restantes (incluindo esta): ${restante}</li>
+          </ul>
+          <p class="mb-3">Escolha o que deseja excluir:</p>
+        </div>
+        <div class="confirm-modal-actions d-flex flex-column gap-2 mt-3 w-100 px-1 pb-2">
+          <button type="button" class="btn btn-success w-100" data-action="single">Apenas esta parcela</button>
+          <button type="button" class="btn btn-danger w-100" data-action="future">Esta e todas as próximas parcelas</button>
+          <button type="button" class="btn btn-link text-muted w-100" data-action="cancel">Cancelar</button>
+        </div>
+      </div>`;
+
+    let resolved = false;
+    const cleanup = (choice) => {
+      if (resolved) return;
+      resolved = true;
+      overlay.classList.remove('show');
+      setTimeout(() => overlay.remove(), 200);
+      resolve(choice);
+    };
+
+    const singleBtn = overlay.querySelector('[data-action="single"]');
+    const futureBtn = overlay.querySelector('[data-action="future"]');
+    const cancelBtn = overlay.querySelector('[data-action="cancel"]');
+    const closeBtn = overlay.querySelector('.btn-close');
+
+    if (singleBtn) singleBtn.addEventListener('click', () => cleanup('single'));
+    if (futureBtn) futureBtn.addEventListener('click', () => cleanup('future'));
+    if (cancelBtn) cancelBtn.addEventListener('click', () => cleanup(null));
+    if (closeBtn) closeBtn.addEventListener('click', () => cleanup(null));
+
+    overlay.addEventListener('click', (evt) => {
+      if (evt.target === overlay) {
+        cleanup(null);
+      }
+    });
+
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('show'));
+  });
+}
+
 async function confirmarEExcluirTransacao(id) {
   if (!id) return false;
 
@@ -535,6 +597,7 @@ async function confirmarEExcluirTransacao(id) {
   }
 
   const isAssinatura = detalhes && detalhes.recorrente && detalhes.recorrencia_tipo === 'Assinatura';
+  const isParcelamento = detalhes && ((detalhes.recorrente && detalhes.recorrencia_tipo === 'Parcelamento') || detalhes.parcelado);
   let deleteUrl = `${apiUrl}/${id}`;
   let confirmado = false;
 
@@ -544,6 +607,16 @@ async function confirmarEExcluirTransacao(id) {
       confirmado = true;
     } else if (escolha === 'future') {
       deleteUrl = `${deleteUrl}?assinaturas_futuras=true`;
+      confirmado = true;
+    } else {
+      confirmado = false;
+    }
+  } else if (isParcelamento) {
+    const escolha = await showParcelamentoDeleteModal(detalhes);
+    if (escolha === 'single') {
+      confirmado = true;
+    } else if (escolha === 'future') {
+      deleteUrl = `${deleteUrl}?parcelamentos_futuros=true`;
       confirmado = true;
     } else {
       confirmado = false;

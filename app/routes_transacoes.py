@@ -233,6 +233,7 @@ def atualizar(id):
 def deletar(id):
     transacao = Transacao.query.get_or_404(id)
     apagar_assinaturas_futuras = request.args.get("assinaturas_futuras", "false").lower() == "true"
+    apagar_parcelamentos_futuros = request.args.get("parcelamentos_futuros", "false").lower() == "true"
 
     if apagar_assinaturas_futuras and transacao.recorrente and transacao.recorrencia_tipo == "Assinatura":
         filtros = [
@@ -256,35 +257,39 @@ def deletar(id):
         db.session.commit()
         return jsonify({"message": "Assinaturas futuras deletadas com sucesso", "qtd": deletadas}), 200
 
-    deletadas = 0
     if transacao.parcelado:
-        # Se tiver parcelamento_id, deletar todas as futuras (inclui a atual)
-        if transacao.parcelamento_id:
-            q = Transacao.query.filter(
-                Transacao.parcelamento_id == transacao.parcelamento_id,
-                Transacao.parcela_atual >= transacao.parcela_atual
-            )
-            deletadas = q.delete(synchronize_session=False)
+        if apagar_parcelamentos_futuros:
+            deletadas = 0
+            if transacao.parcelamento_id:
+                q = Transacao.query.filter(
+                    Transacao.parcelamento_id == transacao.parcelamento_id,
+                    Transacao.parcela_atual >= transacao.parcela_atual
+                )
+                deletadas = q.delete(synchronize_session=False)
+            else:
+                # Fallback: tentar identificar pelo conjunto de campos (menos robusto)
+                from sqlalchemy import and_
+                q = Transacao.query.filter(and_(
+                    Transacao.parcelado == True,
+                    Transacao.tipo == transacao.tipo,
+                    Transacao.categoria_id == transacao.categoria_id,
+                    Transacao.forma_pagamento_id == transacao.forma_pagamento_id,
+                    Transacao.descricao == transacao.descricao,
+                    Transacao.total_parcelas == transacao.total_parcelas,
+                    Transacao.valor_parcela == transacao.valor_parcela,
+                    Transacao.parcela_atual >= transacao.parcela_atual
+                ))
+                deletadas = q.delete(synchronize_session=False)
+            db.session.commit()
+            return jsonify({"message": "Parcelas futuras deletadas com sucesso", "qtd": deletadas}), 200
         else:
-            # Fallback: tentar identificar pelo conjunto de campos (menos robusto)
-            from sqlalchemy import and_
-            q = Transacao.query.filter(and_(
-                Transacao.parcelado == True,
-                Transacao.tipo == transacao.tipo,
-                Transacao.categoria_id == transacao.categoria_id,
-                Transacao.forma_pagamento_id == transacao.forma_pagamento_id,
-                Transacao.descricao == transacao.descricao,
-                Transacao.total_parcelas == transacao.total_parcelas,
-                Transacao.valor_parcela == transacao.valor_parcela,
-                Transacao.parcela_atual >= transacao.parcela_atual
-            ))
-            deletadas = q.delete(synchronize_session=False)
-        db.session.commit()
-        return jsonify({"message": "Parcelas futuras deletadas com sucesso", "qtd": deletadas}), 200
-    else:
-        db.session.delete(transacao)
-        db.session.commit()
-        return jsonify({"message": "Transação deletada com sucesso"}), 200
+            db.session.delete(transacao)
+            db.session.commit()
+            return jsonify({"message": "Parcela deletada com sucesso"}), 200
+
+    db.session.delete(transacao)
+    db.session.commit()
+    return jsonify({"message": "Transação deletada com sucesso"}), 200
 
 # Novo endpoint: resumo (summary) para um período (inicio/fim)
 @bp_transacoes.route("/summary", methods=["GET"])
