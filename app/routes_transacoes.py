@@ -109,6 +109,7 @@ def listar():
         "forma_pagamento_id": request.args.get("forma_pagamento_id"),
         "status": request.args.get("status"),
         "recorrente": request.args.get("recorrente"),
+        "recorrencia_tipo": request.args.get("recorrencia_tipo"),
         "parcelado": request.args.get("parcelado"),
     }
 
