@@ -177,6 +177,32 @@ class Milha(db.Model):
 
 
 # =======================
+# Lembretes
+# =======================
+
+
+class Lembrete(db.Model):
+    __tablename__ = "lembretes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    titulo = db.Column(db.String(120), nullable=False)
+    descricao = db.Column(db.Text, nullable=True)
+    categoria = db.Column(db.String(50), nullable=True)
+    data_lembrete = db.Column(db.Date, nullable=True)
+    hora_lembrete = db.Column(db.Time, nullable=True)
+    status = db.Column(db.Enum("Pendente", "Concluído", name="status_lembrete"), nullable=False, default="Pendente")
+    prioridade = db.Column(db.Enum("Baixa", "Média", "Alta", name="prioridade_lembrete"), nullable=False, default="Média")
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    usuario = db.relationship("Usuario", lazy=True)
+
+    def __repr__(self):
+        return f"<Lembrete {self.titulo} status={self.status}>"
+
+
+# =======================
 # Configurações (chave/valor JSON)
 # =======================
 

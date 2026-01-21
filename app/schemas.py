@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validates, ValidationError, pre_load, EXCLUDE
+from marshmallow import Schema, fields, validates, validates_schema, ValidationError, pre_load, EXCLUDE
 
 # ======================
 # Usuário
@@ -229,6 +229,58 @@ class MilhaSchema(Schema):
     def validate_quantidade(self, value, **kwargs):
         if value is None or value <= 0:
             raise ValidationError("Quantidade deve ser maior que 0")
+
+
+# ======================
+# Lembretes
+# ======================
+
+
+class LembreteSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    usuario_id = fields.Int(dump_only=True)
+    titulo = fields.Str(required=True)
+    descricao = fields.Str(allow_none=True)
+    categoria = fields.Str(allow_none=True)
+    data_lembrete = fields.Date(allow_none=True)
+    hora_lembrete = fields.Time(allow_none=True)
+    status = fields.Str(load_default="Pendente")
+    prioridade = fields.Str(load_default="Média")
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+
+    ALLOWED_STATUS = {"Pendente", "Concluído"}
+    ALLOWED_PRIORIDADES = {"Baixa", "Média", "Alta"}
+
+    @validates("titulo")
+    def validate_titulo(self, value, **kwargs):
+        if not value or not value.strip():
+            raise ValidationError("Título é obrigatório")
+        if len(value.strip()) > 120:
+            raise ValidationError("Título deve ter no máximo 120 caracteres")
+
+    @validates("categoria")
+    def validate_categoria(self, value, **kwargs):
+        if value and len(value.strip()) > 50:
+            raise ValidationError("Categoria deve ter no máximo 50 caracteres")
+
+    @validates("status")
+    def validate_status(self, value, **kwargs):
+        if value and value not in self.ALLOWED_STATUS:
+            raise ValidationError("Status inválido")
+
+    @validates("prioridade")
+    def validate_prioridade(self, value, **kwargs):
+        if value and value not in self.ALLOWED_PRIORIDADES:
+            raise ValidationError("Prioridade inválida")
+
+    @validates_schema
+    def validate_horario(self, data, **kwargs):
+        if data.get("hora_lembrete") and not data.get("data_lembrete"):
+            raise ValidationError({"data_lembrete": ["Informe uma data para usar hora do lembrete"]})
 
 
 # ======================

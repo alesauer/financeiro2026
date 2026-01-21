@@ -19,6 +19,7 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 - **CRUD de Usuários**: Cadastro, login, edição e exclusão de usuários.
 - **Relatórios**: Visualização de dados por período, categoria, tipo, etc.
 - **Configurações Avançadas (Outros)**: Página de configurações com layout moderno (Bootstrap), switches, selects e ações administrativas.
+- **Lembretes Inteligentes**: Registre tarefas, contas e metas com data/hora, prioridade e status para nunca perder prazos.
 
 ---
 
@@ -106,6 +107,18 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 - Sem os parâmetros acima, o backend apaga somente a transação solicitada, preservando o restante da recorrência.
 
 > Dica: use esses parâmetros também nos scripts de automação (ex.: ao limpar dados gerados em massa).
+
+---
+
+## Lembretes pessoais
+
+- **API**: `GET/POST /api/lembretes`, `GET/PUT/DELETE /api/lembretes/<id>`, `PATCH /api/lembretes/<id>/status` e `GET /api/lembretes/dashboard` para cards-resumo.
+- **Campos principais**: título (obrigatório), categoria, descrição, data, hora, prioridade (`Baixa/Média/Alta`) e status (`Pendente/Concluído`).
+- **Segurança**: todos os endpoints exigem JWT; cada lembrete é vinculado ao usuário autenticado.
+- **Front-end**: a página `frontend/lembretes.html` oferece cards com métricas, atalhos para próximos lembretes, filtros avançados e CRUD completo via Grid.js + Bootstrap.
+- **Testes rápidos**: use `testes_http/teste_lembretes.http` para exercitar o fluxo inteiro (login, criação, atualização, conclusão e exclusão).
+
+> Após atualizar o código, execute `flask db upgrade` para aplicar a nova tabela `lembretes` e liberar o recurso.
 
 ---
 

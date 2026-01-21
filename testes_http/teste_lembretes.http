@@ -1,0 +1,59 @@
+@baseUrl = http://127.0.0.1:5000
+@email = seu-email@example.com
+@senha = senha123
+@token = 
+@lembrete_id = 
+
+### Login
+POST {{baseUrl}}/api/usuarios/login
+Content-Type: application/json
+
+{
+  "email": "{{email}}",
+  "senha": "{{senha}}"
+}
+
+> {% client.global.set("token", response.body.access_token); %}
+
+### Criar lembrete
+POST {{baseUrl}}/api/lembretes/
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "titulo": "Pagar cartão Nubank",
+  "categoria": "Cartões",
+  "data_lembrete": "2026-01-25",
+  "hora_lembrete": "10:00",
+  "prioridade": "Alta",
+  "descricao": "Lembrar de pagar antes do meio-dia"
+}
+
+> {% client.global.set("lembrete_id", response.body.id); %}
+
+### Listar lembretes
+GET {{baseUrl}}/api/lembretes/?page=1&per_page=10&status=Pendente
+Authorization: Bearer {{token}}
+
+### Atualizar lembrete
+PUT {{baseUrl}}/api/lembretes/{{lembrete_id}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "descricao": "Atualizado via teste HTTP",
+  "prioridade": "Média"
+}
+
+### Atualizar status
+PATCH {{baseUrl}}/api/lembretes/{{lembrete_id}}/status
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "status": "Concluído"
+}
+
+### Excluir lembrete
+DELETE {{baseUrl}}/api/lembretes/{{lembrete_id}}
+Authorization: Bearer {{token}}
