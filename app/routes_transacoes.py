@@ -9,6 +9,7 @@ from app.models import FormaPagamento
 from flask_jwt_extended import jwt_required
 import uuid
 from services.fatura_service import aplicar_competencia_transacao
+from app.utils.datas import parse_dia_override
 
 bp_transacoes = Blueprint("transacoes", __name__)
 schema = TransacaoSchema()
@@ -657,4 +658,90 @@ def listar_cartao_credito():
         "cartoes": cartoes,
         "total_geral": total_geral,
         "total_geral_pendentes": total_geral_pendentes
+    }), 200
+
+
+@bp_transacoes.route("/recalcular_competencia", methods=["POST"])
+@jwt_required()
+def recalcular_competencia():
+    data = request.get_json() or {}
+    forma_pagamento_id = data.get("forma_pagamento_id")
+    if not forma_pagamento_id:
+        return jsonify({"erro": "forma_pagamento_id é obrigatório"}), 400
+
+    forma_pagamento = FormaPagamento.query.get(forma_pagamento_id)
+    if not forma_pagamento:
+        return jsonify({"erro": "Forma de pagamento não encontrada"}), 404
+
+    try:
+        dia_fechamento_override = parse_dia_override(data.get("dia_fechamento_override"), "dia_fechamento_override")
+        dia_vencimento_override = parse_dia_override(data.get("dia_vencimento_override"), "dia_vencimento_override")
+    except ValueError as exc:
+        return jsonify({"erro": str(exc)}), 400
+
+    query = Transacao.query.filter(Transacao.forma_pagamento_id == forma_pagamento.id)
+
+    transacoes_ids = data.get("transacoes_ids")
+    if isinstance(transacoes_ids, str):
+        transacoes_ids = [item.strip() for item in transacoes_ids.split(",") if item.strip()]
+    if transacoes_ids:
+        try:
+            ids_int = [int(i) for i in transacoes_ids]
+        except ValueError:
+            return jsonify({"erro": "transacoes_ids deve conter apenas números"}), 400
+        query = query.filter(Transacao.id.in_(ids_int))
+
+    inicio_str = data.get("inicio")
+    fim_str = data.get("fim")
+    try:
+        if inicio_str:
+            inicio_dt = datetime.strptime(inicio_str, "%Y-%m-%d").date()
+            query = query.filter(Transacao.data_transacao >= inicio_dt)
+        if fim_str:
+            fim_dt = datetime.strptime(fim_str, "%Y-%m-%d").date()
+            query = query.filter(Transacao.data_transacao <= fim_dt)
+    except ValueError:
+        return jsonify({"erro": "Datas inválidas (use YYYY-MM-DD)"}), 400
+
+    if data.get("apenas_sem_competencia"):
+        query = query.filter(Transacao.competencia_fatura.is_(None))
+
+    status_filtro = data.get("status")
+    if status_filtro:
+        if isinstance(status_filtro, str):
+            status_filtro = [status_filtro]
+        query = query.filter(Transacao.status.in_(status_filtro))
+
+    transacoes = query.order_by(Transacao.data_transacao.asc(), Transacao.id.asc()).all()
+    total_considerado = len(transacoes)
+    if total_considerado == 0:
+        return jsonify({
+            "atualizados": 0,
+            "total_considerado": 0,
+            "erros": [],
+            "mensagem": "Nenhuma transação encontrada para os filtros informados."
+        }), 200
+
+    atualizados = 0
+    erros = []
+    for tx in transacoes:
+        try:
+            aplicar_competencia_transacao(
+                tx,
+                forma_pagamento,
+                dia_fechamento_override=dia_fechamento_override,
+                dia_vencimento_override=dia_vencimento_override
+            )
+            atualizados += 1
+        except Exception as exc:  # pragma: no cover - logging futuro
+            erros.append({"id": tx.id, "erro": str(exc)})
+
+    if atualizados:
+        db.session.commit()
+
+    return jsonify({
+        "total_considerado": total_considerado,
+        "atualizados": atualizados,
+        "erros": erros,
+        "dia_fechamento_utilizado": dia_fechamento_override or getattr(forma_pagamento, "dia_fechamento", None)
     }), 200

@@ -11,6 +11,7 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 
 - **Dashboard**: Visão geral das finanças.
 - **Importação CSV**: Importa transações de arquivos CSV.
+- **Importação CSV com overrides**: Ao importar extratos de cartão é possível informar um dia de fechamento/vencimento específico para o lote, acomodando meses com datas diferentes.
 - **Classificação automática (IA)**: Sugestão de categorias baseada em inteligência artificial.
 - **CRUD de Categorias**: Criar, listar, editar e excluir categorias.
 - **CRUD de Transações**: Gerenciar receitas e despesas.
@@ -108,6 +109,29 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 
 ---
 
+## Cartões com fechamento variável
+
+- Na tela `frontend/importar_cartao.html` o formulário possui campos opcionais **Dia de fechamento** e **Dia de vencimento**. Informe um número (1-31) ou uma data no formato `YYYY-MM-DD` para aplicar o override somente ao lote importado.
+- Também é possível enviar os mesmos campos via API: `POST /api/importar_transacoes` aceita `dia_fechamento_override` e `dia_vencimento_override` no corpo principal e/ou em cada item de `transacoes`.
+- Para transações já existentes use `POST /api/transacoes/recalcular_competencia` com filtros opcionais (`inicio`, `fim`, `apenas_sem_competencia`, `status`, `transacoes_ids`) e, se necessário, overrides temporários de fechamento/vencimento. Exemplo:
+
+```http
+POST /api/transacoes/recalcular_competencia HTTP/1.1
+Content-Type: application/json
+
+{
+   "forma_pagamento_id": 12,
+   "inicio": "2025-01-01",
+   "fim": "2025-01-31",
+   "apenas_sem_competencia": true,
+   "dia_fechamento_override": "2025-01-08"
+}
+```
+
+- Se preferir rodar direto no servidor, use o script `python scripts/recalcular_competencia.py --forma-pagamento-id 12 --inicio 2025-01-01 --fim 2025-01-31 --dia-fechamento 8`.
+
+---
+
 ## Migração e Banco de Dados
 
 1. Configure o banco MySQL (veja `sql/createDb.sql`).
@@ -164,6 +188,10 @@ python run.py
 - Popular rapidamente o banco com transações recorrentes para um ano específico:
    ```bash
    python scripts/seed_transacoes_anuais.py --ano 2027
+   ```
+- Recalcular competência de fatura para um cartão específico:
+   ```bash
+   python scripts/recalcular_competencia.py --forma-pagamento-id 12 --inicio 2025-01-01 --fim 2025-01-31 --dia-fechamento 8
    ```
 - Smoke tests básicos da API:
    ```bash

@@ -33,8 +33,12 @@ def calcular_competencia_fatura(data_transacao: Optional[date], dia_fechamento: 
     return date(ano, mes, 1)
 
 
-def aplicar_competencia_transacao(transacao, forma_pagamento=None):
-    """Atualiza o campo competencia_fatura se houver cartão de crédito e fechamento configurado."""
+def aplicar_competencia_transacao(transacao, forma_pagamento=None, dia_fechamento_override: Optional[int] = None, dia_vencimento_override: Optional[int] = None):
+    """Atualiza o campo competencia_fatura se houver cartão de crédito e fechamento configurado.
+
+    dia_fechamento_override/dia_vencimento_override permitem usar valores específicos por lote ou período
+    sem alterar o cadastro padrão do cartão.
+    """
     if transacao is None:
         return
 
@@ -47,9 +51,14 @@ def aplicar_competencia_transacao(transacao, forma_pagamento=None):
             forma_pagamento = FormaPagamento.query.get(transacao.forma_pagamento_id)
 
     if forma_pagamento and getattr(forma_pagamento, "cartao_credito", False):
+        dia_fechamento = dia_fechamento_override
+        if dia_fechamento is None:
+            dia_fechamento = getattr(forma_pagamento, "dia_fechamento", None)
+
         transacao.competencia_fatura = calcular_competencia_fatura(
             transacao.data_transacao,
-            getattr(forma_pagamento, "dia_fechamento", None)
+            dia_fechamento
         )
     else:
         transacao.competencia_fatura = None
+

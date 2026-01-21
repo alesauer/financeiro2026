@@ -4,6 +4,7 @@ from app.models import Transacao, Categoria, FormaPagamento, CategoriaAlias
 from app.schemas import TransacaoSchema
 from datetime import datetime
 from app.utils.texto import normalizar_texto
+from app.utils.datas import parse_dia_override
 from services.fatura_service import aplicar_competencia_transacao
 from uuid import uuid4
 from dateutil.relativedelta import relativedelta
@@ -19,7 +20,8 @@ def limpar_marcador_parcela(texto: str | None) -> str:
     return re.sub(r"parc(?:ela)?\.?\s*(\(?\s*\d{1,2}\s*\/\s*\d{1,2}\s*\)?)", "", texto, flags=re.IGNORECASE).strip()
 
 
-def gerar_parcelas_restantes(transacao_base: Transacao, forma_pagamento: FormaPagamento, total_parcelas: int) -> int:
+def gerar_parcelas_restantes(transacao_base: Transacao, forma_pagamento: FormaPagamento, total_parcelas: int,
+                              dia_fechamento_override: int | None = None, dia_vencimento_override: int | None = None) -> int:
     if not transacao_base.parcelado or not transacao_base.data_transacao:
         return 0
     parcelas_criadas = 0
@@ -48,7 +50,12 @@ def gerar_parcelas_restantes(transacao_base: Transacao, forma_pagamento: FormaPa
         nova.parcelamento_id = transacao_base.parcelamento_id
         nova.recorrente = True
         nova.recorrencia_tipo = "Parcelamento"
-        aplicar_competencia_transacao(nova, forma_pagamento)
+        aplicar_competencia_transacao(
+            nova,
+            forma_pagamento,
+            dia_fechamento_override=dia_fechamento_override,
+            dia_vencimento_override=dia_vencimento_override
+        )
         db.session.add(nova)
         parcelas_criadas += 1
     return parcelas_criadas
@@ -63,12 +70,29 @@ def importar_transacoes():
         forma_pagamento_padrao = FormaPagamento.query.get(forma_pagamento_id)
         if not forma_pagamento_padrao:
             return jsonify({"erro": "Forma de pagamento selecionada não encontrada"}), 400
+    try:
+        dia_fechamento_override_global = parse_dia_override(data.get("dia_fechamento_override"), "dia_fechamento_override")
+        dia_vencimento_override_global = parse_dia_override(data.get("dia_vencimento_override"), "dia_vencimento_override")
+    except ValueError as exc:
+        return jsonify({"erro": str(exc)}), 400
     inseridas = []
     parcelas_geradas_total = 0
     erros = []
     categoria_padrao = Categoria.query.filter_by(nome="Outros", tipo="Despesa").first()
     for idx, t in enumerate(transacoes):
         try:
+            dia_fechamento_override = dia_fechamento_override_global
+            dia_vencimento_override = dia_vencimento_override_global
+            if "dia_fechamento_override" in t:
+                dia_fechamento_override = parse_dia_override(
+                    t.get("dia_fechamento_override"),
+                    f"dia_fechamento_override (linha {idx + 1})"
+                )
+            if "dia_vencimento_override" in t:
+                dia_vencimento_override = parse_dia_override(
+                    t.get("dia_vencimento_override"),
+                    f"dia_vencimento_override (linha {idx + 1})"
+                )
             categoria = None
             categoria_id_payload = t.get("categoria_id")
             if categoria_id_payload:
@@ -132,10 +156,21 @@ def importar_transacoes():
                 transacao.recorrente = False
                 transacao.recorrencia_tipo = None
 
-            aplicar_competencia_transacao(transacao, fp)
+            aplicar_competencia_transacao(
+                transacao,
+                fp,
+                dia_fechamento_override=dia_fechamento_override,
+                dia_vencimento_override=dia_vencimento_override
+            )
             db.session.add(transacao)
             if transacao.parcelado and (transacao.total_parcelas or 1) > (transacao.parcela_atual or 1):
-                parcelas_geradas_total += gerar_parcelas_restantes(transacao, fp, transacao.total_parcelas or transacao.parcela_atual)
+                parcelas_geradas_total += gerar_parcelas_restantes(
+                    transacao,
+                    fp,
+                    transacao.total_parcelas or transacao.parcela_atual,
+                    dia_fechamento_override=dia_fechamento_override,
+                    dia_vencimento_override=dia_vencimento_override
+                )
             chave_normalizada = normalizar_texto(descricao_limpa or descricao_original)
             if chave_normalizada:
                 alias = CategoriaAlias.query.filter_by(descricao_normalizada=chave_normalizada).first()
