@@ -39,11 +39,12 @@ def run():
             print('Login falhou, abortando testes protegidos')
             return
         token = r.get_json().get('access_token')
-        headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
+        auth_headers = {'Authorization': f'Bearer {token}'}
+        json_headers = {'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'}
 
         # 5) criar categoria (protegido)
         cat_payload = {'nome': f'Cat Teste {ts}', 'tipo': 'Despesa'}
-        r = client.post('/api/categorias', data=json.dumps(cat_payload), headers=headers)
+        r = client.post('/api/categorias', data=json.dumps(cat_payload), headers=json_headers)
         print('POST /api/categorias ->', r.status_code, r.get_json() if r.data else '')
         categoria = r.get_json() if r.status_code in (200,201) else None
 
@@ -60,7 +61,7 @@ def run():
                 'valor': '12.50',
                 'forma_pagamento': 'Dinheiro'
             }
-            r = client.post('/api/transacoes', data=json.dumps(trans_payload), headers=headers)
+            r = client.post('/api/transacoes', data=json.dumps(trans_payload), headers=json_headers)
             print('POST /api/transacoes ->', r.status_code, r.get_json() if r.data else '')
 
         # 8) listar transacoes (paginado)
@@ -70,6 +71,31 @@ def run():
             print('GET /api/transacoes ->', r.status_code, 'items:', len(json_resp.get('items', [])))
         else:
             print('GET /api/transacoes ->', r.status_code, json_resp)
+
+        # 9) criar viagem + custo
+        viagem_payload = {
+            'titulo': f'Viagem Teste {ts}',
+            'destino': 'São Paulo',
+            'data_inicio': datetime.utcnow().date().isoformat(),
+            'data_termino': datetime.utcnow().date().isoformat(),
+            'status': 'Planejada',
+        }
+        r = client.post('/api/viagens', data=json.dumps(viagem_payload), headers=json_headers)
+        print('POST /api/viagens ->', r.status_code, r.get_json() if r.data else '')
+        viagem = r.get_json() if r.status_code == 201 else None
+
+        if viagem:
+            custo_payload = {
+                'tipo': 'Transporte',
+                'descricao': 'Passagem de teste',
+                'data_gasto': datetime.utcnow().date().isoformat(),
+                'valor': '123.45'
+            }
+            r = client.post(f"/api/viagens/{viagem['id']}/custos", data=json.dumps(custo_payload), headers=json_headers)
+            print('POST /api/viagens/<id>/custos ->', r.status_code, r.get_json() if r.data else '')
+
+            r = client.get(f"/api/viagens/{viagem['id']}", headers=auth_headers)
+            print('GET /api/viagens/<id> ->', r.status_code)
 
         print('=== Smoke tests finalizados ===')
 

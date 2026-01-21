@@ -216,3 +216,70 @@ class Configuracao(db.Model):
 
     def __repr__(self):
         return f"<Configuracao {self.chave}>"
+
+
+# =======================
+# Viagens
+# =======================
+
+
+class Viagem(db.Model):
+    __tablename__ = "viagens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    titulo = db.Column(db.String(120), nullable=False)
+    destino = db.Column(db.String(120), nullable=False)
+    data_inicio = db.Column(db.Date, nullable=False)
+    data_termino = db.Column(db.Date, nullable=False)
+    descricao = db.Column(db.Text, nullable=True)
+    status = db.Column(db.Enum("Planejada", "Em andamento", "Finalizada", "Cancelada", name="status_viagem"), nullable=False, default="Planejada")
+    custo_total = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    custos = db.relationship(
+        "ViagemCusto",
+        backref="viagem",
+        lazy=True,
+        cascade="all, delete-orphan",
+        order_by="ViagemCusto.data_gasto"
+    )
+
+    def __repr__(self):
+        return f"<Viagem {self.titulo} destino={self.destino}>"
+
+
+class ViagemCusto(db.Model):
+    __tablename__ = "viagens_custos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    viagem_id = db.Column(db.Integer, db.ForeignKey("viagens.id", ondelete="CASCADE"), nullable=False)
+    tipo = db.Column(db.Enum("Transporte", "Hospedagem", "Alimentação", "Passeios", "Outros", name="tipo_custo_viagem"), nullable=False)
+    descricao = db.Column(db.String(255), nullable=False)
+    data_gasto = db.Column(db.Date, nullable=False)
+    valor = db.Column(db.Numeric(12, 2), nullable=False)
+    forma_pagamento = db.Column(db.String(80), nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    anexos = db.relationship("ViagemCustoAnexo", backref="custo", lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<ViagemCusto {self.tipo} valor={self.valor}>"
+
+
+class ViagemCustoAnexo(db.Model):
+    __tablename__ = "viagens_custos_anexos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    custo_id = db.Column(db.Integer, db.ForeignKey("viagens_custos.id", ondelete="CASCADE"), nullable=False)
+    original_name = db.Column(db.String(255), nullable=False)
+    stored_name = db.Column(db.String(255), nullable=False)
+    mime_type = db.Column(db.String(100), nullable=False)
+    size_bytes = db.Column(db.Integer, nullable=False)
+    storage_path = db.Column(db.String(500), nullable=False)
+    uploaded_at = db.Column(db.DateTime, default=db.func.now())
+
+    def __repr__(self):
+        return f"<ViagemCustoAnexo custo={self.custo_id} arquivo={self.original_name}>"

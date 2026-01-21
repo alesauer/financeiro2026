@@ -284,6 +284,101 @@ class LembreteSchema(Schema):
 
 
 # ======================
+# Viagens
+# ======================
+
+
+class ViagemCustoAnexoSchema(Schema):
+    id = fields.Int(dump_only=True)
+    custo_id = fields.Int(dump_only=True)
+    original_name = fields.Str(dump_only=True)
+    stored_name = fields.Str(dump_only=True)
+    mime_type = fields.Str(dump_only=True)
+    size_bytes = fields.Int(dump_only=True)
+    storage_path = fields.Str(dump_only=True)
+    uploaded_at = fields.DateTime(dump_only=True)
+
+
+class ViagemCustoSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    viagem_id = fields.Int(dump_only=True)
+    tipo = fields.Str(required=True)
+    descricao = fields.Str(required=True)
+    data_gasto = fields.Date(required=True)
+    valor = fields.Decimal(required=True, as_string=True)
+    forma_pagamento = fields.Str(allow_none=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+    anexos = fields.List(fields.Nested(ViagemCustoAnexoSchema), dump_only=True)
+
+    ALLOWED_TIPOS = {"Transporte", "Hospedagem", "Alimentação", "Passeios", "Outros"}
+
+    @validates("tipo")
+    def validate_tipo(self, value, **kwargs):
+        if value not in self.ALLOWED_TIPOS:
+            raise ValidationError("Tipo de custo inválido")
+
+    @validates("valor")
+    def validate_valor(self, value, **kwargs):
+        if value is None or value <= 0:
+            raise ValidationError("Valor deve ser maior que 0")
+
+    @validates("descricao")
+    def validate_descricao(self, value, **kwargs):
+        if not value or not value.strip():
+            raise ValidationError("Descrição é obrigatória")
+
+
+class ViagemSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    usuario_id = fields.Int(dump_only=True)
+    titulo = fields.Str(required=True)
+    destino = fields.Str(required=True)
+    data_inicio = fields.Date(required=True)
+    data_termino = fields.Date(required=True)
+    descricao = fields.Str(allow_none=True)
+    status = fields.Str(load_default="Planejada")
+    custo_total = fields.Decimal(as_string=True, dump_only=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+    custos = fields.List(fields.Nested(ViagemCustoSchema), dump_only=True)
+
+    ALLOWED_STATUS = {"Planejada", "Em andamento", "Finalizada", "Cancelada"}
+
+    @validates("status")
+    def validate_status(self, value, **kwargs):
+        if value not in self.ALLOWED_STATUS:
+            raise ValidationError("Status inválido")
+
+    @validates("titulo")
+    def validate_titulo(self, value, **kwargs):
+        if not value or not value.strip():
+            raise ValidationError("Título é obrigatório")
+        if len(value.strip()) > 120:
+            raise ValidationError("Título deve ter no máximo 120 caracteres")
+
+    @validates("destino")
+    def validate_destino(self, value, **kwargs):
+        if not value or not value.strip():
+            raise ValidationError("Destino é obrigatório")
+        if len(value.strip()) > 120:
+            raise ValidationError("Destino deve ter no máximo 120 caracteres")
+
+    @validates_schema
+    def validate_datas(self, data, **kwargs):
+        inicio = data.get("data_inicio")
+        termino = data.get("data_termino")
+        if inicio and termino and termino < inicio:
+            raise ValidationError({"data_termino": ["Data de término deve ser posterior ou igual à data de início"]})
+
+
+# ======================
 # Configurações - E-mails de Alerta
 # ======================
 

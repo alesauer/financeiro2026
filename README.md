@@ -20,6 +20,7 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 - **Relatórios**: Visualização de dados por período, categoria, tipo, etc.
 - **Configurações Avançadas (Outros)**: Página de configurações com layout moderno (Bootstrap), switches, selects e ações administrativas.
 - **Lembretes Inteligentes**: Registre tarefas, contas e metas com data/hora, prioridade e status para nunca perder prazos.
+- **Planejamento de Viagens**: Cadastre viagens com período/status, registre custos por categoria, anexe comprovantes e exporte relatórios em CSV/PDF.
 
 ---
 
@@ -76,12 +77,14 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 - Categoria
 - Transacao
 - Usuario (com senha hash)
+- Viagem, ViagemCusto e anexos de comprovantes
 
 ### Endpoints REST
 - `/categorias` - CRUD de categorias
 - `/transacoes` - CRUD de transações
 - `/usuarios` - CRUD e login de usuários
 - `/relatorios` - Relatórios financeiros
+- `/viagens` - Planejamento de viagens (CRUD completo, custos vinculados, anexos e exportação)
 
 ---
 
@@ -119,6 +122,19 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 - **Testes rápidos**: use `testes_http/teste_lembretes.http` para exercitar o fluxo inteiro (login, criação, atualização, conclusão e exclusão).
 
 > Após atualizar o código, execute `flask db upgrade` para aplicar a nova tabela `lembretes` e liberar o recurso.
+
+---
+
+## Planejamento de Viagens
+
+- **API**: `GET/POST /api/viagens`, `GET/PUT/DELETE /api/viagens/<id>`, `POST /api/viagens/<id>/custos`, `PUT/DELETE /api/viagens/<id>/custos/<custo_id>`, endpoints extras para anexos (`/anexos`) e exportação (`/export?formato=csv|pdf`).
+- **Campos principais**: título, destino, data de início/término, status (`Planejada/Em andamento/Finalizada/Cancelada`) e observações opcionais.
+- **Custos vinculados**: tipo (Transporte, Hospedagem, Alimentação, Passeios, Outros), descrição, data do gasto, valor e forma de pagamento opcional. O backend recalcula o custo total automaticamente e gera resumo por categoria.
+- **Comprovantes**: upload de até 5 anexos (PDF/JPEG/PNG/WebP) por custo, com armazenamento organizado por usuário/viagem/custo.
+- **Exportação**: baixe o relatório completo da viagem em CSV ou PDF (renderizado via `fpdf2`).
+- **Frontend**: a página `frontend/viagens.html` oferece grid com filtros/busca, painel lateral com detalhes em tempo real, cadastro via modais, gerenciamento de custos e upload de anexos.
+
+> Necessário rodar `flask db upgrade` para criar as tabelas `viagens`, `viagens_custos` e `viagens_custos_anexos` antes de usar o módulo.
 
 ---
 

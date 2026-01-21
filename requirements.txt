@@ -12,3 +12,4 @@ requests>=2.31
 openai>=1.6
 mysqlclient>=2.0    # opcional: requer build tools no Windows
 PyMySQL>=1.0        # recomendado em ambientes Windows
+fpdf2>=2.7
