@@ -1,0 +1,188 @@
+.calculadora-page {
+  min-height: calc(100vh - 160px);
+}
+
+.hero-calculadora {
+  background: linear-gradient(135deg, #ffffff 0%, #f6f7fb 100%);
+  border-radius: 1.25rem;
+}
+
+.hero-title {
+  font-size: clamp(1.75rem, 3vw, 2.4rem);
+  font-weight: 700;
+  color: #1f2b3d;
+  margin-bottom: 0.5rem;
+}
+
+.hero-subtitle {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.hero-metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.metric-card {
+  background: #fff;
+  border-radius: 0.85rem;
+  padding: 0.85rem 1rem;
+  box-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+}
+
+.metric-label {
+  font-size: 0.8rem;
+  color: #6c757d;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metric-value {
+  font-size: 1.8rem;
+  color: #0d6efd;
+}
+
+.search-wrapper {
+  position: relative;
+}
+
+.search-wrapper input {
+  padding-left: 2.75rem;
+}
+
+.search-icon {
+  position: absolute;
+  top: 50%;
+  left: 1rem;
+  transform: translateY(-50%);
+  font-size: 1rem;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.calculadora-filter {
+  border-radius: 999px;
+  border-color: #d0d5dd;
+  color: #475467;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.calculadora-filter:hover,
+.calculadora-filter.active {
+  color: #fff;
+  background-color: #0d6efd;
+  border-color: #0d6efd;
+}
+
+.calculadora-card {
+  border: none;
+  border-radius: 1.1rem;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  height: 100%;
+}
+
+.calculadora-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 18px 35px rgba(15, 23, 42, 0.12);
+}
+
+.calculadora-card .card-body {
+  padding: 1.5rem;
+}
+
+.calculadora-card .icon-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  margin-bottom: 1rem;
+  background-color: #f1f5f9;
+}
+
+.calculadora-card .category-badge {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #0d6efd;
+  background-color: rgba(13, 110, 253, 0.12);
+}
+
+.calculadora-card h3 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #1f2b3d;
+}
+
+.calculadora-card p {
+  color: #5f6c7b;
+  font-size: 0.95rem;
+  min-height: 3.6rem;
+}
+
+.calculadora-card .btn {
+  border-radius: 999px;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+
+.calculadora-card .status-pill {
+  font-size: 0.75rem;
+  color: #a855f7;
+  background-color: rgba(168, 85, 247, 0.1);
+  border-radius: 999px;
+  padding: 0.2rem 0.75rem;
+}
+
+.calculadora-card.is-disabled {
+  opacity: 0.8;
+}
+
+.calculadora-card.is-disabled .btn-primary {
+  pointer-events: none;
+  background-color: #adb5bd;
+  border-color: #adb5bd;
+}
+
+.calculadora-card.is-disabled .icon-circle {
+  background-color: #f6f6f6;
+}
+
+.calculadora-empty {
+  border-radius: 1rem;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+}
+
+.category-financeiras .icon-circle {
+  background-color: rgba(25, 135, 84, 0.1);
+}
+
+.category-trabalhistas .icon-circle {
+  background-color: rgba(220, 53, 69, 0.1);
+}
+
+.category-simuladores .icon-circle {
+  background-color: rgba(13, 110, 253, 0.12);
+}
+
+.category-tempo .icon-circle {
+  background-color: rgba(255, 193, 7, 0.2);
+}
+
+@media (max-width: 992px) {
+  .hero-metrics {
+    flex-direction: row;
+  }
+
+  .hero-metrics .metric-card {
+    flex: 1;
+    text-align: center;
+  }
+}
