@@ -305,9 +305,12 @@ def criar_custo(viagem_id):
 
     custo = ViagemCusto(
         viagem_id=viagem.id,
-        tipo=validado["tipo"],
+        nome=validado["nome"],
         descricao=validado["descricao"],
-        data_gasto=validado["data_gasto"],
+        observacao=validado.get("observacao"),
+        link=validado.get("link"),
+        tipo=validado.get("tipo", "Outros"),
+        data_gasto=validado.get("data_gasto"),
         valor=validado["valor"],
         forma_pagamento=validado.get("forma_pagamento"),
     )
@@ -339,7 +342,16 @@ def atualizar_custo(viagem_id, custo_id):
         return jsonify(getattr(err, "messages", {"error": "Dados inválidos"})), 400
 
     for campo, valor in validado.items():
-        if campo in {"tipo", "descricao", "data_gasto", "valor", "forma_pagamento"}:
+        if campo in {
+            "nome",
+            "descricao",
+            "observacao",
+            "link",
+            "tipo",
+            "data_gasto",
+            "valor",
+            "forma_pagamento",
+        }:
             setattr(custo, campo, valor)
     _recalcular_total(viagem.id)
     db.session.commit()

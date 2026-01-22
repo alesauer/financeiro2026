@@ -255,9 +255,12 @@ class ViagemCusto(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     viagem_id = db.Column(db.Integer, db.ForeignKey("viagens.id", ondelete="CASCADE"), nullable=False)
-    tipo = db.Column(db.Enum("Transporte", "Hospedagem", "Alimentação", "Passeios", "Outros", name="tipo_custo_viagem"), nullable=False)
+    nome = db.Column(db.String(120), nullable=False)
     descricao = db.Column(db.String(255), nullable=False)
-    data_gasto = db.Column(db.Date, nullable=False)
+    observacao = db.Column(db.Text, nullable=True)
+    link = db.Column(db.String(255), nullable=True)
+    tipo = db.Column(db.Enum("Transporte", "Hospedagem", "Alimentação", "Passeios", "Outros", name="tipo_custo_viagem"), nullable=False, default="Outros")
+    data_gasto = db.Column(db.Date, nullable=False, default=db.func.current_date)
     valor = db.Column(db.Numeric(12, 2), nullable=False)
     forma_pagamento = db.Column(db.String(80), nullable=True)
     created_at = db.Column(db.DateTime, default=db.func.now())
@@ -266,7 +269,7 @@ class ViagemCusto(db.Model):
     anexos = db.relationship("ViagemCustoAnexo", backref="custo", lazy=True, cascade="all, delete-orphan")
 
     def __repr__(self):
-        return f"<ViagemCusto {self.tipo} valor={self.valor}>"
+        return f"<ViagemCusto {self.nome} valor={self.valor}>"
 
 
 class ViagemCustoAnexo(db.Model):

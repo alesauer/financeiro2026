@@ -1,4 +1,7 @@
+from datetime import date
+
 from marshmallow import Schema, fields, validates, validates_schema, ValidationError, pre_load, EXCLUDE
+
 
 # ======================
 # Usuário
@@ -9,7 +12,6 @@ class UsuarioSchema(Schema):
     email = fields.Email(required=True)
     senha = fields.Str(load_only=True, required=True)
     data_criacao = fields.DateTime(dump_only=True)
-from datetime import date
 
 # ======================
 # Categoria
@@ -305,9 +307,12 @@ class ViagemCustoSchema(Schema):
 
     id = fields.Int(dump_only=True)
     viagem_id = fields.Int(dump_only=True)
-    tipo = fields.Str(required=True)
+    nome = fields.Str(required=True)
     descricao = fields.Str(required=True)
-    data_gasto = fields.Date(required=True)
+    observacao = fields.Str(allow_none=True)
+    link = fields.Str(allow_none=True)
+    tipo = fields.Str(load_default="Outros")
+    data_gasto = fields.Date(load_default=date.today)
     valor = fields.Decimal(required=True, as_string=True)
     forma_pagamento = fields.Str(allow_none=True)
     created_at = fields.DateTime(dump_only=True)
@@ -316,10 +321,12 @@ class ViagemCustoSchema(Schema):
 
     ALLOWED_TIPOS = {"Transporte", "Hospedagem", "Alimentação", "Passeios", "Outros"}
 
-    @validates("tipo")
-    def validate_tipo(self, value, **kwargs):
-        if value not in self.ALLOWED_TIPOS:
-            raise ValidationError("Tipo de custo inválido")
+    @validates("nome")
+    def validate_nome(self, value, **kwargs):
+        if not value or not value.strip():
+            raise ValidationError("Nome do custo é obrigatório")
+        if len(value.strip()) > 120:
+            raise ValidationError("Nome do custo deve ter no máximo 120 caracteres")
 
     @validates("valor")
     def validate_valor(self, value, **kwargs):
@@ -330,6 +337,11 @@ class ViagemCustoSchema(Schema):
     def validate_descricao(self, value, **kwargs):
         if not value or not value.strip():
             raise ValidationError("Descrição é obrigatória")
+
+    @validates("tipo")
+    def validate_tipo(self, value, **kwargs):
+        if value and value not in self.ALLOWED_TIPOS:
+            raise ValidationError("Tipo de custo inválido")
 
 
 class ViagemSchema(Schema):

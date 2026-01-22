@@ -4,8 +4,12 @@ let filtros = { termo: '', status: '', ordenar: 'data_inicio', ordem: 'asc' };
 let viagemSelecionada = null;
 let custosAtuais = [];
 let filtroCustoAtual = '';
+let ordenacaoCustos = { campo: 'data', direcao: 'asc' };
 let anexoCustoId = null;
 let ultimaPaginacao = { total: 0 };
+let viagemDestinoNovoCusto = null;
+let linhaViagemSelecionada = null;
+const modalDetalhes = new bootstrap.Modal('#modalDetalhesViagem');
 
 const modalViagem = new bootstrap.Modal('#modalViagem');
 const modalCusto = new bootstrap.Modal('#modalCusto');
@@ -37,6 +41,36 @@ function formatDate(dataStr) {
   const data = new Date(dataStr);
   if (Number.isNaN(data.getTime())) return dataStr;
   return data.toLocaleDateString('pt-BR');
+}
+
+function escapeAttr(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).replace(/"/g, '&quot;');
+}
+
+function escapeHtml(value) {
+  if (value === undefined || value === null) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function formatDateTime(dateTimeStr) {
+  if (!dateTimeStr) return '-';
+  const data = new Date(dateTimeStr);
+  if (Number.isNaN(data.getTime())) return dateTimeStr;
+  return data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function destacarLinhaSelecionada(id) {
+  linhaViagemSelecionada = id ? Number(id) : null;
+  document.querySelectorAll('#grid-viagens .gridjs-tr.viagem-selecionada').forEach(tr => tr.classList.remove('viagem-selecionada'));
+  if (!linhaViagemSelecionada) return;
+  const alvo = document.querySelector(`#grid-viagens .gridjs-tr[data-id="${linhaViagemSelecionada}"]`);
+  if (alvo) {
+    alvo.classList.add('viagem-selecionada');
+  }
 }
 
 function statusClass(status) {
@@ -71,7 +105,10 @@ async function carregarViagens() {
     id: item.id,
     titulo: item.titulo,
     destino: item.destino,
-    periodo: `${formatDate(item.data_inicio)} — ${formatDate(item.data_termino)}`,
+    data_inicio: item.data_inicio,
+    data_termino: item.data_termino,
+    data_inicio_fmt: formatDate(item.data_inicio),
+    data_termino_fmt: formatDate(item.data_termino),
     status: item.status,
     custo_total: formatCurrency(parseFloat(item.custo_total || 0))
   }));
@@ -84,25 +121,63 @@ function criarGrid() {
       {
         id: 'titulo',
         name: 'Viagem',
-        formatter: (cell, row) => gridjs.html(`
+        formatter: (cell) => gridjs.html(`
           <div class="fw-semibold text-dark">${cell}</div>
-          <div class="text-muted small">${row.cells[2].data}</div>
         `)
       },
       { id: 'destino', name: 'Destino', formatter: cell => gridjs.html(`<span class="text-muted small">${cell}</span>`) },
-      { id: 'periodo', name: 'Período' },
+      { id: 'data_inicio_fmt', name: 'Início' },
+      { id: 'data_termino_fmt', name: 'Término' },
       {
         id: 'status',
         name: 'Status',
         formatter: cell => gridjs.html(`<span class="status-pill ${statusClass(cell)}">${cell}</span>`)
       },
-      { id: 'custo_total', name: 'Custo total', formatter: cell => gridjs.html(`<strong>${cell}</strong>`), sort: true }
+      { id: 'custo_total', name: 'Custo total', formatter: cell => gridjs.html(`<strong>${cell}</strong>`), sort: true },
+      {
+        id: 'detalhes',
+        name: 'Detalhes',
+        width: '120px',
+        formatter: (_, row) => {
+          const viagemId = row.cells[0].data;
+          return gridjs.html(`
+            <div class="d-flex justify-content-center">
+              <button type="button" class="btn btn-outline-primary btn-sm ver-detalhes px-3" data-id="${viagemId}">
+                <i class="bi bi-eye me-1"></i> Ver
+              </button>
+            </div>
+          `);
+        }
+      },
+      {
+        id: 'acoes',
+        name: '',
+        sort: false,
+        width: '140px',
+        formatter: (_, row) => {
+          const viagemId = row.cells[0].data;
+          const titulo = escapeAttr(row.cells[1].data);
+          return gridjs.html(`
+            <div class="d-flex justify-content-end gap-2 pe-1">
+              <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn btn-outline-primary" data-action="add-custo" data-viagem-id="${viagemId}" data-viagem-nome="${titulo}" title="Adicionar custo">
+                <i class="bi bi-plus-lg"></i>
+              </button>
+              <button type="button" class="btn btn-outline-danger" data-action="excluir-viagem" data-viagem-id="${viagemId}" data-viagem-nome="${titulo}" title="Excluir viagem">
+                <i class="bi bi-trash"></i>
+              </button>
+              </div>
+            </div>
+          `);
+        }
+      }
     ],
     sort: false,
     pagination: { enabled: true, limit: 10 },
     data: () => carregarViagens(),
     rowAttributes: row => ({ 'data-id': row.cells[0].data, class: 'cursor-pointer' })
   }).render(document.getElementById('grid-viagens'));
+  setTimeout(() => destacarLinhaSelecionada(linhaViagemSelecionada), 0);
 }
 
 function reloadGrid() {
@@ -111,45 +186,49 @@ function reloadGrid() {
     return;
   }
   gridViagens.updateConfig({ data: () => carregarViagens() }).forceRender();
+  setTimeout(() => destacarLinhaSelecionada(linhaViagemSelecionada), 0);
 }
 
 function limparDetalhes() {
   viagemSelecionada = null;
   custosAtuais = [];
   filtroCustoAtual = '';
-  document.getElementById('btn-exportar').setAttribute('disabled', 'disabled');
-  document.getElementById('detalhes-conteudo').classList.add('d-none');
-  document.getElementById('estado-vazio-detalhes').classList.remove('d-none');
-  document.querySelector('#tabela-custos tbody').innerHTML = '';
-  document.getElementById('lista-resumo').innerHTML = '';
+  destacarLinhaSelecionada(null);
+  const btnExportar = document.getElementById('btn-exportar');
+  if (btnExportar) btnExportar.setAttribute('disabled', 'disabled');
+  const filtroTipo = document.getElementById('modalFiltroTipoCustos');
+  if (filtroTipo) filtroTipo.value = '';
 }
 
 function renderResumo(resumo) {
-  const container = document.getElementById('lista-resumo');
-  const subtitle = document.getElementById('resumo-subtitulo');
+  const container = document.getElementById('modalListaResumo');
+  const subtitle = document.getElementById('modalResumoSubtitulo');
   container.innerHTML = '';
+  const totalCustos = custosAtuais.length;
   if (!resumo || !resumo.length) {
-    subtitle.textContent = 'sem custos';
-    container.innerHTML = '<span class="text-muted small">Nenhum custo registrado ainda.</span>';
+    subtitle.textContent = totalCustos
+      ? `${totalCustos} custo${totalCustos === 1 ? '' : 's'}`
+      : 'sem custos';
+    container.innerHTML = '<div class="text-muted small">Nenhum custo registrado ainda.</div>';
     return;
   }
-  subtitle.textContent = `${resumo.length} categoria${resumo.length === 1 ? '' : 's'}`;
+  subtitle.textContent = `${resumo.length} categoria${resumo.length === 1 ? '' : 's'} • ${totalCustos} custo${totalCustos === 1 ? '' : 's'}`;
   resumo.forEach(item => {
-    const line = document.createElement('div');
-    line.className = 'summary-item d-flex justify-content-between align-items-center';
-    line.innerHTML = `
-      <div>
+    const col = document.createElement('div');
+    col.className = 'col-md-4';
+    col.innerHTML = `
+      <div class="summary-item h-100">
         <div class="fw-semibold">${item.tipo}</div>
         <small class="text-muted">${item.percentual}% do total</small>
+        <div class="fw-bold">${formatCurrency(item.total)}</div>
       </div>
-      <div class="fw-bold">${formatCurrency(item.total)}</div>
     `;
-    container.appendChild(line);
+    container.appendChild(col);
   });
 }
 
 function renderCustos(lista) {
-  const corpo = document.querySelector('#tabela-custos tbody');
+  const corpo = document.querySelector('#modalTabelaCustos tbody');
   corpo.innerHTML = '';
   if (!lista.length) {
     corpo.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Nenhum custo cadastrado</td></tr>';
@@ -157,12 +236,18 @@ function renderCustos(lista) {
   }
   lista.forEach(item => {
     const tr = document.createElement('tr');
+    const nome = escapeHtml(item.nome || '-');
+    const descricao = escapeHtml(item.descricao || '');
+    const observacao = escapeHtml(item.observacao || '');
+    const link = escapeAttr(item.link || '');
     tr.innerHTML = `
       <td>${formatDate(item.data_gasto)}</td>
       <td>${item.tipo}</td>
       <td>
-        <div class="fw-semibold">${item.descricao}</div>
-        <small class="text-muted">${item.forma_pagamento || ''}</small>
+        <div class="fw-semibold">${nome}</div>
+        <div class="text-muted small mb-1">${descricao}</div>
+        ${observacao ? `<div class="small text-muted">${observacao}</div>` : ''}
+        ${link ? `<a href="${link}" target="_blank" rel="noopener" class="small">Ver link</a>` : ''}
       </td>
       <td class="text-end">${formatCurrency(parseFloat(item.valor || 0))}</td>
       <td class="text-end">
@@ -182,7 +267,31 @@ function aplicarFiltroCustos() {
   if (filtroCustoAtual) {
     dados = dados.filter(c => c.tipo === filtroCustoAtual);
   }
+  dados = ordenarCustos(dados);
   renderCustos(dados);
+}
+
+function ordenarCustos(lista) {
+  const dir = ordenacaoCustos.direcao === 'asc' ? 1 : -1;
+  return lista.sort((a, b) => {
+    if (ordenacaoCustos.campo === 'valor') {
+      const valorA = typeof a.valor === 'string' ? parseFloat(a.valor) : a.valor;
+      const valorB = typeof b.valor === 'string' ? parseFloat(b.valor) : b.valor;
+      return ((Number.isNaN(valorA) ? 0 : valorA) - (Number.isNaN(valorB) ? 0 : valorB)) * dir;
+    }
+    const dataA = new Date(a.data_gasto);
+    const dataB = new Date(b.data_gasto);
+    const timeA = Number.isNaN(dataA.getTime()) ? 0 : dataA.getTime();
+    const timeB = Number.isNaN(dataB.getTime()) ? 0 : dataB.getTime();
+    return (timeA - timeB) * dir;
+  });
+}
+
+function atualizarIndicadorOrdemCustos() {
+  const btn = document.getElementById('modalBtnToggleOrdemCustos');
+  if (!btn) return;
+  const iconClass = ordenacaoCustos.direcao === 'asc' ? 'bi-arrow-up' : 'bi-arrow-down';
+  btn.innerHTML = `<i class="bi ${iconClass}"></i>`;
 }
 
 async function carregarDetalhes(id) {
@@ -194,23 +303,37 @@ async function carregarDetalhes(id) {
   const viagem = await resp.json();
   viagemSelecionada = viagem;
   custosAtuais = viagem.custos || [];
+  destacarLinhaSelecionada(viagem.id);
   filtroCustoAtual = '';
+  ordenacaoCustos = { campo: 'data', direcao: 'asc' };
+  const selectOrdenar = document.getElementById('modalSelectOrdenarCustos');
+  if (selectOrdenar) selectOrdenar.value = 'data';
+  const filtroTipo = document.getElementById('modalFiltroTipoCustos');
+  if (filtroTipo) filtroTipo.value = '';
+  atualizarIndicadorOrdemCustos();
+  const btnExportar = document.getElementById('btn-exportar');
+  if (btnExportar) btnExportar.removeAttribute('disabled');
 
-  document.getElementById('detalhes-conteudo').classList.remove('d-none');
-  document.getElementById('estado-vazio-detalhes').classList.add('d-none');
-  document.getElementById('btn-exportar').removeAttribute('disabled');
-
-  document.getElementById('detalhe-titulo').textContent = viagem.titulo;
-  document.getElementById('detalhe-destino').textContent = viagem.destino;
-  document.getElementById('detalhe-periodo').textContent = `${formatDate(viagem.data_inicio)} a ${formatDate(viagem.data_termino)}`;
-  document.getElementById('detalhe-total').textContent = formatCurrency(parseFloat(viagem.custo_total || 0));
-
-  const statusPill = document.getElementById('detalhe-status');
+  document.getElementById('modalDetalhesTitulo').textContent = viagem.titulo;
+  document.getElementById('modalDetalhesDestino').textContent = viagem.destino;
+  document.getElementById('modalDetalhesPeriodo').textContent = `${formatDate(viagem.data_inicio)} a ${formatDate(viagem.data_termino)}`;
+  document.getElementById('modalDetalhesTotal').textContent = formatCurrency(parseFloat(viagem.custo_total || 0));
+  document.getElementById('modalDetalhesCustosCount').textContent = custosAtuais.length;
+  document.getElementById('modalDetalhesCriado').textContent = formatDateTime(viagem.created_at);
+  document.getElementById('modalDetalhesAtualizado').textContent = formatDateTime(viagem.updated_at);
+  const statusPill = document.getElementById('modalDetalhesStatus');
   statusPill.textContent = viagem.status;
   statusPill.className = `status-pill ${statusClass(viagem.status)}`;
+  const descricaoEl = document.getElementById('modalDetalhesDescricao');
+  if (descricaoEl) {
+    const descricao = (viagem.descricao || '').trim();
+    descricaoEl.textContent = descricao || 'Nenhuma observação adicionada ainda.';
+    descricaoEl.classList.toggle('text-muted', descricao.length === 0);
+  }
 
   renderResumo(viagem.resumo_categorias || []);
   aplicarFiltroCustos();
+  modalDetalhes.show();
 }
 
 function abrirModalViagem(dados = null) {
@@ -255,41 +378,61 @@ async function salvarViagem() {
   }
 }
 
-function abrirModalCusto(dados = null) {
-  if (!viagemSelecionada) {
+function abrirModalCusto(dados = null, viagemId = null) {
+  const alvo = viagemId || viagemSelecionada?.id;
+  if (!alvo) {
     alert('Selecione uma viagem primeiro.');
     return;
   }
+  viagemDestinoNovoCusto = Number(alvo);
   document.getElementById('formCusto').reset();
   document.getElementById('custo_id').value = dados?.id || '';
-  document.getElementById('custo_tipo').value = dados?.tipo || 'Transporte';
-  document.getElementById('custo_forma_pagamento').value = dados?.forma_pagamento || '';
+  document.getElementById('custo_nome').value = dados?.nome || '';
   document.getElementById('custo_descricao').value = dados?.descricao || '';
-  document.getElementById('custo_data').value = dados?.data_gasto || '';
+  document.getElementById('custo_observacao').value = dados?.observacao || '';
+  document.getElementById('custo_link').value = dados?.link || '';
   document.getElementById('custo_valor').value = dados?.valor || '';
+  document.getElementById('custo_tipo').value = dados?.tipo || 'Outros';
+  document.getElementById('custo_forma_pagamento').value = dados?.forma_pagamento || '';
+  const dataInput = document.getElementById('custo_data');
+  dataInput.value = dados?.data_gasto || new Date().toISOString().split('T')[0];
   document.getElementById('tituloModalCusto').textContent = dados ? 'Editar Custo' : 'Novo Custo';
   modalCusto.show();
 }
 
 async function salvarCusto() {
-  if (!viagemSelecionada) {
+  const viagemId = viagemDestinoNovoCusto || viagemSelecionada?.id;
+  if (!viagemId) {
     alert('Selecione uma viagem.');
     return;
   }
   const id = document.getElementById('custo_id').value;
   const payload = {
-    tipo: document.getElementById('custo_tipo').value,
+    nome: document.getElementById('custo_nome').value.trim(),
     descricao: document.getElementById('custo_descricao').value.trim(),
-    data_gasto: document.getElementById('custo_data').value,
     valor: document.getElementById('custo_valor').value,
+    observacao: document.getElementById('custo_observacao').value.trim() || null,
+    link: document.getElementById('custo_link').value.trim() || null,
+    tipo: document.getElementById('custo_tipo').value,
+    data_gasto: document.getElementById('custo_data').value,
     forma_pagamento: document.getElementById('custo_forma_pagamento').value.trim() || null,
   };
-  if (!payload.descricao || !payload.data_gasto || !payload.valor) {
-    alert('Preencha todos os campos obrigatórios.');
+  if (!payload.nome || !payload.descricao || !payload.valor) {
+    alert('Informe nome, descrição e valor.');
+    return;
+  }
+  if (!payload.data_gasto) delete payload.data_gasto;
+  if (!payload.tipo) delete payload.tipo;
+  if (!payload.forma_pagamento) delete payload.forma_pagamento;
+  if (!payload.observacao) delete payload.observacao;
+  if (!payload.link) delete payload.link;
+  const valorNum = parseFloat(payload.valor);
+  if (Number.isNaN(valorNum) || valorNum <= 0) {
+    alert('Informe um valor válido.');
     return;
   }
   const method = id ? 'PUT' : 'POST';
-  const url = id ? `${apiViagens}/${viagemSelecionada.id}/custos/${id}` : `${apiViagens}/${viagemSelecionada.id}/custos`;
+  const url = id ? `${apiViagens}/${viagemId}/custos/${id}` : `${apiViagens}/${viagemId}/custos`;
   const resp = await fetchJWT(url, { method, body: JSON.stringify(payload) });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
@@ -297,20 +440,31 @@ async function salvarCusto() {
     return;
   }
   modalCusto.hide();
-  carregarDetalhes(viagemSelecionada.id);
+  if (viagemSelecionada && viagemSelecionada.id === Number(viagemId)) {
+    carregarDetalhes(viagemSelecionada.id);
+  }
   reloadGrid();
+  viagemDestinoNovoCusto = null;
 }
 
-async function excluirViagem() {
-  if (!viagemSelecionada) return;
-  if (!confirm('Tem certeza que deseja excluir esta viagem e todos os custos?')) return;
-  const resp = await fetchJWT(`${apiViagens}/${viagemSelecionada.id}`, { method: 'DELETE' });
+async function excluirViagem(viagemId = null, viagemNome = '') {
+  const alvoId = Number(viagemId || viagemSelecionada?.id);
+  if (!alvoId) return;
+  const nomeAlvo = viagemNome || (viagemSelecionada && viagemSelecionada.id === alvoId ? viagemSelecionada.titulo : '');
+  const mensagem = nomeAlvo
+    ? `Tem certeza que deseja excluir a viagem "${nomeAlvo}" e todos os custos?`
+    : 'Tem certeza que deseja excluir esta viagem e todos os custos?';
+  if (!confirm(mensagem)) return;
+  const resp = await fetchJWT(`${apiViagens}/${alvoId}`, { method: 'DELETE' });
   if (!resp.ok) {
     const err = await resp.json().catch(() => ({}));
     alert('Erro ao excluir viagem: ' + (err.error || JSON.stringify(err)));
     return;
   }
-  limparDetalhes();
+  if (viagemSelecionada && viagemSelecionada.id === alvoId) {
+    limparDetalhes();
+    modalDetalhes.hide();
+  }
   reloadGrid();
 }
 
@@ -456,22 +610,41 @@ function setupEventos() {
 
   document.getElementById('btn-nova-viagem').addEventListener('click', () => abrirModalViagem());
   document.getElementById('btn-salvar-viagem').addEventListener('click', salvarViagem);
-  document.getElementById('btn-editar-viagem').addEventListener('click', () => {
+  document.getElementById('modalBtnEditar').addEventListener('click', () => {
     if (viagemSelecionada) abrirModalViagem(viagemSelecionada);
   });
-  document.getElementById('btn-excluir-viagem').addEventListener('click', excluirViagem);
-
-  document.getElementById('btn-adicionar-custo').addEventListener('click', () => abrirModalCusto());
+  document.getElementById('modalBtnExcluir').addEventListener('click', () => excluirViagem());
+  document.getElementById('modalBtnAdicionarCusto').addEventListener('click', () => abrirModalCusto());
   document.getElementById('btn-salvar-custo').addEventListener('click', salvarCusto);
 
   document.getElementById('grid-viagens').addEventListener('click', (event) => {
+    const actionBtn = event.target.closest('[data-action]');
+    if (actionBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      const viagemId = actionBtn.dataset.viagemId;
+      const viagemNome = actionBtn.dataset.viagemNome;
+      if (actionBtn.dataset.action === 'add-custo') {
+        abrirModalCusto(null, viagemId);
+      } else if (actionBtn.dataset.action === 'excluir-viagem') {
+        excluirViagem(viagemId, viagemNome);
+      }
+      return;
+    }
+    const detalhesBtn = event.target.closest('.ver-detalhes');
+    if (detalhesBtn) {
+      event.preventDefault();
+      event.stopPropagation();
+      carregarDetalhes(detalhesBtn.dataset.id);
+      return;
+    }
     const row = event.target.closest('.gridjs-tr');
     if (row && row.dataset.id) {
       carregarDetalhes(row.dataset.id);
     }
   });
 
-  document.querySelector('#tabela-custos tbody').addEventListener('click', (event) => {
+  document.querySelector('#modalTabelaCustos tbody').addEventListener('click', (event) => {
     const id = event.target.closest('button')?.dataset.id;
     if (!id) return;
     if (event.target.closest('.editar-custo')) {
@@ -482,13 +655,6 @@ function setupEventos() {
     } else if (event.target.closest('.anexos-custo')) {
       abrirModalAnexos(id);
     }
-  });
-
-  document.querySelectorAll('#detalhes-conteudo .dropdown-menu .dropdown-item').forEach(btn => {
-    btn.addEventListener('click', (ev) => {
-      filtroCustoAtual = ev.currentTarget.dataset.filter || '';
-      aplicarFiltroCustos();
-    });
   });
 
   document.getElementById('btn-upload-anexos').addEventListener('click', uploadAnexos);
@@ -508,6 +674,33 @@ function setupEventos() {
       exportarViagem(formato);
     });
   });
+
+  const selectOrdenarCustos = document.getElementById('modalSelectOrdenarCustos');
+  if (selectOrdenarCustos) {
+    selectOrdenarCustos.addEventListener('change', (event) => {
+      ordenacaoCustos.campo = event.target.value;
+      aplicarFiltroCustos();
+    });
+  }
+
+  const btnToggleOrdemCustos = document.getElementById('modalBtnToggleOrdemCustos');
+  if (btnToggleOrdemCustos) {
+    btnToggleOrdemCustos.addEventListener('click', () => {
+      ordenacaoCustos.direcao = ordenacaoCustos.direcao === 'asc' ? 'desc' : 'asc';
+      atualizarIndicadorOrdemCustos();
+      aplicarFiltroCustos();
+    });
+  }
+
+  const filtroTipoCustos = document.getElementById('modalFiltroTipoCustos');
+  if (filtroTipoCustos) {
+    filtroTipoCustos.addEventListener('change', (event) => {
+      filtroCustoAtual = event.target.value || '';
+      aplicarFiltroCustos();
+    });
+  }
+
+  atualizarIndicadorOrdemCustos();
 }
 
 window.addEventListener('DOMContentLoaded', () => {

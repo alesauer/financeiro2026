@@ -133,6 +133,8 @@ Este projeto é um sistema completo para gestão de finanças pessoais, desenvol
 - **Comprovantes**: upload de até 5 anexos (PDF/JPEG/PNG/WebP) por custo, com armazenamento organizado por usuário/viagem/custo.
 - **Exportação**: baixe o relatório completo da viagem em CSV ou PDF (renderizado via `fpdf2`).
 - **Frontend**: a página `frontend/viagens.html` oferece grid com filtros/busca, painel lateral com detalhes em tempo real, cadastro via modais, gerenciamento de custos e upload de anexos.
+- **Grid principal enriquecida**: título, destino e as datas de início/término aparecem em colunas dedicadas com ordenação e busca instantânea.
+- **Custos com filtros avançados**: filtre por tipo e alterne a ordenação por data ou valor (crescente/decrescente) diretamente no painel lateral.
 
 > Necessário rodar `flask db upgrade` para criar as tabelas `viagens`, `viagens_custos` e `viagens_custos_anexos` antes de usar o módulo.
 
