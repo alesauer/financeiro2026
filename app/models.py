@@ -259,7 +259,24 @@ class ViagemCusto(db.Model):
     descricao = db.Column(db.String(255), nullable=False)
     observacao = db.Column(db.Text, nullable=True)
     link = db.Column(db.String(255), nullable=True)
-    tipo = db.Column(db.Enum("Transporte", "Passagem Aérea", "Transporte Público", "Hospedagem", "Alimentação", "Passeios", "Outros", name="tipo_custo_viagem"), nullable=False, default="Outros")
+    tipo = db.Column(
+        db.Enum(
+            "Hospedagem",
+            "Alimentação",
+            "Seguro Viagem",
+            "Passagem Aérea",
+            "Trasnportes (trem,metro,etc)",
+            "Compras",
+            "Atrações / Parques",
+            "Transporte",
+            "Transporte Público",
+            "Passeios",
+            "Outros",
+            name="tipo_custo_viagem"
+        ),
+        nullable=False,
+        default="Atrações / Parques"
+    )
     data_gasto = db.Column(db.Date, nullable=False, default=db.func.current_date)
     valor = db.Column(db.Numeric(12, 2), nullable=False)
     forma_pagamento = db.Column(db.String(80), nullable=True)

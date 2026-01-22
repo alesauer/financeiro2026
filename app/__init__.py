@@ -17,16 +17,22 @@ def create_app():
     db.init_app(app)
     migrate.init_app(app, db)
     # CORS com credenciais exige origem explícita (não permite '*')
-    CORS(app, resources={
-        r"/api/*": {
-            "origins": [
-                "http://127.0.0.1:5500",
-                "http://localhost:5500",
-                "http://127.0.0.1:5000",
-                "http://localhost:5000"
-            ]
-        }
-    }, supports_credentials=True)
+    CORS(
+        app,
+        resources={
+            r"/api/*": {
+                "origins": [
+                    "http://127.0.0.1:5500",
+                    "http://localhost:5500",
+                    "http://127.0.0.1:5000",
+                    "http://localhost:5000"
+                ],
+                "allow_headers": ["Content-Type", "Authorization"],
+                "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+            }
+        },
+        supports_credentials=True
+    )
 
     # Inicializar JWT
     jwt = JWTManager(app)

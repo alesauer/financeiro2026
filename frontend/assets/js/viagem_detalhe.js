@@ -286,7 +286,7 @@ function abrirModalCusto(dados = null, viagemId = null) {
   document.getElementById('custo_observacao').value = dados?.observacao || '';
   document.getElementById('custo_link').value = dados?.link || '';
   document.getElementById('custo_valor').value = dados?.valor || '';
-  document.getElementById('custo_tipo').value = dados?.tipo || 'Outros';
+  document.getElementById('custo_tipo').value = dados?.tipo || 'Atrações / Parques';
   document.getElementById('custo_forma_pagamento').value = dados?.forma_pagamento || '';
   const dataInput = document.getElementById('custo_data');
   dataInput.value = dados?.data_gasto || new Date().toISOString().split('T')[0];
