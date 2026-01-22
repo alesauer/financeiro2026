@@ -496,7 +496,13 @@ def exportar_viagem(viagem_id):
                 pdf.cell(0, 6, f"Forma: {custo.forma_pagamento}", ln=True)
             pdf.ln(1)
 
-        pdf_bytes = pdf.output(dest="S").encode("latin-1", errors="ignore")
+        pdf_output = pdf.output(dest="S")
+        if isinstance(pdf_output, str):
+            pdf_bytes = pdf_output.encode("latin-1", errors="ignore")
+        elif isinstance(pdf_output, bytearray):
+            pdf_bytes = bytes(pdf_output)
+        else:
+            pdf_bytes = pdf_output
         buffer = io.BytesIO(pdf_bytes)
         buffer.seek(0)
         filename = f"viagem_{viagem.id}.pdf"
