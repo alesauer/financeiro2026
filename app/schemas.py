@@ -2,6 +2,8 @@ from datetime import date
 
 from marshmallow import Schema, fields, validates, validates_schema, ValidationError, pre_load, EXCLUDE
 
+from app.utils.texto import normalizar_texto
+
 
 # ======================
 # Usuário
@@ -319,7 +321,25 @@ class ViagemCustoSchema(Schema):
     updated_at = fields.DateTime(dump_only=True)
     anexos = fields.List(fields.Nested(ViagemCustoAnexoSchema), dump_only=True)
 
-    ALLOWED_TIPOS = {"Transporte", "Hospedagem", "Alimentação", "Passeios", "Outros"}
+    ALLOWED_TIPOS = {
+        "Hospedagem",
+        "Alimentação",
+        "Seguro Viagem",
+        "Passagem Aérea",
+        "Transportes",
+        "Compras",
+        "Atrações",
+        "Transporte",
+        "Transporte Público",
+        "Passeios",
+        "Outros",
+    }
+    ALLOWED_TIPOS_NORMALIZED = {normalizar_texto(tipo) for tipo in ALLOWED_TIPOS}
+    LEGACY_TIPO_MAP = {
+        "atracoes parques": "Atrações",
+        "transportes trem metro etc": "Transportes",
+        "transportes trem metro": "Transportes",
+    }
 
     @validates("nome")
     def validate_nome(self, value, **kwargs):
@@ -338,9 +358,29 @@ class ViagemCustoSchema(Schema):
         if not value or not value.strip():
             raise ValidationError("Descrição é obrigatória")
 
+    @pre_load
+    def normalizar_tipo(self, data, **kwargs):
+        if not isinstance(data, dict):
+            return data
+        tipo = data.get("tipo")
+        if not tipo:
+            return data
+        normalizado = normalizar_texto(str(tipo))
+        if not normalizado:
+            return data
+        legado = self.LEGACY_TIPO_MAP.get(normalizado)
+        if legado:
+            data["tipo"] = legado
+            return data
+        for tipo_original in self.ALLOWED_TIPOS:
+            if normalizar_texto(tipo_original) == normalizado:
+                data["tipo"] = tipo_original
+                break
+        return data
+
     @validates("tipo")
     def validate_tipo(self, value, **kwargs):
-        if value and value not in self.ALLOWED_TIPOS:
+        if value and normalizar_texto(value) not in self.ALLOWED_TIPOS_NORMALIZED:
             raise ValidationError("Tipo de custo inválido")
 
 

@@ -265,9 +265,9 @@ class ViagemCusto(db.Model):
             "Alimentação",
             "Seguro Viagem",
             "Passagem Aérea",
-            "Trasnportes (trem,metro,etc)",
+            "Transportes",
             "Compras",
-            "Atrações / Parques",
+            "Atrações",
             "Transporte",
             "Transporte Público",
             "Passeios",
@@ -275,7 +275,7 @@ class ViagemCusto(db.Model):
             name="tipo_custo_viagem"
         ),
         nullable=False,
-        default="Atrações / Parques"
+        default="Atrações"
     )
     data_gasto = db.Column(db.Date, nullable=False, default=db.func.current_date)
     valor = db.Column(db.Numeric(12, 2), nullable=False)

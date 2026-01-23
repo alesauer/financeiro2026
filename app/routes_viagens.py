@@ -55,8 +55,14 @@ TIPO_CUSTO_NORMALIZER = {
     "hospedagem": "Hospedagem",
     "alimentacao": "Alimentação",
     "alimentação": "Alimentação",
+    "alimentao": "Alimentação",
     "passeios": "Passeios",
     "outros": "Outros",
+    "transportes trem metro etc": "Transportes",
+    "transportes trem metro": "Transportes",
+    "transportes": "Transportes",
+    "atracoes": "Atrações",
+    "atracoes parques": "Atrações",
 }
 
 
