@@ -53,6 +53,7 @@
         </div>
         <button class="btn btn-outline-secondary" id="modalBtnEditar"><i class="bi bi-pencil me-1"></i> Editar</button>
         <button class="btn btn-outline-primary" id="modalBtnAdicionarCusto"><i class="bi bi-plus me-1"></i> Novo custo</button>
+        <button class="btn btn-outline-primary" id="modalBtnCriarRoteiro"><i class="bi bi-map me-1"></i> Criar roteiro</button>
         <button class="btn btn-danger" id="modalBtnExcluir"><i class="bi bi-trash me-1"></i> Excluir</button>
       </div>
     </div>
@@ -105,6 +106,16 @@
             <small class="text-muted" id="modalResumoSubtitulo">sem custos</small>
           </div>
           <div class="row g-3" id="modalListaResumo"></div>
+        </div>
+      </div>
+
+      <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-map text-primary"></i>
+            <h5 class="mb-0">Roteiro da viagem</h5>
+          </div>
+          <div id="roteiroResumo" class="text-muted small">Nenhum roteiro cadastrado.</div>
         </div>
       </div>
 
@@ -309,6 +320,26 @@
         <div class="modal-footer">
           <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
           <button class="btn btn-primary" id="btn-upload-anexos">Enviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Roteiro -->
+  <div class="modal fade" id="modalRoteiro" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Criar roteiro</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-3">Preencha o planejamento de cada dia da viagem.</p>
+          <div id="roteiroCampos" class="d-flex flex-column gap-3"></div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
+          <button class="btn btn-primary" id="btn-salvar-roteiro" type="button">Salvar roteiro</button>
         </div>
       </div>
     </div>

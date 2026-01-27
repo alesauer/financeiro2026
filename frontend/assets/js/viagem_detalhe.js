@@ -9,6 +9,7 @@ let anexoCustoId = null;
 const modalViagem = new bootstrap.Modal('#modalViagem');
 const modalCusto = new bootstrap.Modal('#modalCusto');
 const modalAnexos = new bootstrap.Modal('#modalAnexos');
+const modalRoteiro = new bootstrap.Modal('#modalRoteiro');
 
 function fetchJWT(url, options = {}) {
   const token = localStorage.getItem('access_token');
@@ -43,6 +44,13 @@ function formatDateTime(dateTimeStr) {
   const data = new Date(dateTimeStr);
   if (Number.isNaN(data.getTime())) return dateTimeStr;
   return data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatDateLabel(dateValue) {
+  if (!dateValue) return '-';
+  const data = new Date(dateValue);
+  if (Number.isNaN(data.getTime())) return dateValue;
+  return data.toLocaleDateString('pt-BR');
 }
 
 function escapeHtml(value) {
@@ -112,6 +120,27 @@ function renderResumo(resumo) {
     `;
     container.appendChild(col);
   });
+}
+
+function renderRoteiroResumo(roteiros) {
+  const container = document.getElementById('roteiroResumo');
+  if (!container) return;
+  if (!roteiros || !roteiros.length) {
+    container.innerHTML = 'Nenhum roteiro cadastrado.';
+    container.classList.add('text-muted');
+    return;
+  }
+  const lista = [...roteiros].sort((a, b) => new Date(a.data) - new Date(b.data));
+  container.classList.remove('text-muted');
+  container.innerHTML = lista.map(item => {
+    const descricao = escapeHtml(item.descricao || '').trim();
+    return `
+      <div class="mb-2">
+        <div class="fw-semibold">${formatDateLabel(item.data)}</div>
+        <div class="text-muted small">${descricao || 'Sem detalhes cadastrados.'}</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderCustos(lista) {
@@ -219,6 +248,7 @@ async function carregarDetalhes(id) {
   }
 
   renderResumo(viagem.resumo_categorias || []);
+  renderRoteiroResumo(viagem.roteiros || []);
   aplicarFiltroCustos();
   mostrarEstado('pronto');
 }
@@ -292,6 +322,76 @@ function abrirModalCusto(dados = null, viagemId = null) {
   dataInput.value = dados?.data_gasto || new Date().toISOString().split('T')[0];
   document.getElementById('tituloModalCusto').textContent = dados ? 'Editar Custo' : 'Novo Custo';
   modalCusto.show();
+}
+
+function gerarDatasEntre(inicio, termino) {
+  const datas = [];
+  const start = new Date(inicio);
+  const end = new Date(termino);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return datas;
+  const atual = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const limite = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (atual <= limite) {
+    datas.push(new Date(atual));
+    atual.setDate(atual.getDate() + 1);
+  }
+  return datas;
+}
+
+function abrirModalRoteiro() {
+  if (!viagemSelecionada?.data_inicio || !viagemSelecionada?.data_termino) {
+    alert('Defina as datas da viagem para montar o roteiro.');
+    return;
+  }
+  const campos = document.getElementById('roteiroCampos');
+  campos.innerHTML = '';
+  const datas = gerarDatasEntre(viagemSelecionada.data_inicio, viagemSelecionada.data_termino);
+  if (!datas.length) {
+    campos.innerHTML = '<div class="text-muted">Não foi possível gerar os dias da viagem.</div>';
+    modalRoteiro.show();
+    return;
+  }
+  const roteirosAtuais = Array.isArray(viagemSelecionada?.roteiros) ? viagemSelecionada.roteiros : [];
+  datas.forEach((data, index) => {
+    const wrapper = document.createElement('div');
+    const label = formatDateLabel(data);
+    const dataIso = data.toISOString().split('T')[0];
+    const existente = roteirosAtuais.find(item => item.data === dataIso);
+    wrapper.innerHTML = `
+      <label class="form-label fw-semibold">Dia ${label}</label>
+      <textarea class="form-control" rows="4" data-dia="${dataIso}" placeholder="Descreva o planejamento do dia ${label}">${escapeHtml(existente?.descricao || '')}</textarea>
+    `;
+    if (index === 0) {
+      wrapper.querySelector('textarea')?.focus();
+    }
+    campos.appendChild(wrapper);
+  });
+  modalRoteiro.show();
+}
+
+async function salvarRoteiro() {
+  if (!viagemSelecionada?.id) {
+    alert('Selecione uma viagem.');
+    return;
+  }
+  const campos = Array.from(document.querySelectorAll('#roteiroCampos textarea'));
+  const itens = campos.map(campo => ({
+    data: campo.dataset.dia,
+    descricao: campo.value.trim() || null
+  }));
+  const resp = await fetchJWT(`${apiViagens}/${viagemSelecionada.id}/roteiro`, {
+    method: 'POST',
+    body: JSON.stringify({ itens })
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    alert('Erro ao salvar roteiro: ' + (err.error || JSON.stringify(err)));
+    return;
+  }
+  const roteirosSalvos = await resp.json().catch(() => []);
+  viagemSelecionada.roteiros = Array.isArray(roteirosSalvos) ? roteirosSalvos : [];
+  renderRoteiroResumo(viagemSelecionada.roteiros);
+  modalRoteiro.hide();
 }
 
 async function salvarCusto() {
@@ -478,6 +578,8 @@ function setupEventos() {
   document.getElementById('modalBtnEditar').addEventListener('click', () => abrirModalViagem());
   document.getElementById('btn-salvar-viagem').addEventListener('click', salvarViagem);
   document.getElementById('modalBtnExcluir').addEventListener('click', excluirViagem);
+  document.getElementById('modalBtnCriarRoteiro').addEventListener('click', abrirModalRoteiro);
+  document.getElementById('btn-salvar-roteiro').addEventListener('click', salvarRoteiro);
 
   document.querySelector('#modalTabelaCustos tbody').addEventListener('click', (event) => {
     const id = event.target.closest('button')?.dataset.id;

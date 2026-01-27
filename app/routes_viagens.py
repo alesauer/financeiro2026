@@ -12,11 +12,12 @@ from werkzeug.utils import secure_filename
 from fpdf import FPDF
 
 from app import db
-from app.models import Viagem, ViagemCusto, ViagemCustoAnexo
+from app.models import Viagem, ViagemCusto, ViagemCustoAnexo, ViagemRoteiro
 from app.schemas import (
     ViagemSchema,
     ViagemCustoSchema,
     ViagemCustoAnexoSchema,
+    ViagemRoteiroSchema,
 )
 
 bp_viagens = Blueprint("viagens", __name__)
@@ -27,6 +28,8 @@ custo_schema = ViagemCustoSchema()
 custos_schema = ViagemCustoSchema(many=True)
 anexo_schema = ViagemCustoAnexoSchema()
 anexos_schema = ViagemCustoAnexoSchema(many=True)
+roteiro_schema = ViagemRoteiroSchema()
+roteiros_schema = ViagemRoteiroSchema(many=True)
 
 ALLOWED_UPLOAD_MIME = {
     "application/pdf",
@@ -266,6 +269,53 @@ def excluir_viagem(viagem_id):
     db.session.commit()
     _wipe_path(dir_path)
     return jsonify({"message": "Viagem excluída"}), 200
+
+
+@bp_viagens.route("/<int:viagem_id>/roteiro", methods=["GET"])
+@jwt_required()
+def listar_roteiro(viagem_id):
+    usuario_id = _current_user_id()
+    viagem = _ensure_viagem(viagem_id, usuario_id)
+    roteiros = ViagemRoteiro.query.filter_by(viagem_id=viagem.id).order_by(ViagemRoteiro.data.asc()).all()
+    return jsonify(roteiros_schema.dump(roteiros)), 200
+
+
+@bp_viagens.route("/<int:viagem_id>/roteiro", methods=["PUT", "POST"])
+@jwt_required()
+def salvar_roteiro(viagem_id):
+    usuario_id = _current_user_id()
+    viagem = _ensure_viagem(viagem_id, usuario_id)
+    data = request.get_json() or {}
+    itens = data.get("itens") if isinstance(data, dict) else None
+    if not isinstance(itens, list):
+        return jsonify({"error": "Informe uma lista de itens do roteiro"}), 400
+
+    novos = []
+    for item in itens:
+        if not isinstance(item, dict):
+            continue
+        try:
+            validado = roteiro_schema.load(item)
+        except Exception as err:
+            return jsonify(getattr(err, "messages", {"error": "Dados inválidos"})), 400
+        novos.append(validado)
+
+    if novos:
+        datas = [item["data"] for item in novos]
+        ViagemRoteiro.query.filter(ViagemRoteiro.viagem_id == viagem.id, ViagemRoteiro.data.in_(datas)).delete(synchronize_session=False)
+
+    criados = []
+    for item in novos:
+        registro = ViagemRoteiro(
+            viagem_id=viagem.id,
+            data=item["data"],
+            descricao=item.get("descricao")
+        )
+        db.session.add(registro)
+        criados.append(registro)
+
+    db.session.commit()
+    return jsonify(roteiros_schema.dump(criados)), 200
 
 
 @bp_viagens.route("/<int:viagem_id>/custos", methods=["GET"])

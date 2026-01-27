@@ -384,6 +384,18 @@ class ViagemCustoSchema(Schema):
             raise ValidationError("Tipo de custo inválido")
 
 
+class ViagemRoteiroSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    viagem_id = fields.Int(dump_only=True)
+    data = fields.Date(required=True)
+    descricao = fields.Str(allow_none=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+
+
 class ViagemSchema(Schema):
     class Meta:
         unknown = EXCLUDE
@@ -400,6 +412,7 @@ class ViagemSchema(Schema):
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
     custos = fields.List(fields.Nested(ViagemCustoSchema), dump_only=True)
+    roteiros = fields.List(fields.Nested(ViagemRoteiroSchema), dump_only=True)
 
     ALLOWED_STATUS = {"Planejada", "Em andamento", "Finalizada", "Cancelada"}
 

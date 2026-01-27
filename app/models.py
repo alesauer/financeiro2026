@@ -246,8 +246,30 @@ class Viagem(db.Model):
         order_by="ViagemCusto.data_gasto"
     )
 
+    roteiros = db.relationship(
+        "ViagemRoteiro",
+        backref="viagem",
+        lazy=True,
+        cascade="all, delete-orphan",
+        order_by="ViagemRoteiro.data"
+    )
+
     def __repr__(self):
         return f"<Viagem {self.titulo} destino={self.destino}>"
+
+
+class ViagemRoteiro(db.Model):
+    __tablename__ = "viagens_roteiros"
+
+    id = db.Column(db.Integer, primary_key=True)
+    viagem_id = db.Column(db.Integer, db.ForeignKey("viagens.id", ondelete="CASCADE"), nullable=False)
+    data = db.Column(db.Date, nullable=False)
+    descricao = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    def __repr__(self):
+        return f"<ViagemRoteiro viagem={self.viagem_id} data={self.data}>"
 
 
 class ViagemCusto(db.Model):

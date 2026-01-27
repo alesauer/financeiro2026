@@ -76,6 +76,7 @@ def importar_transacoes():
     except ValueError as exc:
         return jsonify({"erro": str(exc)}), 400
     inseridas = []
+    atualizadas = []
     parcelas_geradas_total = 0
     erros = []
     categoria_padrao = Categoria.query.filter_by(nome="Outros", tipo="Despesa").first()
@@ -129,15 +130,41 @@ def importar_transacoes():
             valor_parcela = float(t.get("valor_parcela")) if t.get("valor_parcela") is not None else valor_transacao
             parcelamento_id = t.get("parcelamento_id") if t.get("parcelamento_id") else (str(uuid4()) if parcelado else None)
 
-            transacao = Transacao(
-                tipo=categoria.tipo,  # Usa o tipo da categoria
-                categoria_id=categoria.id,
-                descricao=descricao_limpa or descricao_original,
-                valor=valor_transacao,
-                data_transacao=datetime.strptime(t.get("date"), "%Y-%m-%d").date() if t.get("date") else None,
-                forma_pagamento_id=fp.id,
-                status="Pago"
-            )
+            transacao_existente = None
+            data_transacao = datetime.strptime(t.get("date"), "%Y-%m-%d").date() if t.get("date") else None
+            if parcelado and parcelamento_id and parcela_atual:
+                transacao_existente = Transacao.query.filter_by(
+                    parcelamento_id=parcelamento_id,
+                    parcela_atual=parcela_atual
+                ).first()
+
+            if transacao_existente:
+                if transacao_existente.status == "Pago":
+                    erros.append({
+                        "linha": idx + 1,
+                        "erro": "Parcela já marcada como paga anteriormente."
+                    })
+                    continue
+                transacao = transacao_existente
+                transacao.tipo = categoria.tipo
+                transacao.categoria_id = categoria.id
+                transacao.descricao = descricao_limpa or descricao_original
+                transacao.valor = valor_transacao
+                transacao.data_transacao = data_transacao
+                transacao.forma_pagamento_id = fp.id
+                transacao.status = "Pago"
+                criou_transacao = False
+            else:
+                transacao = Transacao(
+                    tipo=categoria.tipo,  # Usa o tipo da categoria
+                    categoria_id=categoria.id,
+                    descricao=descricao_limpa or descricao_original,
+                    valor=valor_transacao,
+                    data_transacao=data_transacao,
+                    forma_pagamento_id=fp.id,
+                    status="Pago"
+                )
+                criou_transacao = True
 
             if parcelado and total_parcelas > 1:
                 transacao.parcelado = True
@@ -162,8 +189,11 @@ def importar_transacoes():
                 dia_fechamento_override=dia_fechamento_override,
                 dia_vencimento_override=dia_vencimento_override
             )
-            db.session.add(transacao)
-            if transacao.parcelado and (transacao.total_parcelas or 1) > (transacao.parcela_atual or 1):
+
+            if criou_transacao:
+                db.session.add(transacao)
+
+            if criou_transacao and transacao.parcelado and (transacao.total_parcelas or 1) > (transacao.parcela_atual or 1):
                 parcelas_geradas_total += gerar_parcelas_restantes(
                     transacao,
                     fp,
@@ -186,13 +216,17 @@ def importar_transacoes():
                         ocorrencias=1
                     )
                     db.session.add(alias)
-            inseridas.append(transacao)
+            if criou_transacao:
+                inseridas.append(transacao)
+            else:
+                atualizadas.append(transacao)
         except Exception as e:
             erros.append({"linha": idx+1, "erro": str(e)})
-    if inseridas or parcelas_geradas_total:
+    if inseridas or atualizadas or parcelas_geradas_total:
         db.session.commit()
     return jsonify({
         "sucesso": len(inseridas),
+        "atualizadas": len(atualizadas),
         "parcelas_geradas": parcelas_geradas_total,
         "erros": erros
     }), 200
