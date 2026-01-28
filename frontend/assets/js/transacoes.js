@@ -887,13 +887,21 @@ window.abrirModalCartaoCredito = function(formaPagamentoId = null) {
         formatter: (cell, row) => {
           const idCell = (row && row.cells && row.cells[0]) ? (row.cells[0].data || row.cells[0]) : '';
           const id = idCell || '';
+          const transacao = transacoesCartaoCredito.find(tx => String(tx.id) === String(id));
+          const assinaturaAtiva = !!(transacao && transacao.recorrente && transacao.recorrencia_tipo === 'Assinatura');
           return gridjs.html(`
-            <div class="btn-group" role="group" aria-label="Ações">
-              <button type="button" class="btn btn-sm btn-outline-danger delete-btn-modal" data-id="${id}" title="Excluir" aria-label="Excluir">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                  <path d="M5.5 5.5A.5.5 0 0 1 6 5h4a.5.5 0 0 1 .5.5v8A1.5 1.5 0 0 1 9 15H7a1.5 1.5 0 0 1-1.5-1.5v-8zM14.5 3a1 1 0 0 1-1 1H13v9.5A2.5 2.5 0 0 1 10.5 16h-5A2.5 2.5 0 0 1 3 13.5V4H2.5a1 1 0 1 1 0-2H5l.5-1h5l.5 1h2.5a1 1 0 0 1 1 1zM6.118 1L5.5 2h5l-.618-1H6.118z"/>
-                </svg>
-              </button>
+            <div class="d-flex flex-column gap-2 align-items-start">
+              <div class="btn-group" role="group" aria-label="Ações">
+                <button type="button" class="btn btn-sm btn-outline-danger delete-btn-modal" data-id="${id}" title="Excluir" aria-label="Excluir">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                    <path d="M5.5 5.5A.5.5 0 0 1 6 5h4a.5.5 0 0 1 .5.5v8A1.5 1.5 0 0 1 9 15H7a1.5 1.5 0 0 1-1.5-1.5v-8zM14.5 3a1 1 0 0 1-1 1H13v9.5A2.5 2.5 0 0 1 10.5 16h-5A2.5 2.5 0 0 1 3 13.5V4H2.5a1 1 0 1 1 0-2H5l.5-1h5l.5 1h2.5a1 1 0 0 1 1 1zM6.118 1L5.5 2h5l-.618-1H6.118z"/>
+                  </svg>
+                </button>
+              </div>
+              <div class="form-check form-switch m-0">
+                <input class="form-check-input assinatura-checkbox" type="checkbox" role="switch" id="assinatura-${id}" data-id="${id}" ${assinaturaAtiva ? 'checked' : ''}>
+                <label class="form-check-label small" for="assinatura-${id}">Assinatura</label>
+              </div>
             </div>
           `);
         }
@@ -984,6 +992,16 @@ window.abrirModalCartaoCredito = function(formaPagamentoId = null) {
         refreshPeriodoData();
       }
     });
+
+    if (!gridElement.dataset.assinaturaListener) {
+      gridElement.addEventListener('change', async function(e) {
+        const checkbox = e.target.classList && e.target.classList.contains('assinatura-checkbox') ? e.target : null;
+        if (!checkbox) return;
+        const transacaoId = checkbox.getAttribute('data-id');
+        await atualizarAssinaturaTransacaoCartao(transacaoId, checkbox.checked, checkbox);
+      });
+      gridElement.dataset.assinaturaListener = 'true';
+    }
   }, 100);
 
   // Fechar modal ao clicar fora
@@ -1062,6 +1080,55 @@ window.deletarTodasTransacoesCartao = async function() {
     alert('❌ Erro de rede ao deletar transações. Tente novamente.');
   }
 };
+
+async function atualizarAssinaturaTransacaoCartao(transacaoId, marcarComoAssinatura, checkboxEl) {
+  if (!transacaoId) {
+    alert('Transação inválida.');
+    return;
+  }
+
+  const transacaoAtual = transacoesCartaoCredito.find(tx => String(tx.id) === String(transacaoId));
+  const payload = marcarComoAssinatura
+    ? {
+        recorrente: true,
+        recorrencia_tipo: 'Assinatura',
+        frequencia: (transacaoAtual && transacaoAtual.frequencia) || 'Mensal',
+        data_fim: transacaoAtual && transacaoAtual.data_fim ? transacaoAtual.data_fim : null
+      }
+    : { recorrente: false, recorrencia_tipo: null, frequencia: null, data_fim: null };
+
+  checkboxEl.disabled = true;
+  try {
+    const resp = await fetchJWT(`${apiUrl}/${transacaoId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    });
+
+    if (!resp.ok) {
+      let errMsg = 'Erro ao atualizar assinatura.';
+      try {
+        const errPayload = await resp.json();
+        errMsg = errPayload.error || JSON.stringify(errPayload);
+      } catch (err) {
+        console.error('Erro ao ler resposta de erro', err);
+      }
+      throw new Error(errMsg);
+    }
+
+    const atualizada = await resp.json();
+    const idx = transacoesCartaoCredito.findIndex(tx => String(tx.id) === String(atualizada.id));
+    if (idx >= 0) {
+      transacoesCartaoCredito[idx] = { ...transacoesCartaoCredito[idx], ...atualizada };
+    }
+    await refreshPeriodoData();
+  } catch (err) {
+    console.error('Erro ao atualizar assinatura da transação', err);
+    alert(err.message || 'Erro ao atualizar assinatura.');
+    checkboxEl.checked = !marcarComoAssinatura;
+  } finally {
+    checkboxEl.disabled = false;
+  }
+}
 
 function reloadGrid(){
   if (!grid) {
