@@ -122,7 +122,17 @@ def importar_transacoes():
 
             descricao_original = t.get("title") or ""
             descricao_limpa = t.get("descricao_limpa") or limpar_marcador_parcela(descricao_original)
-            valor_transacao = float(t.get("amount"))
+            try:
+                valor_transacao = float(t.get("amount"))
+            except (TypeError, ValueError):
+                raise ValueError("Valor inválido informado para a transação.")
+
+            if valor_transacao < 0:
+                erros.append({
+                    "linha": idx + 1,
+                    "erro": "Transação ignorada: valor negativo não é importado."
+                })
+                continue
 
             parcelado = bool(t.get("parcelado"))
             parcela_atual = int(t.get("parcela_atual") or 1)
