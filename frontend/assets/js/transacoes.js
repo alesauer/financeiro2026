@@ -795,7 +795,41 @@ function createGrid(){
 }
 
 // Função para abrir modal com detalhes das transações de cartão de crédito
-window.abrirModalCartaoCredito = function(formaPagamentoId = null) {
+window.abrirModalCartaoCredito = async function(formaPagamentoId = null) {
+  const loaderId = 'modal-cartao-credito-loading';
+  const existingLoader = document.getElementById(loaderId);
+  if (existingLoader) {
+    existingLoader.remove();
+  }
+  const loader = document.createElement('div');
+  loader.id = loaderId;
+  loader.style.position = 'fixed';
+  loader.style.top = '0';
+  loader.style.left = '0';
+  loader.style.width = '100vw';
+  loader.style.height = '100vh';
+  loader.style.background = 'rgba(0,0,0,0.35)';
+  loader.style.zIndex = '9998';
+  loader.style.display = 'flex';
+  loader.style.alignItems = 'center';
+  loader.style.justifyContent = 'center';
+  loader.innerHTML = `
+    <div style="background:#fff;padding:20px 28px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.15);display:flex;flex-direction:column;align-items:center;gap:12px;max-width:320px;text-align:center;">
+      <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+      <div style="font-weight:600;color:#2d3748;">Atualizando transações do cartão...</div>
+      <small style="color:#718096;">Buscando dados mais recentes para garantir o estado das assinaturas.</small>
+    </div>`;
+  document.body.appendChild(loader);
+
+  try {
+    await fetchCartaoCreditoDados(buildMonthRange(current));
+  } catch (err) {
+    console.error('Erro ao atualizar dados de cartão antes de abrir o modal', err);
+    alert('Não foi possível carregar os dados mais recentes. Mostrando informações anteriores.');
+  } finally {
+    loader.remove();
+  }
+
   const dataset = formaPagamentoId
     ? transacoesCartaoCredito.filter(t => t.forma_pagamento_id === formaPagamentoId)
     : transacoesCartaoCredito;
