@@ -1,43 +1,25 @@
-<<<<<<< HEAD
 # Ambiente virtual
 venv/
 ENV/
 env/
+.venv/
+
 # Arquivos de configuração sensíveis
 .env
+
 # Cache do Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.pdb
-*.pkl
-# Arquivos de log
-*.log
-# Diretórios de migração (recriados pelo Alembic/Flask-Migrate)
-migrations/
-# IDEs / Editores
-.vscode/
-.idea/
-*.swp
-# Arquivos temporários do sistema
-.DS_Store
-Thumbs.db
-# Builds do frontend
-node_modules/
-build/
-dist/
-=======
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-venv/
-env/
-ENV/
-.venv
+*.pyo
+*.pyd
+*.pdb
+*.pkl
+
+# Arquivos de log
+*.log
 
 # Flask
 instance/
@@ -48,24 +30,23 @@ instance/
 *.sqlite
 *.sqlite3
 
-# IDE
+# IDEs / Editores
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# Arquivos temporários do sistema
 .DS_Store
 Thumbs.db
 
-# Logs
-*.log
+# Builds do frontend e dependências
+node_modules/
+build/
+dist/
 
-# Migrations
+# Diretórios de migração (se necessário, ignore apenas cache)
 migrations/__pycache__/
 migrations/versions/__pycache__/
 
-
-
->>>>>>> 041641f (Ajuste modal Transaçoes)

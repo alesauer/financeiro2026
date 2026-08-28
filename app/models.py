@@ -325,3 +325,137 @@ class ViagemCustoAnexo(db.Model):
 
     def __repr__(self):
         return f"<ViagemCustoAnexo custo={self.custo_id} arquivo={self.original_name}>"
+
+
+# =======================
+# Investimentos
+# =======================
+
+
+class InvestmentWallet(db.Model):
+    __tablename__ = "investment_wallets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(120), nullable=False)
+    cor = db.Column(db.String(20), nullable=False, default="#2563eb")
+    moeda = db.Column(db.String(10), nullable=False, default="BRL")
+    observacoes = db.Column(db.Text, nullable=True)
+    ativo = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    ativos = db.relationship("InvestmentAsset", backref="carteira", lazy=True, cascade="all, delete-orphan")
+    movimentacoes = db.relationship("InvestmentTransaction", backref="carteira", lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<InvestmentWallet {self.nome}>"
+
+
+class InvestmentAsset(db.Model):
+    __tablename__ = "investment_assets"
+
+    id = db.Column(db.Integer, primary_key=True)
+    wallet_id = db.Column(db.Integer, db.ForeignKey("investment_wallets.id", ondelete="CASCADE"), nullable=False)
+    codigo = db.Column(db.String(30), nullable=False)
+    nome = db.Column(db.String(120), nullable=False)
+    tipo = db.Column(
+        db.Enum(
+            "Ações",
+            "FIIs",
+            "ETFs",
+            "BDRs",
+            "Tesouro Direto",
+            "CDB",
+            "LCI",
+            "LCA",
+            "Debêntures",
+            "Fundos",
+            "Criptomoedas",
+            "Previdência",
+            name="investment_asset_type",
+        ),
+        nullable=False,
+    )
+    setor = db.Column(db.String(80), nullable=True)
+    bolsa = db.Column(db.String(60), nullable=True)
+    moeda = db.Column(db.String(10), nullable=False, default="BRL")
+    ativo = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    movimentacoes = db.relationship("InvestmentTransaction", backref="ativo", lazy=True)
+    cotacoes = db.relationship("InvestmentQuote", backref="ativo_cotacao", lazy=True, cascade="all, delete-orphan")
+
+    __table_args__ = (db.UniqueConstraint("wallet_id", "codigo", name="uq_investment_asset_wallet_codigo"),)
+
+    def __repr__(self):
+        return f"<InvestmentAsset {self.codigo}>"
+
+
+class InvestmentTransaction(db.Model):
+    __tablename__ = "investment_transactions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    wallet_id = db.Column(db.Integer, db.ForeignKey("investment_wallets.id", ondelete="CASCADE"), nullable=False)
+    asset_id = db.Column(db.Integer, db.ForeignKey("investment_assets.id", ondelete="SET NULL"), nullable=True)
+    tipo = db.Column(
+        db.Enum(
+            "Compra",
+            "Venda",
+            "Dividendos",
+            "JCP",
+            "Bonificação",
+            "Split",
+            "Grupamento",
+            "Aporte",
+            "Resgate",
+            name="investment_tx_type",
+        ),
+        nullable=False,
+    )
+    data_movimentacao = db.Column(db.Date, nullable=False, default=date.today)
+    quantidade = db.Column(db.Numeric(18, 8), nullable=True)
+    preco = db.Column(db.Numeric(18, 6), nullable=True)
+    taxas = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    valor_total = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    corretora = db.Column(db.String(120), nullable=True)
+    observacoes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    def __repr__(self):
+        return f"<InvestmentTransaction {self.tipo} wallet={self.wallet_id}>"
+
+
+class InvestmentQuote(db.Model):
+    __tablename__ = "investment_quotes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    asset_id = db.Column(db.Integer, db.ForeignKey("investment_assets.id", ondelete="CASCADE"), nullable=False)
+    provider = db.Column(db.String(50), nullable=False)
+    preco = db.Column(db.Numeric(14, 6), nullable=False)
+    variacao_percentual = db.Column(db.Numeric(8, 4), nullable=True)
+    moeda = db.Column(db.String(10), nullable=False, default="BRL")
+    cotado_em = db.Column(db.DateTime, nullable=False, default=db.func.now())
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    __table_args__ = (db.UniqueConstraint("asset_id", "provider", name="uq_investment_quote_asset_provider"),)
+
+    def __repr__(self):
+        return f"<InvestmentQuote asset={self.asset_id} provider={self.provider}>"
+
+
+class InvestmentProviderConfig(db.Model):
+    __tablename__ = "investment_providers"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(50), nullable=False, unique=True)
+    ativo = db.Column(db.Boolean, nullable=False, default=True)
+    prioridade = db.Column(db.Integer, nullable=False, default=1)
+    config_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    def __repr__(self):
+        return f"<InvestmentProviderConfig {self.nome} ativo={self.ativo}>"

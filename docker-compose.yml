@@ -1,0 +1,41 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: financas-backend
+    environment:
+      DATABASE_URL: sqlite:////data/financas.db
+      SECRET_KEY: docker-secret-key
+      JWT_SECRET_KEY: docker-jwt-secret-key
+      OPENAI_API_KEY: ""
+      MAILGUN_API_KEY: ""
+      MAILGUN_DOMAIN: ""
+      MAILGUN_BASE_URL: https://api.mailgun.net
+      MAILGUN_FROM: ""
+      HTTP_PROXY: http://proxy.almg.uucp:3128
+      HTTPS_PROXY: http://proxy.almg.uucp:3128
+      NO_PROXY: localhost,127.0.0.1,backend,frontend
+      http_proxy: http://proxy.almg.uucp:3128
+      https_proxy: http://proxy.almg.uucp:3128
+      no_proxy: localhost,127.0.0.1,backend,frontend
+    ports:
+      - "5001:5000"
+    volumes:
+      - sqlite_data:/data
+      - ./uploads:/app/uploads
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: financas-frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
+volumes:
+  sqlite_data:

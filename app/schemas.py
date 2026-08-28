@@ -132,6 +132,28 @@ class TransacaoSchema(Schema):
             raise
         return data
 
+    @validates_schema
+    def validate_categoria_tipo(self, data, **kwargs):
+        """A categoria precisa ser do mesmo tipo da transação (Receita/Despesa/Investimento)."""
+        tipo = data.get("tipo")
+        categoria_id = data.get("categoria_id")
+        if not tipo or not categoria_id:
+            return
+
+        from app import db
+        from app.models import Categoria
+
+        categoria = db.session.get(Categoria, categoria_id)
+        if categoria is None:
+            raise ValidationError({"categoria_id": ["Categoria não encontrada."]})
+        if categoria.tipo != tipo:
+            raise ValidationError({
+                "categoria_id": [
+                    f"A categoria '{categoria.nome}' é do tipo {categoria.tipo} "
+                    f"e não pode ser usada em uma transação do tipo {tipo}."
+                ]
+            })
+
     # Compatibilidade: permitir payloads antigos com campo 'forma_pagamento' (string)
     @pre_load
     def map_forma_pagamento_legacy(self, data, **kwargs):
@@ -483,3 +505,146 @@ class AlertasConfigSchema(Schema):
 class SobreSistemaConfigSchema(Schema):
     descricao = fields.Str(load_default="", allow_none=True)
     versao = fields.Str(load_default="", allow_none=True)
+
+
+# ======================
+# Investimentos
+# ======================
+
+
+class InvestmentWalletSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    nome = fields.Str(required=True)
+    cor = fields.Str(load_default="#2563eb")
+    moeda = fields.Str(load_default="BRL")
+    observacoes = fields.Str(allow_none=True)
+    ativo = fields.Boolean(load_default=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+
+    @validates("nome")
+    def validate_nome(self, value, **kwargs):
+        if not value or not value.strip():
+            raise ValidationError("Nome da carteira é obrigatório")
+        if len(value.strip()) > 120:
+            raise ValidationError("Nome da carteira deve ter no máximo 120 caracteres")
+
+    @validates("moeda")
+    def validate_moeda(self, value, **kwargs):
+        if not value or len(value.strip()) > 10:
+            raise ValidationError("Moeda inválida")
+
+
+class InvestmentAssetSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    wallet_id = fields.Int(required=True)
+    codigo = fields.Str(required=True)
+    nome = fields.Str(required=True)
+    tipo = fields.Str(required=True)
+    setor = fields.Str(allow_none=True)
+    bolsa = fields.Str(allow_none=True)
+    moeda = fields.Str(load_default="BRL")
+    ativo = fields.Boolean(load_default=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+
+    ALLOWED_TIPOS = {
+        "Ações", "FIIs", "ETFs", "BDRs", "Tesouro Direto", "CDB", "LCI", "LCA",
+        "Debêntures", "Fundos", "Criptomoedas", "Previdência"
+    }
+
+    @validates("tipo")
+    def validate_tipo(self, value, **kwargs):
+        if value not in self.ALLOWED_TIPOS:
+            raise ValidationError("Tipo de ativo inválido")
+
+    @validates("codigo")
+    def validate_codigo(self, value, **kwargs):
+        if not value or not value.strip():
+            raise ValidationError("Código é obrigatório")
+        if len(value.strip()) > 30:
+            raise ValidationError("Código deve ter no máximo 30 caracteres")
+
+
+class InvestmentTransactionSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    wallet_id = fields.Int(required=True)
+    asset_id = fields.Int(allow_none=True)
+    tipo = fields.Str(required=True)
+    data_movimentacao = fields.Date(load_default=date.today)
+    quantidade = fields.Decimal(as_string=True, allow_none=True)
+    preco = fields.Decimal(as_string=True, allow_none=True)
+    taxas = fields.Decimal(as_string=True, load_default="0")
+    valor_total = fields.Decimal(as_string=True, load_default="0")
+    corretora = fields.Str(allow_none=True)
+    observacoes = fields.Str(allow_none=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+
+    tipo_nome = fields.Method("get_tipo_nome", dump_only=True)
+    ativo_codigo = fields.Method("get_ativo_codigo", dump_only=True)
+    ativo_nome = fields.Method("get_ativo_nome", dump_only=True)
+
+    ALLOWED_TIPOS = {
+        "Compra", "Venda", "Dividendos", "JCP", "Bonificação", "Split", "Grupamento", "Aporte", "Resgate"
+    }
+
+    def get_tipo_nome(self, obj):
+        return getattr(obj, "tipo", None)
+
+    def get_ativo_codigo(self, obj):
+        if hasattr(obj, "ativo") and obj.ativo:
+            return obj.ativo.codigo
+        return None
+
+    def get_ativo_nome(self, obj):
+        if hasattr(obj, "ativo") and obj.ativo:
+            return obj.ativo.nome
+        return None
+
+    @validates("tipo")
+    def validate_tipo(self, value, **kwargs):
+        if value not in self.ALLOWED_TIPOS:
+            raise ValidationError("Tipo de movimentação inválido")
+
+    @validates("wallet_id")
+    def validate_wallet_id(self, value, **kwargs):
+        if value <= 0:
+            raise ValidationError("Carteira inválida")
+
+
+class InvestmentQuoteSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    asset_id = fields.Int(required=True)
+    provider = fields.Str(required=True)
+    preco = fields.Decimal(as_string=True, required=True)
+    variacao_percentual = fields.Decimal(as_string=True, allow_none=True)
+    moeda = fields.Str(load_default="BRL")
+    cotado_em = fields.DateTime(dump_only=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)
+
+
+class InvestmentProviderConfigSchema(Schema):
+    class Meta:
+        unknown = EXCLUDE
+
+    id = fields.Int(dump_only=True)
+    nome = fields.Str(required=True)
+    ativo = fields.Boolean(load_default=True)
+    prioridade = fields.Int(load_default=1)
+    config_json = fields.Str(allow_none=True)
+    created_at = fields.DateTime(dump_only=True)
+    updated_at = fields.DateTime(dump_only=True)

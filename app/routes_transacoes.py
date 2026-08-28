@@ -1,11 +1,13 @@
 from flask import Blueprint, request, jsonify
 from marshmallow import ValidationError
 from datetime import datetime, date
+from decimal import Decimal, ROUND_HALF_UP
+from dateutil.relativedelta import relativedelta
 from app import db
 from app.models import Transacao
 from app.schemas import TransacaoSchema
 from sqlalchemy import exc, func, case, or_
-from app.models import FormaPagamento
+from app.models import FormaPagamento, Categoria
 from flask_jwt_extended import jwt_required
 import uuid
 from services.fatura_service import aplicar_competencia_transacao
@@ -15,6 +17,27 @@ bp_transacoes = Blueprint("transacoes", __name__)
 schema = TransacaoSchema()
 schemas = TransacaoSchema(many=True)
 
+# Teto de segurança para geração de assinaturas em lote (ex.: diária por 10 anos).
+LIMITE_OCORRENCIAS_ASSINATURA = 240
+
+DELTA_FREQUENCIA = {
+    "Diária": lambda: relativedelta(days=1),
+    "Semanal": lambda: relativedelta(weeks=1),
+    "Mensal": lambda: relativedelta(months=1),
+    "Semestral": lambda: relativedelta(months=6),
+    "Anual": lambda: relativedelta(years=1),
+}
+
+
+def _quebrar_valor(valor_total, total_parcelas):
+    """Divide o total em N parcelas de 2 casas, jogando a diferença na última."""
+    total_decimal = Decimal(str(valor_total))
+    parcela = (total_decimal / Decimal(total_parcelas)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    parcelas = [parcela] * total_parcelas
+    parcelas[-1] = total_decimal - parcela * (total_parcelas - 1)
+    return parcelas
+
+
 @bp_transacoes.route("/", methods=["POST"])
 @jwt_required()
 def criar():
@@ -23,8 +46,6 @@ def criar():
         validado = schema.load(data)
     except ValidationError as err:
         return jsonify(err.messages), 400
-
-    from dateutil.relativedelta import relativedelta
 
     transacoes_geradas = []
     recorrente = validado.get('recorrente', False)
@@ -38,39 +59,40 @@ def criar():
 
     # Se for recorrente com tipo Assinatura e tiver frequência e data_fim, gera múltiplas transações
     if recorrente and tipo_rec == "Assinatura" and frequencia and data_fim and data_inicial:
+        if data_fim < data_inicial:
+            return jsonify({"data_fim": ["Deve ser posterior à data da transação."]}), 400
+
+        avancar = DELTA_FREQUENCIA.get(frequencia)
+        if avancar is None:
+            return jsonify({"frequencia": ["Frequência inválida."]}), 400
+
         data_atual = data_inicial
         while data_atual <= data_fim:
+            if len(transacoes_geradas) >= LIMITE_OCORRENCIAS_ASSINATURA:
+                return jsonify({
+                    "data_fim": [
+                        f"O período gera mais de {LIMITE_OCORRENCIAS_ASSINATURA} ocorrências "
+                        f"na frequência {frequencia}. Reduza a data fim."
+                    ]
+                }), 400
+
             dados_nova = dict(validado)
             dados_nova['data_transacao'] = data_atual
-            # Remove data_transacao duplicado se existir
-            if 'data_transacao' in dados_nova and dados_nova['data_transacao'] != data_atual:
-                dados_nova['data_transacao'] = data_atual
             nova = Transacao(**dados_nova)
             if nova.parcelado and nova.total_parcelas:
-                nova.valor_parcela = nova.valor / nova.total_parcelas
+                nova.valor_parcela = nova.valor
             aplicar_competencia_transacao(nova, forma_pagamento)
             transacoes_geradas.append(nova)
-            # Avança para próxima recorrência
-            if frequencia == "Mensal":
-                data_atual += relativedelta(months=1)
-            elif frequencia == "Semanal":
-                data_atual += relativedelta(weeks=1)
-            elif frequencia == "Diária":
-                data_atual += relativedelta(days=1)
-            elif frequencia == "Semestral":
-                data_atual += relativedelta(months=6)
-            elif frequencia == "Anual":
-                data_atual += relativedelta(years=1)
-            else:
-                break
+            data_atual += avancar()
+
         db.session.add_all(transacoes_geradas)
         db.session.commit()
         return jsonify(schemas.dump(transacoes_geradas)), 201
     # Parcelamento recorrente: gerar N parcelas mensais
     elif recorrente and tipo_rec == "Parcelamento" and data_inicial and validado.get('total_parcelas'):
         total = int(validado.get('total_parcelas'))
-        valor_total = float(validado.get('valor'))
-        valor_parcela = valor_total / total if total > 0 else valor_total
+        # O usuário informa o valor total da compra; cada parcela recebe a fração correspondente.
+        valores = _quebrar_valor(validado.get('valor'), total)
         grupo_id = str(uuid.uuid4())
         data_atual = data_inicial
         for p in range(1, total + 1):
@@ -78,7 +100,9 @@ def criar():
             dados_parc['data_transacao'] = data_atual
             dados_parc['parcelado'] = True
             dados_parc['parcela_atual'] = p
-            dados_parc['valor_parcela'] = valor_parcela
+            # `valor` guarda o desembolso do mês; `valor_parcela` fica como espelho por compatibilidade.
+            dados_parc['valor'] = valores[p - 1]
+            dados_parc['valor_parcela'] = valores[p - 1]
             dados_parc['parcelamento_id'] = grupo_id
             nova = Transacao(**dados_parc)
             transacoes_geradas.append(nova)
@@ -91,13 +115,14 @@ def criar():
     else:
         transacao = Transacao(**validado)
         if transacao.parcelado and transacao.total_parcelas:
-            transacao.valor_parcela = transacao.valor / transacao.total_parcelas
+            transacao.valor_parcela = transacao.valor
         aplicar_competencia_transacao(transacao, forma_pagamento)
         db.session.add(transacao)
         db.session.commit()
         return jsonify(schema.dump(transacao)), 201
 
 @bp_transacoes.route("/", methods=["GET"])
+@jwt_required()
 def listar():
     query = Transacao.query
     forma_pagamento_joined = False
@@ -167,14 +192,25 @@ def listar():
     sort_order = request.args.get("sort_order", "asc").lower()  # 'asc' ou 'desc'
     ALLOWED_SORT_FIELDS = {"id", "data_transacao", "valor", "descricao", "tipo", "status", "categoria_id"}
     if sort_field:
-        if sort_field not in ALLOWED_SORT_FIELDS:
-            return jsonify({"error": f"Campo de ordenação inválido: {sort_field}"}), 400
-        sort_col = getattr(Transacao, sort_field, None)
-        if sort_col is not None:
+        if sort_field == "tipo_prioridade":
+            prioridade_tipo = case(
+                (Transacao.tipo.ilike("Receita"), 0),
+                (Transacao.tipo.ilike("Despesa"), 1),
+                else_=2,
+            )
             if sort_order == "desc":
-                query = query.order_by(sort_col.desc())
+                query = query.order_by(prioridade_tipo.desc(), Transacao.data_transacao.desc(), Transacao.id.desc())
             else:
-                query = query.order_by(sort_col.asc())
+                query = query.order_by(prioridade_tipo.asc(), Transacao.data_transacao.desc(), Transacao.id.desc())
+        else:
+            if sort_field not in ALLOWED_SORT_FIELDS:
+                return jsonify({"error": f"Campo de ordenação inválido: {sort_field}"}), 400
+            sort_col = getattr(Transacao, sort_field, None)
+            if sort_col is not None:
+                if sort_order == "desc":
+                    query = query.order_by(sort_col.desc())
+                else:
+                    query = query.order_by(sort_col.asc())
     else:
         # Ordenação padrão por data (mais recentes primeiro)
         query = query.order_by(Transacao.data_transacao.desc(), Transacao.id.desc())
@@ -206,18 +242,30 @@ def obter(id):
 def atualizar(id):
     transacao = Transacao.query.get_or_404(id)
     data = request.get_json()
-    print(f"[PUT TRANSACAO] id={id}, payload recebido:", data)
     try:
         validado = schema.load(data, partial=True)
     except ValidationError as err:
-        print(f"[PUT TRANSACAO] Erro de validação:", err.messages)
         return jsonify(err.messages), 400
 
     for key, value in validado.items():
         setattr(transacao, key, value)
 
-    if transacao.parcelado and transacao.total_parcelas:
-        transacao.valor_parcela = transacao.valor / transacao.total_parcelas
+    # Em updates parciais o schema pode receber só um dos campos; valida o par final.
+    if 'tipo' in validado or 'categoria_id' in validado:
+        categoria = db.session.get(Categoria, transacao.categoria_id)
+        if categoria is None:
+            db.session.rollback()
+            return jsonify({"categoria_id": ["Categoria não encontrada."]}), 400
+        if categoria.tipo != transacao.tipo:
+            db.session.rollback()
+            return jsonify({"categoria_id": [
+                f"A categoria '{categoria.nome}' é do tipo {categoria.tipo} "
+                f"e não pode ser usada em uma transação do tipo {transacao.tipo}."
+            ]}), 400
+
+    # `valor` já representa o desembolso da parcela; só espelhamos em valor_parcela.
+    if transacao.parcelado:
+        transacao.valor_parcela = transacao.valor
 
     forma_pagamento = transacao.forma_pagamento
     if 'forma_pagamento_id' in validado:
@@ -298,7 +346,6 @@ def deletar(id):
 def resumo_mes():
     inicio_str = request.args.get("inicio")
     fim_str = request.args.get("fim")
-    print(f"[SUMMARY] inicio={inicio_str}, fim={fim_str}")
 
     if not inicio_str or not fim_str:
         return jsonify({"error": "Parâmetros 'inicio' e 'fim' são obrigatórios (YYYY-MM-DD)."}), 400
@@ -306,41 +353,25 @@ def resumo_mes():
     try:
         inicio_dt = datetime.strptime(inicio_str, "%Y-%m-%d").date()
         fim_dt = datetime.strptime(fim_str, "%Y-%m-%d").date()
-    except ValueError as e:
-        print(f"[SUMMARY] Erro ao parsear datas: {e}")
+    except ValueError:
         return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    # Soma receitas: usa valor_parcela quando parcelado, caso exista
-    receita_sum = db.session.query(func.coalesce(func.sum(
-        case(
-            (Transacao.parcelado == True, Transacao.valor_parcela),
-            else_=Transacao.valor
-        )
-    ), 0)).filter(
+    # `valor` é a fonte única: em parcelamentos cada linha já contém o valor da parcela.
+    receita_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).filter(
         Transacao.tipo.ilike('receita'),
         Transacao.data_transacao.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
-    despesa_sum = db.session.query(func.coalesce(func.sum(
-        case(
-            (Transacao.parcelado == True, Transacao.valor_parcela),
-            else_=Transacao.valor
-        )
-    ), 0)).filter(
+    despesa_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).filter(
         Transacao.tipo.ilike('despesa'),
         Transacao.data_transacao.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
     competencia_ou_data = func.coalesce(Transacao.competencia_fatura, Transacao.data_transacao)
 
-    cartao_credito_sum = db.session.query(func.coalesce(func.sum(
-        case(
-            (Transacao.parcelado == True, Transacao.valor_parcela),
-            else_=Transacao.valor
-        )
-    ), 0)).join(FormaPagamento).filter(
+    cartao_credito_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).join(FormaPagamento).filter(
         FormaPagamento.cartao_credito.is_(True),
-        Transacao.status == "Pago",
+        Transacao.tipo.ilike('despesa'),
         competencia_ou_data.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
@@ -384,10 +415,8 @@ def resumo_assinaturas():
         or_(Transacao.data_fim.is_(None), Transacao.data_fim >= inicio_dt)
     ]
 
-    valor_case = case(
-        (Transacao.parcelado == True, Transacao.valor_parcela),
-        else_=Transacao.valor
-    )
+    # `valor` já contém o desembolso da parcela; não há mais necessidade de case.
+    valor_case = Transacao.valor
 
     total_ativas = Transacao.query.filter(*base_filters).count()
     total_valor = db.session.query(func.coalesce(func.sum(valor_case), 0)).filter(*base_filters).scalar() or 0
@@ -418,10 +447,8 @@ def resumo_assinaturas_anual():
     inicio_dt = date(ano, 1, 1)
     fim_dt = date(ano, 12, 31)
 
-    valor_case = case(
-        (Transacao.parcelado == True, Transacao.valor_parcela),
-        else_=Transacao.valor
-    )
+    # `valor` já contém o desembolso da parcela; não há mais necessidade de case.
+    valor_case = Transacao.valor
 
     filtros = [
         Transacao.recorrente.is_(True),
@@ -489,10 +516,8 @@ def resumo_parcelamentos():
         Transacao.data_transacao.between(inicio_dt, fim_dt)
     ]
 
-    valor_case = case(
-        (Transacao.parcelado == True, Transacao.valor_parcela),
-        else_=Transacao.valor
-    )
+    # `valor` já contém o desembolso da parcela; não há mais necessidade de case.
+    valor_case = Transacao.valor
 
     identificador = func.coalesce(
         Transacao.parcelamento_id,
@@ -529,10 +554,8 @@ def resumo_parcelamentos_anual():
     inicio_dt = date(ano, 1, 1)
     fim_dt = date(ano, 12, 31)
 
-    valor_case = case(
-        (Transacao.parcelado == True, Transacao.valor_parcela),
-        else_=Transacao.valor
-    )
+    # `valor` já contém o desembolso da parcela; não há mais necessidade de case.
+    valor_case = Transacao.valor
 
     filtros = [
         Transacao.recorrente.is_(True),
@@ -600,6 +623,7 @@ def listar_cartao_credito():
 
     query = Transacao.query.join(FormaPagamento).filter(
         FormaPagamento.cartao_credito.is_(True),
+        Transacao.tipo.ilike('despesa'),
         competencia_ou_data.between(inicio_dt, fim_dt)
     ).order_by(
         Transacao.forma_pagamento_id.asc(),
@@ -638,7 +662,7 @@ def listar_cartao_credito():
             entry["pendentes"] += 1
             entry["total_pendentes"] += valor_float
 
-        entry["total"] = entry["total_pagas"]
+        entry["total"] = entry["total_pagas"] + entry["total_pendentes"]
 
         if tx.data_transacao and (entry["ultima_data"] is None or tx.data_transacao > entry["ultima_data"]):
             entry["ultima_data"] = tx.data_transacao
@@ -647,7 +671,7 @@ def listar_cartao_credito():
     total_geral = 0.0
     total_geral_pendentes = 0.0
     for entry in agregados.values():
-        total_geral += entry["total_pagas"]
+        total_geral += entry["total"]
         total_geral_pendentes += entry["total_pendentes"]
         if entry["ultima_data"]:
             entry["ultima_data"] = entry["ultima_data"].isoformat()

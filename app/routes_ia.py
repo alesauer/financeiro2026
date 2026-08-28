@@ -3,7 +3,10 @@ from flask import Blueprint, request, jsonify
 import json
 import openai
 import os
-from app.models import Categoria, CategoriaAlias
+import re
+from collections import Counter, defaultdict
+from difflib import SequenceMatcher
+from app.models import Categoria, CategoriaAlias, Transacao
 from app import db
 from app.utils.texto import normalizar_texto
 
@@ -34,6 +37,141 @@ def _extrair_lista_categorias(conteudo, quantidade):
         lista.extend(["Indefinida"] * (quantidade - len(lista)))
     return [_normalizar_categoria(cat) for cat in lista[:quantidade]]
 
+
+def _merchant_hint(descricao: str) -> str:
+    texto = normalizar_texto(descricao or "")
+    texto = re.sub(r"\b(parcela|parc)\b.*", "", texto, flags=re.IGNORECASE).strip()
+    texto = re.sub(r"\s+", " ", texto)
+    return texto[:80]
+
+
+def _categoria_por_regras(descricao: str, categorias_validas: list[str]) -> str | None:
+    texto = normalizar_texto(descricao or "")
+    if not texto:
+        return None
+
+    regras = [
+        (["ifood", "ubereats", "restaurant", "restaurante", "lanchonete", "padaria", "mercado", "supermercado"], "Alimentação"),
+        (["uber", "99", "taxi", "combustivel", "posto", "shell", "ipiranga", "estacionamento", "pedagio"], "Transporte"),
+        (["farmacia", "drogaria", "droga", "hospital", "clinica", "laboratorio", "medico"], "Saúde"),
+        (["netflix", "spotify", "prime video", "disney", "hbo", "stream", "cinema"], "Lazer"),
+        (["energia", "enel", "cemig", "sabesp", "sanepar", "vivo", "claro", "tim", "internet", "telefone"], "Contas"),
+        (["escola", "faculdade", "curso", "udemy", "alura", "livro"], "Educação"),
+        (["aluguel", "condominio", "imobiliaria", "material de construcao", "decor", "leroy"], "Moradia"),
+        (["anuidade", "juros", "multa", "iof", "encargo", "tarifa"], "Taxas e Juros"),
+    ]
+
+    categorias_norm = {normalizar_texto(cat): cat for cat in categorias_validas}
+    for termos, categoria_alvo in regras:
+        if any(termo in texto for termo in termos):
+            cat_norm = normalizar_texto(categoria_alvo)
+            if cat_norm in categorias_norm:
+                return categorias_norm[cat_norm]
+
+    return None
+
+
+def _categoria_por_alias_aproximado(chave: str, aliases_map: dict[str, str]) -> str | None:
+    if not chave or not aliases_map:
+        return None
+
+    melhor_categoria = None
+    melhor_score = 0.0
+    for alias_norm, categoria in aliases_map.items():
+        if not alias_norm:
+            continue
+        score = SequenceMatcher(None, chave, alias_norm).ratio()
+        if score > melhor_score:
+            melhor_score = score
+            melhor_categoria = categoria
+
+    if melhor_score >= 0.90:
+        return melhor_categoria
+    return None
+
+
+def _tokenizar_chave(chave: str) -> set[str]:
+    termos = set(re.findall(r"[a-z0-9]+", chave or ""))
+    return {termo for termo in termos if len(termo) >= 3}
+
+
+def _construir_historico_transacoes(lista_categorias: list[str], limite: int = 5000):
+    categorias_validas_norm = {normalizar_texto(cat): cat for cat in lista_categorias}
+    historico_counts: dict[str, Counter] = defaultdict(Counter)
+    token_index: dict[str, set[str]] = defaultdict(set)
+
+    rows = (
+        db.session.query(Transacao.descricao, Categoria.nome)
+        .join(Categoria, Categoria.id == Transacao.categoria_id)
+        .filter(Transacao.descricao.isnot(None))
+        .order_by(Transacao.id.desc())
+        .limit(limite)
+        .all()
+    )
+
+    for descricao, categoria_nome in rows:
+        desc_norm = normalizar_texto(descricao or "")
+        if not desc_norm:
+            continue
+
+        cat_norm = normalizar_texto(categoria_nome or "")
+        categoria_valida = categorias_validas_norm.get(cat_norm)
+        if not categoria_valida or categoria_valida == "Indefinida":
+            continue
+
+        historico_counts[desc_norm][categoria_valida] += 1
+        for token in _tokenizar_chave(desc_norm):
+            token_index[token].add(desc_norm)
+
+    return historico_counts, token_index
+
+
+def _categoria_por_historico(
+    chave: str,
+    historico_counts: dict[str, Counter],
+    token_index: dict[str, set[str]],
+    min_similaridade: float = 0.92,
+    min_ocorrencias: int = 2,
+    min_dominancia: float = 0.65,
+) -> str | None:
+    if not chave or not historico_counts:
+        return None
+
+    tokens = _tokenizar_chave(chave)
+    if not tokens:
+        return None
+
+    candidatos = set()
+    for token in tokens:
+        candidatos.update(token_index.get(token, set()))
+
+    if not candidatos:
+        return None
+
+    melhor_chave = None
+    melhor_score = 0.0
+    for candidato in candidatos:
+        score = SequenceMatcher(None, chave, candidato).ratio()
+        if score > melhor_score:
+            melhor_score = score
+            melhor_chave = candidato
+
+    if not melhor_chave or melhor_score < min_similaridade:
+        return None
+
+    contagem = historico_counts.get(melhor_chave)
+    if not contagem:
+        return None
+
+    categoria_top, ocorrencias_top = contagem.most_common(1)[0]
+    total = sum(contagem.values())
+    dominancia = (ocorrencias_top / total) if total else 0.0
+
+    if ocorrencias_top >= min_ocorrencias and dominancia >= min_dominancia:
+        return categoria_top
+
+    return None
+
 @bp_ia.route("/classificar_categoria", methods=["POST"])
 def classificar_categoria():
     data = request.get_json() or {}
@@ -46,9 +184,9 @@ def classificar_categoria():
 
     categorias = []
     erros = []
-    if not openai.api_key:
-        print("[ERRO] OPENAI_API_KEY não definida.")
-        return jsonify({"categorias": [], "erro": "OPENAI_API_KEY não definida."}), 500
+    # A ausência da OPENAI_API_KEY não impede a classificação: alias, regras e
+    # histórico funcionam localmente. A IA só entra para os itens restantes.
+    ia_disponivel = bool(openai.api_key)
     categorias_db = db.session.query(Categoria.nome).all()
     lista_categorias = [c[0] for c in categorias_db]
     categorias_str = ', '.join(lista_categorias) if lista_categorias else "Indefinida"
@@ -67,9 +205,36 @@ def classificar_categoria():
         if chaves_unicas else []
     )
     categorias_por_chave = {}
+    aliases_geral = {}
     for alias in alias_rows:
         if alias.categoria:
             categorias_por_chave[alias.descricao_normalizada] = alias.categoria.nome
+
+    if chaves_unicas:
+        alias_rows_all = CategoriaAlias.query.all()
+        for alias in alias_rows_all:
+            if alias.categoria and alias.descricao_normalizada:
+                aliases_geral[alias.descricao_normalizada] = alias.categoria.nome
+
+    historico_counts, token_index = _construir_historico_transacoes(lista_categorias)
+
+    for chave, descricao_original in descricao_por_chave.items():
+        if not chave or chave in categorias_por_chave:
+            continue
+
+        categoria_regra = _categoria_por_regras(descricao_original, lista_categorias)
+        if categoria_regra:
+            categorias_por_chave[chave] = categoria_regra
+            continue
+
+        categoria_alias_aprox = _categoria_por_alias_aproximado(chave, aliases_geral)
+        if categoria_alias_aprox:
+            categorias_por_chave[chave] = categoria_alias_aprox
+            continue
+
+        categoria_historico = _categoria_por_historico(chave, historico_counts, token_index)
+        if categoria_historico:
+            categorias_por_chave[chave] = categoria_historico
 
     pendentes = [
         (chave, descricao_por_chave[chave])
@@ -77,17 +242,33 @@ def classificar_categoria():
         if chave and chave not in categorias_por_chave
     ]
 
+    if pendentes and not ia_disponivel:
+        erros.append("OPENAI_API_KEY não definida; itens sem correspondência local ficaram como 'Indefinida'.")
+        for chave, _ in pendentes:
+            categorias_por_chave[chave] = "Indefinida"
+        pendentes = []
+
     if pendentes:
         descricoes_unicas = [item[1] for item in pendentes]
+        payload_classificacao = [
+            {
+                "descricao": desc,
+                "merchant_hint": _merchant_hint(desc),
+            }
+            for desc in descricoes_unicas
+        ]
+
         prompt = (
-            "Você é um assistente que classifica transações financeiras. "
-            "Use apenas uma das seguintes categorias cadastradas: "
-            f"{categorias_str}. "
-            "Se nenhuma categoria for adequada, responda 'Indefinida'. "
-            'Retorne exclusivamente um JSON com a chave \'categorias\', onde cada posição corresponde à descrição de mesmo índice. '
-            'Exemplo: {"categorias": ["Alimentação", "Transporte"]}. '
-            "Descrições a classificar (JSON): "
-            f"{json.dumps(descricoes_unicas, ensure_ascii=False)}"
+            "Você é um classificador de transações financeiras em português do Brasil. "
+            "Classifique cada item usando EXATAMENTE uma categoria da lista permitida. "
+            "Se não houver aderência, use 'Indefinida'. "
+            "Priorize semântica do merchant e natureza da despesa; ignore sufixos de parcela. "
+            f"Categorias permitidas: {categorias_str}. "
+            "Retorne SOMENTE JSON válido no formato: "
+            '{"categorias": ["..."], "confiancas": [0.0], "motivos": ["..."]}. '
+            "As listas devem ter o mesmo tamanho dos itens recebidos e seguir a ordem original. "
+            "Itens para classificar (JSON): "
+            f"{json.dumps(payload_classificacao, ensure_ascii=False)}"
         )
 
         try:

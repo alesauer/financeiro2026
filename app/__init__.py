@@ -14,24 +14,20 @@ def create_app():
     # Aceitar URLs com e sem barra final para evitar redirects 308
     app.url_map.strict_slashes = False
 
+
     db.init_app(app)
     migrate.init_app(app, db)
-    # CORS com credenciais exige origem explícita (não permite '*')
+    # Modo diagnóstico: aceitar qualquer origem em /api/*
     CORS(
         app,
         resources={
             r"/api/*": {
-                "origins": [
-                    "http://127.0.0.1:5500",
-                    "http://localhost:5500",
-                    "http://127.0.0.1:5000",
-                    "http://localhost:5000"
-                ],
+                "origins": "*",
                 "allow_headers": ["Content-Type", "Authorization"],
                 "methods": ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
             }
         },
-        supports_credentials=True
+        supports_credentials=False
     )
 
     # Inicializar JWT
@@ -65,6 +61,7 @@ def create_app():
     from .routes_config import bp_config
     from .routes_lembretes import bp_lembretes
     from .routes_viagens import bp_viagens
+    from .routes_investimentos import bp_investimentos
 
     app.register_blueprint(bp_categorias, url_prefix="/api/categorias")
     app.register_blueprint(bp_transacoes, url_prefix="/api/transacoes")
@@ -78,5 +75,6 @@ def create_app():
     app.register_blueprint(bp_config, url_prefix="/api/config")
     app.register_blueprint(bp_lembretes, url_prefix="/api/lembretes")
     app.register_blueprint(bp_viagens, url_prefix="/api/viagens")
+    app.register_blueprint(bp_investimentos, url_prefix="/api/investimentos")
 
     return app

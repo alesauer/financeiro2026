@@ -210,6 +210,40 @@ python run.py
 
 ---
 
+## Docker Compose (SQLite)
+
+Também é possível subir toda a aplicação com Docker Compose usando SQLite persistente.
+
+### Pré-requisitos
+- Docker Desktop instalado e em execução
+
+### Subir backend + frontend
+```bash
+docker compose up --build
+```
+
+### Acessos
+- Frontend (Nginx + build de produção): `http://localhost:5173`
+- Backend API: `http://localhost:5001`
+
+> No compose de produção, o frontend é servido por Nginx e faz proxy de `/api` para o backend.
+
+### Banco SQLite
+- O banco é criado em `/data/financas.db` no container
+- A persistência fica no volume Docker `sqlite_data`
+
+### Parar os serviços
+```bash
+docker compose down
+```
+
+### Parar e remover também o volume do SQLite
+```bash
+docker compose down -v
+```
+
+---
+
 ## Scripts úteis
 
 - Executar categorização automática com IA/aliases:
