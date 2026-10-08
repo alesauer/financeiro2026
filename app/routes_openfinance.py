@@ -53,7 +53,7 @@ def get_connect_token():
 @jwt_required()
 def list_conexoes():
     """Lista todas as conexões Open Finance do usuário com seus cartões/contas vinculados."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     conexoes = OpenFinanceConexao.query.filter_by(usuario_id=user_id).order_by(OpenFinanceConexao.created_at.desc()).all()
 
     items = []
@@ -94,7 +94,7 @@ def list_conexoes():
 @jwt_required()
 def register_conexao():
     """Registra uma nova conexão finalizada no widget e executa o sync inicial."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     body = request.get_json() or {}
     item_id = body.get("itemId") or body.get("item_id")
 
@@ -117,7 +117,7 @@ def register_conexao():
 @jwt_required()
 def sync_conexao(conexao_id):
     """Dispara a sincronização de transações e cartões de crédito sob demanda."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     try:
         resumo = OpenFinanceSyncService.sync_connection(conexao_id, user_id)
         return jsonify({
@@ -132,7 +132,7 @@ def sync_conexao(conexao_id):
 @jwt_required()
 def disconnect_conexao(conexao_id):
     """Revoga e desconecta uma instituição bancária."""
-    user_id = get_jwt_identity()
+    user_id = int(get_jwt_identity())
     sucesso = OpenFinanceSyncService.disconnect(conexao_id, user_id)
     if not sucesso:
         return jsonify({"error": "Conexão não encontrada."}), 404

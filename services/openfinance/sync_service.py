@@ -87,7 +87,7 @@ class OpenFinanceSyncService:
     def sync_connection(cls, conexao_id: int, usuario_id: int) -> Dict[str, Any]:
         """Sincroniza todas as contas, cartões e transações de uma conexão Open Finance."""
         conexao = OpenFinanceConexao.query.get(conexao_id)
-        if not conexao or conexao.usuario_id != usuario_id:
+        if not conexao or int(conexao.usuario_id) != int(usuario_id):
             raise ValueError("Conexão não encontrada ou não pertence ao usuário.")
 
         # Atualiza status
