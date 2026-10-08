@@ -11,7 +11,6 @@ import {
   ShieldCheck,
   Sparkles,
   Zap,
-  Info,
   Calendar,
 } from 'lucide-react'
 import { openfinanceService } from '../services/openfinanceService'
