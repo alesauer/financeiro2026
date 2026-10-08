@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 
 import { PlanilhaAnual } from '@/features/dashboard/components/PlanilhaAnual'
 import type { CelulaClickPayload } from '@/features/dashboard/components/PlanilhaAnual'
+import { EvolucaoLinhasChart } from '@/features/dashboard/charts/EvolucaoLinhasChart'
+import { DestaquesSection } from '@/features/dashboard/components/DestaquesSection'
 import { useMatrizAnual } from '@/features/dashboard/hooks/useMatrizAnual'
 import { exportarMatrizAnual } from '@/features/dashboard/utils/exportarPlanilha'
 import type {
@@ -249,7 +251,11 @@ export function DashboardPage() {
             ))}
           </div>
 
-          <ResumoVisaoGeral dados={dados} onVerTudo={() => setAba('graficos')} />
+          <ResumoVisaoGeral
+            dados={dados}
+            onVerTudo={() => setAba('graficos')}
+            onDrillDown={irParaTransacoes}
+          />
         </div>
       ) : aba === 'graficos' ? (
         <Suspense
@@ -268,13 +274,20 @@ export function DashboardPage() {
   )
 }
 
-/** Painel enxuto da aba inicial: insights + ranking das maiores despesas. */
+/** Painel da aba Visão Geral: Gráfico de Evolução + Maiores Despesas lado a lado + Bloco de Destaques */
 function ResumoVisaoGeral({
   dados,
   onVerTudo,
+  onDrillDown,
 }: {
   dados: import('@/shared/types/relatorio').MatrizAnual
   onVerTudo: () => void
+  onDrillDown?: (args: {
+    mes: number | null
+    tipo: 'Receita' | 'Despesa' | 'Investimento'
+    linha?: MatrizLinha | null
+    apenasCartao?: boolean
+  }) => void
 }) {
   const topDespesas = useMemo(() => {
     const linhas = [...(dados.secoes.Despesa ?? []), ...(dados.secoes.Cartoes ?? [])]
@@ -284,69 +297,58 @@ function ResumoVisaoGeral({
   const maior = topDespesas[0]?.total ?? 1
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[var(--color-text)]">Maiores despesas do ano</h3>
-          <button
-            type="button"
-            onClick={onVerTudo}
-            className="text-xs font-medium text-sky-600 transition-colors hover:text-sky-800"
-          >
-            Ver gráficos
-          </button>
+    <div className="space-y-4">
+      {/* Linha 1: Gráfico de Evolução Mensal (Esquerda) + Maiores Despesas (Direita) */}
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <EvolucaoLinhasChart
+          dados={dados}
+          onMesClick={(mes, tipo) => onDrillDown?.({ mes, tipo })}
+        />
+
+        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="mb-3 flex items-center justify-between border-b border-[var(--color-border)]/60 pb-2">
+              <div>
+                <h3 className="text-sm font-bold text-[var(--color-text)]">Maiores despesas do ano</h3>
+                <p className="text-xs text-[var(--color-muted)]">Top 8 categorias com maior impacto no orçamento</p>
+              </div>
+              <button
+                type="button"
+                onClick={onVerTudo}
+                className="text-xs font-semibold text-teal-600 hover:text-teal-800 transition-colors"
+              >
+                Ver gráficos →
+              </button>
+            </div>
+
+            {topDespesas.length === 0 ? (
+              <p className="py-12 text-center text-sm text-[var(--color-muted)]">Sem despesas no período.</p>
+            ) : (
+              <ul className="space-y-2.5">
+                {topDespesas.map((linha) => (
+                  <li key={linha.chave}>
+                    <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
+                      <span className="truncate font-medium text-[var(--color-text)]">{linha.chave}</span>
+                      <span className="shrink-0 font-bold tabular-nums text-[var(--color-text)]">
+                        {formatCurrency(linha.total)}
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                      <div
+                        className="h-full rounded-full bg-rose-500 transition-all duration-300"
+                        style={{ width: `${Math.max(2, (linha.total / maior) * 100)}%` }}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
-
-        {topDespesas.length === 0 ? (
-          <p className="py-6 text-center text-sm text-[var(--color-muted)]">Sem despesas no período.</p>
-        ) : (
-          <ul className="space-y-2.5">
-            {topDespesas.map((linha) => (
-              <li key={linha.chave}>
-                <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
-                  <span className="truncate text-[var(--color-text)]">{linha.chave}</span>
-                  <span className="shrink-0 font-semibold tabular-nums text-[var(--color-text)]">
-                    {formatCurrency(linha.total)}
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-rose-500"
-                    style={{ width: `${Math.max(2, (linha.total / maior) * 100)}%` }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
       </div>
 
-      <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <h3 className="mb-3 text-sm font-semibold text-[var(--color-text)]">Destaques</h3>
-        {(dados.insights ?? []).length === 0 ? (
-          <p className="py-6 text-center text-sm text-[var(--color-muted)]">Sem destaques no período.</p>
-        ) : (
-          <ul className="space-y-3">
-            {(dados.insights ?? []).slice(0, 5).map((insight, indice) => (
-              <li key={`${insight.titulo}-${indice}`} className="flex gap-2.5">
-                <span
-                  className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${
-                    insight.tipo === 'positivo'
-                      ? 'bg-emerald-500'
-                      : insight.tipo === 'alerta'
-                        ? 'bg-amber-500'
-                        : 'bg-sky-500'
-                  }`}
-                />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-[var(--color-text)]">{insight.titulo}</p>
-                  <p className="text-xs text-[var(--color-muted)]">{insight.texto}</p>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {/* Linha 2: Bloco de Destaques Estruturado com Alternativas */}
+      <DestaquesSection dados={dados} />
     </div>
   )
 }

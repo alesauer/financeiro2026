@@ -2,7 +2,7 @@ import { Outlet } from 'react-router-dom'
 
 export function PublicLayout() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-4 py-10">
+    <main className="min-h-screen w-full bg-[#0B0F19] text-slate-100 antialiased selection:bg-teal-500 selection:text-white">
       <Outlet />
     </main>
   )

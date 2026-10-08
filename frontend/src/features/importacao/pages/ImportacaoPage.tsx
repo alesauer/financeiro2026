@@ -17,12 +17,17 @@ type PreviewRow = {
   date: string
   categoria: string
   categoria_id: number | null
+  metodo?: 'alias' | 'regra' | 'historico' | 'fuzzy' | 'ia' | 'fallback'
+  confianca?: number
+  motivo?: string
   parcelado: boolean
   parcela_atual: number
   total_parcelas: number
   valor_parcela: number
   parcelamento_id: string | null
   descricao_limpa: string
+  isPagamento: boolean
+  isEstorno: boolean
 }
 
 export function ImportacaoPage() {
@@ -90,12 +95,19 @@ export function ImportacaoPage() {
       }
 
       const descricoes = registros.map((item) => item.title)
-      const categoriasSugeridas = await sugerirCategorias(descricoes, token ?? undefined)
+      const { categorias: categoriasSugeridas, classificacoes } = await sugerirCategorias(descricoes, token ?? undefined)
 
       const linhas = registros.map((item, idx) => {
         const sugestao = categoriasSugeridas[idx] || 'Indefinida'
         const categoriaEncontrada = categoriasByNome.get(normalizarTexto(sugestao))
-        const analise = detectarParcelamento(item.title, item.amount)
+        const isPagamento = ehPagamentoFatura(item.title)
+        const isEstorno = item.amount < 0 && !isPagamento
+        const analise = isPagamento || isEstorno
+          ? { parcelado: false, parcelaAtual: 1, totalParcelas: 1, valorParcela: item.amount, parcelamentoId: null, descricaoLimpa: item.title }
+          : detectarParcelamento(item.title, item.amount)
+
+        const classif = classificacoes[idx]
+
         return {
           linha: idx + 1,
           title: item.title,
@@ -103,12 +115,17 @@ export function ImportacaoPage() {
           date: item.date,
           categoria: categoriaEncontrada?.nome ?? sugestao,
           categoria_id: categoriaEncontrada?.id ?? null,
+          metodo: classif?.metodo,
+          confianca: classif?.confianca,
+          motivo: classif?.motivo,
           parcelado: analise.parcelado,
           parcela_atual: analise.parcelaAtual,
           total_parcelas: analise.totalParcelas,
           valor_parcela: analise.valorParcela,
           parcelamento_id: analise.parcelamentoId,
           descricao_limpa: analise.descricaoLimpa,
+          isPagamento,
+          isEstorno,
         } satisfies PreviewRow
       })
 
@@ -121,6 +138,51 @@ export function ImportacaoPage() {
       setLoadingPreview(false)
     }
   }
+
+  const cartaoSelecionado = useMemo(
+    () => formasCartao.find((item) => item.id === formaPagamentoId),
+    [formasCartao, formaPagamentoId],
+  )
+
+  const resumoPreview = useMemo(() => {
+    const totalRegistros = previewRows.length
+    const compras = previewRows.filter((item) => item.amount > 0)
+    const somaCompras = compras.reduce((acc, item) => acc + item.amount, 0)
+    const estornos = previewRows.filter((item) => item.amount < 0 && !item.isPagamento)
+    const somaEstornos = estornos.reduce((acc, item) => acc + item.amount, 0)
+    const valorLiquidoGastos = somaCompras + somaEstornos
+
+    const diaVencimento = cartaoSelecionado?.dia_vencimento ?? 3
+    const pagamentos = previewRows.filter((item) => item.isPagamento)
+    
+    const pagamentosAnteriores = pagamentos.filter((item) => {
+      const dia = Number(item.date.split('-')[2] || 0)
+      return dia <= diaVencimento
+    })
+    const somaPagamentosAnteriores = pagamentosAnteriores.reduce((acc, item) => acc + item.amount, 0)
+
+    const antecipacoes = pagamentos.filter((item) => {
+      const dia = Number(item.date.split('-')[2] || 0)
+      return dia > diaVencimento
+    })
+    const somaAntecipacoes = antecipacoes.reduce((acc, item) => acc + item.amount, 0)
+    const valorBoletoFechado = Math.max(0, valorLiquidoGastos + somaAntecipacoes)
+
+    return {
+      totalRegistros,
+      comprasQtd: compras.length,
+      somaCompras,
+      estornosQtd: estornos.length,
+      somaEstornos,
+      valorLiquidoGastos,
+      pagamentosQtd: pagamentos.length,
+      pagamentosAnterioresQtd: pagamentosAnteriores.length,
+      somaPagamentosAnteriores,
+      antecipacoesQtd: antecipacoes.length,
+      somaAntecipacoes,
+      valorBoletoFechado,
+    }
+  }, [previewRows, cartaoSelecionado])
 
   const importar = async () => {
     if (!formaPagamentoId) {
@@ -162,7 +224,7 @@ export function ImportacaoPage() {
       )
 
       setResultado(data)
-      setAviso(`Importação concluída com sucesso para ${data.sucesso} registro(s).`)
+      setAviso(`Importação concluída com sucesso para ${data.sucesso} compra(s)${data.estornos_importados ? ` e ${data.estornos_importados} estorno(s)` : ''}.`)
     } catch (err) {
       setError(getErrorMessage(err, 'Não foi possível importar transações.'))
     } finally {
@@ -178,6 +240,9 @@ export function ImportacaoPage() {
         ...next[index],
         categoria_id: categoria?.id ?? null,
         categoria: categoria?.nome ?? 'Indefinida',
+        metodo: 'alias',
+        confianca: 1.0,
+        motivo: 'Ajustado manualmente pelo usuário',
       }
       return next
     })
@@ -214,13 +279,20 @@ export function ImportacaoPage() {
                 </option>
               ))}
             </select>
+            {cartaoSelecionado ? (
+              <p className="mt-1 text-xs text-[var(--color-muted)]">
+                Fechamento cadastrado: <span className="font-semibold text-[var(--color-text)]">dia {cartaoSelecionado.dia_fechamento ?? 'não definido'}</span>
+                {' · '}
+                Vencimento: <span className="font-semibold text-[var(--color-text)]">dia {cartaoSelecionado.dia_vencimento ?? 'não definido'}</span>
+              </p>
+            ) : null}
           </Field>
 
           <Field label="Dia de fechamento (override opcional)">
             <input
               value={diaFechamentoOverride}
               onChange={(event) => setDiaFechamentoOverride(event.target.value)}
-              placeholder="Ex.: 8 ou 2026-07-08"
+              placeholder="Ex.: 25 ou 2026-09-25"
               className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
             />
           </Field>
@@ -229,7 +301,7 @@ export function ImportacaoPage() {
             <input
               value={diaVencimentoOverride}
               onChange={(event) => setDiaVencimentoOverride(event.target.value)}
-              placeholder="Ex.: 15 ou 2026-07-15"
+              placeholder="Ex.: 3 ou 2026-10-03"
               className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
             />
           </Field>
@@ -239,7 +311,7 @@ export function ImportacaoPage() {
           <button
             type="button"
             onClick={gerarPreview}
-            className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white"
+            className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity"
           >
             {loadingPreview ? 'Processando...' : 'Visualizar'}
           </button>
@@ -247,7 +319,7 @@ export function ImportacaoPage() {
             type="button"
             onClick={importar}
             disabled={loadingImportacao || previewRows.length === 0}
-            className="rounded-[var(--radius-sm)] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:opacity-60"
+            className="rounded-[var(--radius-sm)] border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 disabled:opacity-60 hover:bg-emerald-100 transition-colors"
           >
             {loadingImportacao ? 'Importando...' : 'Importar registros válidos'}
           </button>
@@ -260,24 +332,59 @@ export function ImportacaoPage() {
               setError(null)
               setAviso(null)
             }}
-            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
+            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm hover:bg-[var(--color-bg)] transition-colors"
           >
             Limpar
           </button>
         </div>
 
-        {aviso ? <p className="mt-3 text-sm text-emerald-700">{aviso}</p> : null}
-        {error ? <p className="mt-3 text-sm text-rose-600">{error}</p> : null}
+        {aviso ? <p className="mt-3 text-sm text-emerald-700 font-medium">{aviso}</p> : null}
+        {error ? <p className="mt-3 text-sm text-rose-600 font-medium">{error}</p> : null}
       </article>
 
       {previewRows.length > 0 ? (
-        <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Pré-visualização</h3>
+        <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+              Pré-visualização e Conciliação da Fatura
+            </h3>
+            <span className="text-xs text-[var(--color-muted)]">
+              {previewRows.length} linhas analisadas ({resumoPreview.totalRegistros - resumoPreview.pagamentosQtd} importáveis)
+            </span>
+          </div>
 
-          <div className="mb-3 grid gap-2 text-sm md:grid-cols-3">
-            <p>Registros: {previewRows.length}</p>
-            <p>Parcelados: {previewRows.filter((item) => item.parcelado).length}</p>
-            <p>Sem categoria: {previewRows.filter((item) => !item.categoria_id).length}</p>
+          {/* Resumo de Valores e Totais da Fatura */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-[var(--radius-sm)] border border-blue-200 bg-blue-50/60 p-3 shadow-xs">
+              <span className="text-xs font-semibold uppercase tracking-wider text-blue-800">Gastos Reais no Mês</span>
+              <p className="mt-1 text-xl font-bold text-blue-950">{formatarMoeda(resumoPreview.valorLiquidoGastos)}</p>
+              <p className="mt-0.5 text-[11px] text-blue-700">
+                {resumoPreview.comprasQtd} compras ({formatarMoeda(resumoPreview.somaCompras)})
+                {resumoPreview.estornosQtd > 0 ? ` · ${resumoPreview.estornosQtd} estornos (${formatarMoeda(resumoPreview.somaEstornos)})` : ''}
+              </p>
+            </div>
+
+            <div className="rounded-[var(--radius-sm)] border border-amber-200 bg-amber-50/50 p-3 shadow-xs">
+              <span className="text-xs font-semibold uppercase tracking-wider text-amber-900">Antecipações no Mês</span>
+              <p className="mt-1 text-xl font-bold text-amber-900">{formatarMoeda(Math.abs(resumoPreview.somaAntecipacoes))}</p>
+              <p className="mt-0.5 text-[11px] text-amber-800">
+                {resumoPreview.antecipacoesQtd > 0 ? `${resumoPreview.antecipacoesQtd} pagamento(s) no meio do mês` : 'Nenhuma antecipação'}
+              </p>
+            </div>
+
+            <div className="rounded-[var(--radius-sm)] border border-purple-200 bg-purple-50/60 p-3 shadow-xs">
+              <span className="text-xs font-semibold uppercase tracking-wider text-purple-900">Boleto Fechado (A Pagar)</span>
+              <p className="mt-1 text-xl font-bold text-purple-950">{formatarMoeda(resumoPreview.valorBoletoFechado)}</p>
+              <p className="mt-0.5 text-[11px] text-purple-800">Saldo restante a pagar no fechamento</p>
+            </div>
+
+            <div className="rounded-[var(--radius-sm)] border border-gray-200 bg-gray-50 p-3 shadow-xs">
+              <span className="text-xs font-semibold uppercase tracking-wider text-gray-700">Quitação Fatura Anterior</span>
+              <p className="mt-1 text-xl font-bold text-gray-800">{formatarMoeda(Math.abs(resumoPreview.somaPagamentosAnteriores))}</p>
+              <p className="mt-0.5 text-[11px] text-gray-600">
+                {resumoPreview.pagamentosAnterioresQtd > 0 ? 'Fatura anterior quitada no início do ciclo' : 'Nenhuma quitação anterior'}
+              </p>
+            </div>
           </div>
 
           <div className="hidden overflow-x-auto md:block">
@@ -286,62 +393,129 @@ export function ImportacaoPage() {
                 <tr className="border-b border-[var(--color-border)] text-left">
                   <th className="py-2 pr-3">Data</th>
                   <th className="py-2 pr-3">Descrição</th>
+                  <th className="py-2 pr-3">Tipo / Status</th>
                   <th className="py-2 pr-3">Valor</th>
                   <th className="py-2 pr-3">Parcelamento</th>
                   <th className="py-2 pr-3">Categoria</th>
                 </tr>
               </thead>
               <tbody>
-                {previewRows.map((item, index) => (
-                  <tr key={`${item.linha}-${index}`} className="border-b border-[var(--color-border)]/70">
-                    <td className="py-2 pr-3">{item.date}</td>
-                    <td className="py-2 pr-3">{item.title}</td>
-                    <td className="py-2 pr-3">{formatarMoeda(item.amount)}</td>
-                    <td className="py-2 pr-3">
-                      {item.parcelado ? `Parc. ${item.parcela_atual}/${item.total_parcelas}` : 'À vista'}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <select
-                        value={item.categoria_id ?? ''}
-                        onChange={(event) => atualizarCategoriaLinha(index, event.target.value ? Number(event.target.value) : null)}
-                        className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                      >
-                        <option value="">Selecione</option>
-                        {categoriasDespesa.map((categoria) => (
-                          <option key={categoria.id} value={categoria.id}>
-                            {categoria.nome}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
+                {previewRows.map((item, index) => {
+                  const isMuted = item.isPagamento
+                  return (
+                    <tr
+                      key={`${item.linha}-${index}`}
+                      className={`border-b border-[var(--color-border)]/70 transition-colors ${
+                        isMuted ? 'bg-gray-50/50 opacity-60' : item.isEstorno ? 'bg-emerald-50/20' : ''
+                      }`}
+                    >
+                      <td className="py-2 pr-3">{item.date}</td>
+                      <td className="py-2 pr-3">
+                        <span className={isMuted ? 'line-through text-[var(--color-muted)]' : 'font-medium text-[var(--color-text)]'}>
+                          {item.title}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-3">
+                        {item.isPagamento ? (
+                          <span className="inline-flex rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600">
+                            Pagamento (ignorado)
+                          </span>
+                        ) : item.isEstorno ? (
+                          <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-800">
+                            Estorno / Crédito
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700">
+                            Compra
+                          </span>
+                        )}
+                      </td>
+                      <td className={`py-2 pr-3 font-semibold ${item.amount < 0 ? 'text-emerald-700' : 'text-[var(--color-text)]'}`}>
+                        {formatarMoeda(item.amount)}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {item.parcelado ? (
+                          <span className="rounded bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-xs text-amber-800">
+                            Parc. {item.parcela_atual}/{item.total_parcelas}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-[var(--color-muted)]">À vista</span>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">
+                        {item.isPagamento ? (
+                          <span className="text-xs text-[var(--color-muted)]">Não se aplica</span>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={item.categoria_id ?? ''}
+                              onChange={(event) => atualizarCategoriaLinha(index, event.target.value ? Number(event.target.value) : null)}
+                              className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
+                            >
+                              <option value="">Selecione</option>
+                              {categoriasDespesa.map((categoria) => (
+                                <option key={categoria.id} value={categoria.id}>
+                                  {categoria.nome}
+                                </option>
+                              ))}
+                            </select>
+                            {renderBadgeMetodo(item.metodo, item.confianca, item.motivo)}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
 
           <div className="space-y-2 md:hidden">
             {previewRows.map((item, index) => (
-              <article key={`${item.linha}-mobile-${index}`} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] p-2">
+              <article
+                key={`${item.linha}-mobile-${index}`}
+                className={`rounded-[var(--radius-sm)] border p-2 ${
+                  item.isPagamento ? 'border-gray-200 bg-gray-50/50 opacity-60' : item.isEstorno ? 'border-emerald-200 bg-emerald-50/20' : 'border-[var(--color-border)]'
+                }`}
+              >
                 <div className="flex items-start justify-between gap-2">
-                  <p className="text-sm font-medium text-[var(--color-text)]">{item.title}</p>
-                  <p className="text-sm font-semibold">{formatarMoeda(item.amount)}</p>
+                  <p className={`text-sm font-medium ${item.isPagamento ? 'line-through text-[var(--color-muted)]' : 'text-[var(--color-text)]'}`}>
+                    {item.title}
+                  </p>
+                  <p className={`text-sm font-semibold ${item.amount < 0 ? 'text-emerald-700' : ''}`}>
+                    {formatarMoeda(item.amount)}
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-[var(--color-muted)]">
-                  {item.date} · {item.parcelado ? `Parc. ${item.parcela_atual}/${item.total_parcelas}` : 'À vista'}
-                </p>
-                <select
-                  value={item.categoria_id ?? ''}
-                  onChange={(event) => atualizarCategoriaLinha(index, event.target.value ? Number(event.target.value) : null)}
-                  className="mt-2 w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                >
-                  <option value="">Selecione categoria</option>
-                  {categoriasDespesa.map((categoria) => (
-                    <option key={categoria.id} value={categoria.id}>
-                      {categoria.nome}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
+                  <span>{item.date}</span>
+                  <span>·</span>
+                  {item.isPagamento ? (
+                    <span className="text-gray-500 font-medium">Pagamento (ignorado)</span>
+                  ) : item.isEstorno ? (
+                    <span className="text-emerald-700 font-medium">Estorno / Crédito</span>
+                  ) : item.parcelado ? (
+                    <span>Parc. {item.parcela_atual}/{item.total_parcelas}</span>
+                  ) : (
+                    <span>À vista</span>
+                  )}
+                </div>
+                {!item.isPagamento ? (
+                  <div className="mt-2 flex items-center gap-2">
+                    <select
+                      value={item.categoria_id ?? ''}
+                      onChange={(event) => atualizarCategoriaLinha(index, event.target.value ? Number(event.target.value) : null)}
+                      className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
+                    >
+                      <option value="">Selecione categoria</option>
+                      {categoriasDespesa.map((categoria) => (
+                        <option key={categoria.id} value={categoria.id}>
+                          {categoria.nome}
+                        </option>
+                      ))}
+                    </select>
+                    {renderBadgeMetodo(item.metodo, item.confianca, item.motivo)}
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
@@ -350,12 +524,28 @@ export function ImportacaoPage() {
 
       {resultado ? (
         <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Resultado</h3>
-          <div className="grid gap-2 md:grid-cols-4 text-sm">
-            <p>Sucesso: {resultado.sucesso}</p>
-            <p>Atualizadas: {resultado.atualizadas}</p>
-            <p>Parcelas geradas: {resultado.parcelas_geradas}</p>
-            <p>Duplicadas ignoradas: {resultado.duplicadas_ignoradas}</p>
+          <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Resultado da Importação</h3>
+          <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-5 text-sm">
+            <div className="rounded border p-2 bg-emerald-50/50">
+              <span className="text-xs text-emerald-700 font-medium">Compras Inseridas</span>
+              <p className="text-lg font-bold text-emerald-800">{resultado.sucesso}</p>
+            </div>
+            <div className="rounded border p-2 bg-teal-50/50">
+              <span className="text-xs text-teal-700 font-medium">Estornos Importados</span>
+              <p className="text-lg font-bold text-teal-800">{resultado.estornos_importados ?? 0}</p>
+            </div>
+            <div className="rounded border p-2 bg-blue-50/50">
+              <span className="text-xs text-blue-700 font-medium">Parcelas Geradas</span>
+              <p className="text-lg font-bold text-blue-800">{resultado.parcelas_geradas}</p>
+            </div>
+            <div className="rounded border p-2 bg-gray-50">
+              <span className="text-xs text-gray-600 font-medium">Pagamentos Ignorados</span>
+              <p className="text-lg font-bold text-gray-800">{resultado.pagamentos_ignorados ?? resultado.creditos_ignorados ?? 0}</p>
+            </div>
+            <div className="rounded border p-2 bg-amber-50/50">
+              <span className="text-xs text-amber-700 font-medium">Duplicadas Ignoradas</span>
+              <p className="text-lg font-bold text-amber-800">{resultado.duplicadas_ignoradas}</p>
+            </div>
           </div>
 
           <h4 className="mt-4 mb-2 text-sm font-semibold">Erros</h4>
@@ -376,6 +566,40 @@ export function ImportacaoPage() {
   )
 }
 
+function renderBadgeMetodo(metodo?: string, confianca?: number, motivo?: string) {
+  if (!metodo || metodo === 'fallback') {
+    return (
+      <span
+        title={motivo || 'Sem correspondência automática'}
+        className="inline-flex shrink-0 items-center gap-1 rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 border border-gray-200"
+      >
+        Revisar
+      </span>
+    )
+  }
+
+  const percent = confianca ? `${Math.round(confianca * 100)}%` : ''
+  const styles: Record<string, { bg: string; label: string }> = {
+    alias: { bg: 'bg-purple-50 text-purple-700 border-purple-200', label: 'Histórico' },
+    regra: { bg: 'bg-blue-50 text-blue-700 border-blue-200', label: 'Regra' },
+    historico: { bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Histórico' },
+    fuzzy: { bg: 'bg-amber-50 text-amber-700 border-amber-200', label: 'Similar' },
+    ia: { bg: 'bg-indigo-50 text-indigo-700 border-indigo-200', label: 'IA' },
+  }
+
+  const config = styles[metodo] || { bg: 'bg-gray-100 text-gray-700 border-gray-200', label: metodo }
+
+  return (
+    <span
+      title={motivo || `Identificado por ${config.label} (${percent})`}
+      className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold border ${config.bg}`}
+    >
+      <span>{config.label}</span>
+      {percent ? <span className="opacity-75 font-normal">{percent}</span> : null}
+    </span>
+  )
+}
+
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="space-y-1">
@@ -388,9 +612,15 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 async function sugerirCategorias(descricoes: string[], token?: string) {
   try {
     const data = await importacaoService.classificarCategorias({ descricoes }, token)
-    return Array.isArray(data.categorias) ? data.categorias : descricoes.map(() => 'Indefinida')
+    return {
+      categorias: Array.isArray(data.categorias) ? data.categorias : descricoes.map(() => 'Indefinida'),
+      classificacoes: Array.isArray(data.classificacoes) ? data.classificacoes : [],
+    }
   } catch {
-    return descricoes.map(() => 'Indefinida')
+    return {
+      categorias: descricoes.map(() => 'Indefinida'),
+      classificacoes: [],
+    }
   }
 }
 
@@ -588,6 +818,20 @@ function normalizarTexto(valor: string) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
+}
+
+function ehPagamentoFatura(title: string): boolean {
+  const norm = normalizarTexto(title)
+  const termos = [
+    'pagamento recebido',
+    'pagamento da fatura',
+    'pagamento fatura',
+    'pagamento de fatura',
+    'pagamento cartao',
+    'pagamento efetuado',
+    'pagamento antecipado',
+  ]
+  return termos.some((termo) => norm.includes(termo))
 }
 
 function normalizarDescricaoParcelada(texto: string) {

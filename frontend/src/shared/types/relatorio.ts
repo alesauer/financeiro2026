@@ -62,6 +62,8 @@ export type RelatorioParcelamentoGrupo = {
   forma_pagamento: string
   total_parcelas: number | null
   parcelas_restantes: number
+  parcela_atual?: number
+  proxima_parcela?: number
   valor_parcela: number
   valor_restante: number
   proxima_data: string

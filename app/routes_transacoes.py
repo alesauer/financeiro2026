@@ -10,8 +10,14 @@ from sqlalchemy import exc, func, case, or_
 from app.models import FormaPagamento, Categoria
 from flask_jwt_extended import jwt_required
 import uuid
-from services.fatura_service import aplicar_competencia_transacao
+from services.fatura_service import (
+    aplicar_competencia_transacao,
+    calcular_competencia_fatura,
+    calcular_vencimento_fatura,
+    calcular_ciclo_compras,
+)
 from app.utils.datas import parse_dia_override
+from services.categorization import salvar_ou_atualizar_alias
 
 bp_transacoes = Blueprint("transacoes", __name__)
 schema = TransacaoSchema()
@@ -118,6 +124,14 @@ def criar():
             transacao.valor_parcela = transacao.valor
         aplicar_competencia_transacao(transacao, forma_pagamento)
         db.session.add(transacao)
+        if transacao.descricao and transacao.categoria_id:
+            salvar_ou_atualizar_alias(
+                descricao_original=transacao.descricao,
+                categoria_id=transacao.categoria_id,
+                origem="usuario",
+                confianca=1.0,
+                commit=False
+            )
         db.session.commit()
         return jsonify(schema.dump(transacao)), 201
 
@@ -274,6 +288,15 @@ def atualizar(id):
             forma_pagamento = FormaPagamento.query.get(transacao.forma_pagamento_id)
     aplicar_competencia_transacao(transacao, forma_pagamento)
 
+    if transacao.descricao and transacao.categoria_id:
+        salvar_ou_atualizar_alias(
+            descricao_original=transacao.descricao,
+            categoria_id=transacao.categoria_id,
+            origem="usuario",
+            confianca=1.0,
+            commit=False
+        )
+
     db.session.commit()
     return jsonify(schema.dump(transacao)), 200
 
@@ -340,6 +363,27 @@ def deletar(id):
     db.session.commit()
     return jsonify({"message": "Transação deletada com sucesso"}), 200
 
+@bp_transacoes.route("/lote", methods=["DELETE", "POST"])
+@jwt_required()
+def deletar_lote():
+    data = request.get_json(silent=True) or {}
+    transacoes_ids = data.get("ids", [])
+    if not transacoes_ids:
+        ids_arg = request.args.get("ids")
+        if ids_arg:
+            transacoes_ids = [int(x.strip()) for x in ids_arg.split(",") if x.strip().isdigit()]
+    if not transacoes_ids:
+        return jsonify({"error": "Nenhum ID informado para exclusão em lote."}), 400
+
+    try:
+        ids_int = [int(i) for i in transacoes_ids]
+    except (ValueError, TypeError):
+        return jsonify({"error": "Lista de IDs deve conter apenas números inteiros."}), 400
+
+    deletadas = Transacao.query.filter(Transacao.id.in_(ids_int)).delete(synchronize_session=False)
+    db.session.commit()
+    return jsonify({"message": "Transações excluídas com sucesso.", "quantidade": deletadas}), 200
+
 # Novo endpoint: resumo (summary) para um período (inicio/fim)
 @bp_transacoes.route("/summary", methods=["GET"])
 @jwt_required()
@@ -356,39 +400,70 @@ def resumo_mes():
     except ValueError:
         return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    # `valor` é a fonte única: em parcelamentos cada linha já contém o valor da parcela.
+    # 1. Receitas do período (por data da transação)
     receita_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).filter(
         Transacao.tipo.ilike('receita'),
         Transacao.data_transacao.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
-    despesa_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).filter(
+    # 2. Despesas de Conta Corrente / Dinheiro / Pix (não cartão de crédito)
+    despesa_conta_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).outerjoin(FormaPagamento).filter(
         Transacao.tipo.ilike('despesa'),
+        or_(FormaPagamento.cartao_credito.is_(False), FormaPagamento.id.is_(None)),
         Transacao.data_transacao.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
-    competencia_ou_data = func.coalesce(Transacao.competencia_fatura, Transacao.data_transacao)
+    # 3. Fatura de cartão de crédito cujo vencimento pertença ao período
+    busca_inicio = inicio_dt - relativedelta(months=2)
+    busca_fim = fim_dt + relativedelta(months=1)
+    card_txs = (
+        Transacao.query.join(FormaPagamento)
+        .filter(
+            FormaPagamento.cartao_credito.is_(True),
+            Transacao.tipo.ilike("despesa"),
+            db.or_(
+                Transacao.data_transacao.between(busca_inicio, busca_fim),
+                Transacao.competencia_fatura.between(busca_inicio, busca_fim),
+            ),
+        )
+        .all()
+    )
 
-    cartao_credito_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).join(FormaPagamento).filter(
-        FormaPagamento.cartao_credito.is_(True),
-        Transacao.tipo.ilike('despesa'),
-        competencia_ou_data.between(inicio_dt, fim_dt)
-    ).scalar() or 0
+    cartao_credito_sum = 0.0
+    cartao_credito_pago_sum = 0.0
+    cartao_credito_pendente_sum = 0.0
 
-    # Garantir que despesas exibidas como valor positivo
-    try:
-        despesas_val = abs(float(despesa_sum))
-    except Exception:
-        despesas_val = float(despesa_sum or 0)
+    for tx in card_txs:
+        forma = tx.forma_pagamento
+        dia_fech = forma.dia_fechamento or 28
+        dia_venc = forma.dia_vencimento or 5
+        comp = tx.competencia_fatura or calcular_competencia_fatura(tx.data_transacao, dia_fech)
+        if not comp:
+            continue
+        data_venc = calcular_vencimento_fatura(comp, dia_fech, dia_venc)
+        if not (inicio_dt <= data_venc <= fim_dt):
+            continue
+        val = float(tx.valor)
+        cartao_credito_sum += val
+        if tx.status == "Pago":
+            cartao_credito_pago_sum += val
+        else:
+            cartao_credito_pendente_sum += val
 
+    cartao_val = float(cartao_credito_sum or 0)
+    despesas_conta_val = float(despesa_conta_sum or 0)
+    despesas_val = despesas_conta_val + cartao_val
     receitas_val = float(receita_sum or 0)
     saldo = receitas_val - despesas_val
 
     return jsonify({
         "receitas": receitas_val,
         "despesas": despesas_val,
+        "despesas_conta": despesas_conta_val,
         "saldo": saldo,
-        "cartao_credito_total": float(cartao_credito_sum or 0)
+        "cartao_credito_total": cartao_val,
+        "cartao_credito_pago": float(cartao_credito_pago_sum or 0),
+        "cartao_credito_pendente": float(cartao_credito_pendente_sum or 0),
     }), 200
 
 
@@ -604,9 +679,16 @@ def resumo_parcelamentos_anual():
     }), 200
 
 
+MESES_PT_NOMES = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+]
+
+
 @bp_transacoes.route("/cartao_credito", methods=["GET"])
 @jwt_required()
 def listar_cartao_credito():
+    """Retorna as faturas de cartão de crédito cujo VENCIMENTO cai no período solicitado (mês corrente)."""
     inicio_str = request.args.get("inicio")
     fim_str = request.args.get("fim")
 
@@ -619,69 +701,201 @@ def listar_cartao_credito():
     except ValueError:
         return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    competencia_ou_data = func.coalesce(Transacao.competencia_fatura, Transacao.data_transacao)
+    # Busca em janela ampla (2 meses antes e 1 mês depois) para capturar compras de ciclos anteriores cujo boleto vence neste mês
+    busca_inicio = inicio_dt - relativedelta(months=2)
+    busca_fim = fim_dt + relativedelta(months=1)
 
-    query = Transacao.query.join(FormaPagamento).filter(
-        FormaPagamento.cartao_credito.is_(True),
-        Transacao.tipo.ilike('despesa'),
-        competencia_ou_data.between(inicio_dt, fim_dt)
-    ).order_by(
-        Transacao.forma_pagamento_id.asc(),
-        competencia_ou_data.asc(),
-        Transacao.id.asc()
+    query = (
+        Transacao.query.join(FormaPagamento)
+        .filter(
+            FormaPagamento.cartao_credito.is_(True),
+            Transacao.tipo.ilike("despesa"),
+            db.or_(
+                Transacao.data_transacao.between(busca_inicio, busca_fim),
+                Transacao.competencia_fatura.between(busca_inicio, busca_fim),
+            ),
+        )
+        .order_by(
+            Transacao.forma_pagamento_id.asc(),
+            Transacao.data_transacao.desc(),
+            Transacao.id.asc(),
+        )
     )
 
-    transacoes = query.all()
-    payload = schemas.dump(transacoes)
+    transacoes_todas = query.all()
 
-    agregados = {}
-    for tx, dados in zip(transacoes, payload):
-        forma_id = tx.forma_pagamento_id
-        if forma_id not in agregados:
-            agregados[forma_id] = {
-                "forma_pagamento_id": forma_id,
-                "forma_pagamento_nome": (tx.forma_pagamento.nome if tx.forma_pagamento else dados.get("forma_pagamento_nome")),
-                "quantidade": 0,
-                "pagas": 0,
-                "pendentes": 0,
+    # Mapear e agrupar por fatura (cartao + competencia)
+    faturas_map = {}
+    transacoes_filtradas = []
+
+    for tx in transacoes_todas:
+        forma = tx.forma_pagamento
+        if not forma:
+            continue
+
+        dia_fech = forma.dia_fechamento or 28
+        dia_venc = forma.dia_vencimento or 5
+
+        competencia = (
+            tx.competencia_fatura
+            or calcular_competencia_fatura(tx.data_transacao, dia_fech)
+            or (date(tx.data_transacao.year, tx.data_transacao.month, 1) if tx.data_transacao else None)
+        )
+
+        if not competencia:
+            continue
+
+        data_vencimento = calcular_vencimento_fatura(competencia, dia_fech, dia_venc)
+        if not data_vencimento:
+            continue
+
+        # Verifica se o vencimento da fatura cai no mês/período solicitado pelo usuário
+        if not (inicio_dt <= data_vencimento <= fim_dt):
+            continue
+
+        transacoes_filtradas.append(tx)
+        fatura_key = f"{forma.id}|{competencia.isoformat()}"
+
+        if fatura_key not in faturas_map:
+            ciclo_ini, ciclo_fim = calcular_ciclo_compras(competencia, dia_fech)
+            comp_label = f"{MESES_PT_NOMES[competencia.month - 1]} / {competencia.year}"
+            venc_label = data_vencimento.strftime("%d/%m/%Y")
+            ciclo_label = f"{ciclo_ini.strftime('%d/%m')} a {ciclo_fim.strftime('%d/%m/%Y')}" if ciclo_ini and ciclo_fim else ""
+
+            faturas_map[fatura_key] = {
+                "key": fatura_key,
+                "forma_pagamento_id": forma.id,
+                "forma_pagamento_nome": forma.nome,
+                "cartao_nome": forma.nome,
+                "forma_pagamento_icone": getattr(forma, "icone", None),
+                "forma_pagamento_cor": getattr(forma, "cor", None),
+                "competencia": competencia.isoformat(),
+                "competencia_label": comp_label,
+                "dia_fechamento": dia_fech,
+                "dia_vencimento": dia_venc,
+                "data_fechamento": ciclo_fim.isoformat() if ciclo_fim else None,
+                "data_vencimento": data_vencimento.isoformat(),
+                "data_vencimento_label": venc_label,
+                "periodo_compras_inicio": ciclo_ini.isoformat() if ciclo_ini else None,
+                "periodo_compras_fim": ciclo_fim.isoformat() if ciclo_fim else None,
+                "periodo_compras_label": ciclo_label,
                 "total": 0.0,
                 "total_pagas": 0.0,
                 "total_pendentes": 0.0,
-                "ultima_data": None
+                "qtd_transacoes": 0,
+                "qtd_compras": 0,
+                "qtd_estornos": 0,
+                "soma_estornos": 0.0,
+                "categorias_contagem": {},
+                "items": [],
             }
 
-        entry = agregados[forma_id]
-        entry["quantidade"] += 1
+        fatura = faturas_map[fatura_key]
+        valor_efetivo = float(tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else (tx.valor or 0))
         status_lower = (tx.status or "").lower()
-        valor = tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else tx.valor
-        valor_float = float(valor or 0)
-        if status_lower == "pago":
-            entry["pagas"] += 1
-            entry["total_pagas"] += valor_float
+        is_pago = status_lower == "pago"
+        is_estorno = valor_efetivo < 0
+
+        fatura["qtd_transacoes"] += 1
+        if is_estorno:
+            fatura["qtd_estornos"] += 1
+            fatura["soma_estornos"] += valor_efetivo
         else:
-            entry["pendentes"] += 1
-            entry["total_pendentes"] += valor_float
+            fatura["qtd_compras"] += 1
 
-        entry["total"] = entry["total_pagas"] + entry["total_pendentes"]
+        fatura["total"] += valor_efetivo
+        if is_pago:
+            fatura["total_pagas"] += valor_efetivo
+        else:
+            fatura["total_pendentes"] += valor_efetivo
 
-        if tx.data_transacao and (entry["ultima_data"] is None or tx.data_transacao > entry["ultima_data"]):
-            entry["ultima_data"] = tx.data_transacao
+        cat_nome = tx.categoria.nome if tx.categoria else "Outros"
+        fatura["categorias_contagem"][cat_nome] = fatura["categorias_contagem"].get(cat_nome, 0.0) + valor_efetivo
 
-    cartoes = []
+        fatura["items"].append(tx)
+
+    # Formatar faturas e calcular resumos de categorias
+    faturas_lista = []
     total_geral = 0.0
     total_geral_pendentes = 0.0
-    for entry in agregados.values():
-        total_geral += entry["total"]
-        total_geral_pendentes += entry["total_pendentes"]
-        if entry["ultima_data"]:
-            entry["ultima_data"] = entry["ultima_data"].isoformat()
-        cartoes.append(entry)
+
+    for fatura in faturas_map.values():
+        fatura["total"] = round(fatura["total"], 2)
+        fatura["total_pagas"] = round(fatura["total_pagas"], 2)
+        fatura["total_pendentes"] = round(max(0.0, fatura["total_pendentes"]), 2)
+        fatura["soma_estornos"] = round(fatura["soma_estornos"], 2)
+
+        if fatura["total_pendentes"] <= 0.01:
+            fatura["status_fatura"] = "Pago"
+        elif fatura["total_pagas"] > 0:
+            fatura["status_fatura"] = "Parcial"
+        else:
+            fatura["status_fatura"] = "Pendente"
+
+        # Categorias resumo
+        categorias_resumo = []
+        tot_fat = fatura["total"] if fatura["total"] > 0 else 1.0
+        for cat_nome, cat_val in sorted(fatura["categorias_contagem"].items(), key=lambda x: x[1], reverse=True):
+            if cat_val != 0:
+                categorias_resumo.append({
+                    "categoria": cat_nome,
+                    "total": round(cat_val, 2),
+                    "percentual": round((cat_val / tot_fat) * 100, 1),
+                })
+        fatura["categorias_resumo"] = categorias_resumo
+        del fatura["categorias_contagem"]
+
+        # Dump dos itens
+        fatura["transacoes"] = schemas.dump(fatura["items"])
+        del fatura["items"]
+
+        total_geral += fatura["total"]
+        total_geral_pendentes += fatura["total_pendentes"]
+        faturas_lista.append(fatura)
+
+    # Ordenar faturas por data de vencimento e nome do cartão
+    faturas_lista.sort(key=lambda f: (f["data_vencimento"] or "", f["forma_pagamento_nome"] or ""))
+
+    payload_transacoes = schemas.dump(transacoes_filtradas)
 
     return jsonify({
-        "transacoes": payload,
-        "cartoes": cartoes,
-        "total_geral": total_geral,
-        "total_geral_pendentes": total_geral_pendentes
+        "transacoes": payload_transacoes,
+        "faturas": faturas_lista,
+        "total_geral": round(total_geral, 2),
+        "total_geral_pendentes": round(total_geral_pendentes, 2),
+    }), 200
+
+
+@bp_transacoes.route("/quitar_fatura", methods=["POST"])
+@jwt_required()
+def quitar_fatura():
+    """Marca todas as compras de uma fatura específica como Pago (ou Pendente)."""
+    data = request.get_json() or {}
+    forma_pagamento_id = data.get("forma_pagamento_id")
+    competencia_str = data.get("competencia")
+    novo_status = data.get("status", "Pago")
+
+    if not forma_pagamento_id or not competencia_str:
+        return jsonify({"erro": "forma_pagamento_id e competencia são obrigatórios"}), 400
+
+    try:
+        competencia_dt = datetime.strptime(competencia_str[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"erro": "Formato de competência inválido (use YYYY-MM-DD)"}), 400
+
+    transacoes = Transacao.query.filter(
+        Transacao.forma_pagamento_id == forma_pagamento_id,
+        Transacao.competencia_fatura == competencia_dt,
+    ).all()
+
+    for tx in transacoes:
+        tx.status = novo_status
+
+    db.session.commit()
+    return jsonify({
+        "message": f"Fatura atualizada para {novo_status} com sucesso!",
+        "quantidade": len(transacoes),
+        "status": novo_status,
     }), 200
 
 

@@ -84,8 +84,8 @@ class TransacaoSchema(Schema):
 
     @validates("valor")
     def validate_valor(self, value, **kwargs):
-        if value <= 0:
-            raise ValidationError("O valor deve ser maior que 0")
+        if value == 0:
+            raise ValidationError("O valor deve ser diferente de 0")
 
     @validates("total_parcelas")
     def validate_total_parcelas(self, value, **kwargs):
@@ -188,6 +188,8 @@ class TipoDocumentoSchema(Schema):
     id = fields.Int(dump_only=True)
     nome = fields.Str(required=True)
     descricao = fields.Str(allow_none=True)
+    icone = fields.Str(allow_none=True)
+    cor = fields.Str(allow_none=True)
     ativo = fields.Boolean(load_default=True)
 
 
@@ -211,18 +213,39 @@ class DocumentoSchema(Schema):
     tipo_documento_id = fields.Int(required=True)
     nome = fields.Str(required=True)
     registro = fields.Str(allow_none=True)
+    emissor = fields.Str(allow_none=True)
+    titular = fields.Str(allow_none=True)
+    data_emissao = fields.Date(allow_none=True)
+    data_validade = fields.Date(allow_none=True)
+    cor_pass = fields.Str(allow_none=True)
+    icone = fields.Str(allow_none=True)
+    favorito = fields.Boolean(load_default=False)
+    tags = fields.Str(allow_none=True)
     outras_informacoes = fields.Str(allow_none=True)
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)
 
     # Extras
     tipo_documento_nome = fields.Method("get_tipo_documento_nome", dump_only=True)
+    tipo_documento_icone = fields.Method("get_tipo_documento_icone", dump_only=True)
+    tipo_documento_cor = fields.Method("get_tipo_documento_cor", dump_only=True)
     anexos = fields.List(fields.Nested(DocumentoAnexoSchema), dump_only=True)
 
     def get_tipo_documento_nome(self, obj):
         if hasattr(obj, "tipo_documento") and obj.tipo_documento:
             return obj.tipo_documento.nome
         return None
+
+    def get_tipo_documento_icone(self, obj):
+        if hasattr(obj, "tipo_documento") and obj.tipo_documento:
+            return obj.tipo_documento.icone
+        return None
+
+    def get_tipo_documento_cor(self, obj):
+        if hasattr(obj, "tipo_documento") and obj.tipo_documento:
+            return obj.tipo_documento.cor
+        return None
+
 
 # ======================
 # Milhas
@@ -239,9 +262,14 @@ class MilhaSchema(Schema):
     tipo = fields.Str(required=True)
     quantidade = fields.Int(required=True)
     origem = fields.Str(allow_none=True)
+    categoria_origem = fields.Str(allow_none=True)
+    custo_reais = fields.Float(allow_none=True)
+    taxa_bonus = fields.Float(allow_none=True)
+    transferencia_id = fields.Str(allow_none=True)
     data_movimentacao = fields.Date(load_default=date.today)
     data_expiracao = fields.Date(allow_none=True)
     descricao = fields.Str(allow_none=True)
+    cpm = fields.Float(dump_only=True)
 
     created_at = fields.DateTime(dump_only=True)
     updated_at = fields.DateTime(dump_only=True)

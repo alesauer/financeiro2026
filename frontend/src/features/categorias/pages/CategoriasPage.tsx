@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
+import { FolderTree, Sparkles, Plus } from 'lucide-react'
 
 import { useAuth } from '@/app/providers/AuthProvider'
 import { categoriasService } from '@/features/categorias/services/categoriasService'
 import type { Categoria, CategoriaPayload, CategoriaTipo } from '@/shared/types/categoria'
 import { getErrorMessage } from '@/shared/utils/error'
+import { AssociacoesTab } from '@/features/categorias/components/AssociacoesTab'
 
 const TIPOS: CategoriaTipo[] = ['Receita', 'Despesa', 'Investimento']
 
@@ -15,6 +17,7 @@ const EMPTY_FORM: CategoriaPayload = {
 
 export function CategoriasPage() {
   const { token } = useAuth()
+  const [activeTab, setActiveTab] = useState<'categorias' | 'associacoes'>('associacoes')
   const [categorias, setCategorias] = useState<Categoria[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -104,179 +107,229 @@ export function CategoriasPage() {
 
   return (
     <section className="space-y-6">
-      <header className="space-y-2">
-        <h2 className="text-2xl font-semibold text-[var(--color-text)]">Categorias</h2>
-        <p className="text-sm text-[var(--color-muted)]">Gerencie categorias de receita, despesa e investimento.</p>
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-[var(--color-text)]">Categorias & Mapeamentos</h2>
+          <p className="text-sm text-[var(--color-muted)]">
+            Gerencie categorias financeiras e configure regras automáticas de associação de estabelecimentos.
+          </p>
+        </div>
       </header>
 
-      <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Lista de categorias</h3>
-          <div className="flex items-center gap-2">
-            <select
-              value={filtroTipo}
-              onChange={(event) => setFiltroTipo(event.target.value as CategoriaTipo | '')}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-            >
-              <option value="">Todos os tipos</option>
-              {TIPOS.map((tipo) => (
-                <option key={tipo} value={tipo}>
-                  {tipo}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={abrirNovoFormulario}
-              className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white"
-            >
-              Nova categoria
-            </button>
-          </div>
-        </div>
+      {/* Navegação por Abas Principais */}
+      <div className="flex border-b border-[var(--color-border)]">
+        <button
+          type="button"
+          onClick={() => setActiveTab('associacoes')}
+          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition ${
+            activeTab === 'associacoes'
+              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+              : 'border-transparent text-[var(--color-muted)] hover:border-[var(--color-border)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          <Sparkles className="h-4 w-4" />
+          <span>Mapeamento de Estabelecimentos</span>
+          <span className="rounded-full bg-[var(--color-primary)]/10 px-2 py-0.5 text-xs font-bold text-[var(--color-primary)]">
+            Inteligente
+          </span>
+        </button>
 
-        {isFormOpen ? (
-          <div className="mb-4 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg)]/30 p-4">
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">{formTitle}</h4>
-            <form className="space-y-3" onSubmit={handleSubmit}>
-              <div className="space-y-1">
-                <label htmlFor="categoria-nome" className="text-sm font-medium text-[var(--color-text)]">
-                  Nome
-                </label>
-                <input
-                  id="categoria-nome"
-                  value={form.nome}
-                  onChange={(event) => setForm((prev) => ({ ...prev, nome: event.target.value }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm outline-none ring-[var(--color-primary)]/30 transition focus:ring-4"
-                  placeholder="Ex.: Moradia"
-                />
-              </div>
+        <button
+          type="button"
+          onClick={() => setActiveTab('categorias')}
+          className={`flex items-center gap-2 border-b-2 px-5 py-3 text-sm font-semibold transition ${
+            activeTab === 'categorias'
+              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+              : 'border-transparent text-[var(--color-muted)] hover:border-[var(--color-border)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          <FolderTree className="h-4 w-4" />
+          <span>Categorias Cadastradas</span>
+          <span className="rounded-full bg-[var(--color-border)]/70 px-2 py-0.5 text-xs font-medium text-[var(--color-muted)]">
+            {categorias.length}
+          </span>
+        </button>
+      </div>
 
-              <div className="space-y-1">
-                <label htmlFor="categoria-tipo" className="text-sm font-medium text-[var(--color-text)]">
-                  Tipo
-                </label>
-                <select
-                  id="categoria-tipo"
-                  value={form.tipo}
-                  onChange={(event) => setForm((prev) => ({ ...prev, tipo: event.target.value as CategoriaTipo }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm outline-none ring-[var(--color-primary)]/30 transition focus:ring-4"
-                >
-                  {TIPOS.map((tipo) => (
-                    <option key={tipo} value={tipo}>
-                      {tipo}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="submit"
-                  className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-                >
-                  {editingId ? 'Salvar alterações' : 'Adicionar'}
-                </button>
-                <button
-                  type="button"
-                  onClick={cancelarFormulario}
-                  className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm font-medium"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          </div>
-        ) : null}
-
-        {error ? <p className="mb-3 text-sm text-rose-600">{error}</p> : null}
-
-        {editingId ? null : loading ? (
-          <p className="mb-3 text-sm text-[var(--color-muted)] md:hidden">Carregando...</p>
-        ) : categorias.length === 0 ? (
-          <p className="mb-3 text-sm text-[var(--color-muted)] md:hidden">Nenhuma categoria encontrada.</p>
-        ) : (
-          <div className="mb-3 space-y-2 md:hidden">
-            {categorias.map((categoria) => (
-              <article
-                key={categoria.id}
-                className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+      {/* Conteúdo da Aba Ativa */}
+      {activeTab === 'associacoes' ? (
+        <AssociacoesTab categorias={categorias} />
+      ) : (
+        <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">
+              Lista de categorias cadastradas
+            </h3>
+            <div className="flex items-center gap-2">
+              <select
+                value={filtroTipo}
+                onChange={(event) => setFiltroTipo(event.target.value as CategoriaTipo | '')}
+                className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
               >
-                <p className="text-sm font-semibold text-[var(--color-text)]">{categoria.nome}</p>
-                <p className="mt-1 text-xs text-[var(--color-muted)]">Tipo: {categoria.tipo}</p>
-                <div className="mt-3 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleEdit(categoria)}
-                    className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs font-medium"
+                <option value="">Todos os tipos</option>
+                {TIPOS.map((tipo) => (
+                  <option key={tipo} value={tipo}>
+                    {tipo}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={abrirNovoFormulario}
+                className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                <Plus className="h-4 w-4" />
+                <span>Nova categoria</span>
+              </button>
+            </div>
+          </div>
+
+          {isFormOpen ? (
+            <div className="mb-4 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg)]/30 p-4">
+              <h4 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">{formTitle}</h4>
+              <form className="space-y-3" onSubmit={handleSubmit}>
+                <div className="space-y-1">
+                  <label htmlFor="categoria-nome" className="text-sm font-medium text-[var(--color-text)]">
+                    Nome
+                  </label>
+                  <input
+                    id="categoria-nome"
+                    value={form.nome}
+                    onChange={(event) => setForm((prev) => ({ ...prev, nome: event.target.value }))}
+                    className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm outline-none ring-[var(--color-primary)]/30 transition focus:ring-4"
+                    placeholder="Ex.: Moradia"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="categoria-tipo" className="text-sm font-medium text-[var(--color-text)]">
+                    Tipo
+                  </label>
+                  <select
+                    id="categoria-tipo"
+                    value={form.tipo}
+                    onChange={(event) => setForm((prev) => ({ ...prev, tipo: event.target.value as CategoriaTipo }))}
+                    className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm outline-none ring-[var(--color-primary)]/30 transition focus:ring-4"
                   >
-                    Editar
+                    {TIPOS.map((tipo) => (
+                      <option key={tipo} value={tipo}>
+                        {tipo}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    type="submit"
+                    className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                  >
+                    {editingId ? 'Salvar alterações' : 'Adicionar'}
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDelete(categoria.id)}
-                    className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600"
+                    onClick={cancelarFormulario}
+                    className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm font-medium"
                   >
-                    Excluir
+                    Cancelar
                   </button>
                 </div>
-              </article>
-            ))}
-          </div>
-        )}
+              </form>
+            </div>
+          ) : null}
 
-        {editingId ? null : <div className="overflow-x-auto">
-          <table className="hidden min-w-full border-collapse text-sm md:table">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] text-left">
-                <th className="py-2 pr-3 font-semibold">Nome</th>
-                <th className="py-2 pr-3 font-semibold">Tipo</th>
-                <th className="py-2 text-right font-semibold">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={3} className="py-4 text-center text-[var(--color-muted)]">
-                    Carregando...
-                  </td>
-                </tr>
-              ) : categorias.length === 0 ? (
-                <tr>
-                  <td colSpan={3} className="py-4 text-center text-[var(--color-muted)]">
-                    Nenhuma categoria encontrada.
-                  </td>
-                </tr>
-              ) : (
-                categorias.map((categoria) => (
-                  <tr key={categoria.id} className="border-b border-[var(--color-border)]/70">
-                    <td className="py-2 pr-3">{categoria.nome}</td>
-                    <td className="py-2 pr-3">{categoria.tipo}</td>
-                    <td className="py-2 text-right">
-                      <div className="inline-flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleEdit(categoria)}
-                          className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs font-medium"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(categoria.id)}
-                          className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600"
-                        >
-                          Excluir
-                        </button>
-                      </div>
-                    </td>
+          {error ? <p className="mb-3 text-sm text-rose-600">{error}</p> : null}
+
+          {editingId ? null : loading ? (
+            <p className="mb-3 text-sm text-[var(--color-muted)] md:hidden">Carregando...</p>
+          ) : categorias.length === 0 ? (
+            <p className="mb-3 text-sm text-[var(--color-muted)] md:hidden">Nenhuma categoria encontrada.</p>
+          ) : (
+            <div className="mb-3 space-y-2 md:hidden">
+              {categorias.map((categoria) => (
+                <article
+                  key={categoria.id}
+                  className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+                >
+                  <p className="text-sm font-semibold text-[var(--color-text)]">{categoria.nome}</p>
+                  <p className="mt-1 text-xs text-[var(--color-muted)]">Tipo: {categoria.tipo}</p>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleEdit(categoria)}
+                      className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs font-medium"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(categoria.id)}
+                      className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600"
+                    >
+                      Excluir
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          {editingId ? null : (
+            <div className="overflow-x-auto">
+              <table className="hidden min-w-full border-collapse text-sm md:table">
+                <thead>
+                  <tr className="border-b border-[var(--color-border)] text-left">
+                    <th className="py-2 pr-3 font-semibold">Nome</th>
+                    <th className="py-2 pr-3 font-semibold">Tipo</th>
+                    <th className="py-2 text-right font-semibold">Ações</th>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>}
-      </article>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr>
+                      <td colSpan={3} className="py-4 text-center text-[var(--color-muted)]">
+                        Carregando...
+                      </td>
+                    </tr>
+                  ) : categorias.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className="py-4 text-center text-[var(--color-muted)]">
+                        Nenhuma categoria encontrada.
+                      </td>
+                    </tr>
+                  ) : (
+                    categorias.map((categoria) => (
+                      <tr key={categoria.id} className="border-b border-[var(--color-border)]/70">
+                        <td className="py-2 pr-3">{categoria.nome}</td>
+                        <td className="py-2 pr-3">{categoria.tipo}</td>
+                        <td className="py-2 text-right">
+                          <div className="inline-flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(categoria)}
+                              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs font-medium"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(categoria.id)}
+                              className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs font-medium text-rose-600"
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </article>
+      )}
     </section>
   )
 }
+

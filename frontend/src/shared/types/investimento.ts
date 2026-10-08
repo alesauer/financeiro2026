@@ -142,13 +142,93 @@ export type MarketSnapshotItem = {
   change: number | null
   change_percent: number | null
   currency: string
-  market_state: string | null
+  market_state?: string | null
+  logo?: string | null
+  max_52w?: number | null
+  min_52w?: number | null
+  pl?: number | null
+  lpa?: number | null
+  volume?: number | null
+}
+
+export type MarketSearchResult = {
+  symbol: string
+  name: string
+  price: number | null
+  change: number | null
+  change_percent: number | null
+  currency: string
+  logo?: string | null
+  sector?: string | null
+  subsector?: string | null
+  type?: string | null
+  volume?: number | null
+  market_cap?: number | null
+}
+
+
+export type IndicadorBcb = {
+  nome: string
+  valor: number
+  periodo: string
+  atualizado_em: string | null
+  cor: string
+}
+
+export type TesouroTitulo = {
+  titulo: string
+  tipo: string
+  indexador: string
+  rentabilidade_anual: string
+  taxa_estimada: number
+  vencimento: string
+  investimento_minimo: number
+  preco_unitario: number
+  risco: string
+  indicacao: string
+  isento_ir: boolean
 }
 
 export type MarketSnapshotResponse = {
   source: string
   indices: MarketSnapshotItem[]
   movers: MarketSnapshotItem[]
+  acoes: MarketSnapshotItem[]
+  fiis: MarketSnapshotItem[]
+  bdrs_etfs: MarketSnapshotItem[]
+  renda_fixa: {
+    indicadores: Record<string, IndicadorBcb>
+    tesouro_direto: TesouroTitulo[]
+  }
   fx: MarketSnapshotItem[]
   updated_at: string | null
+}
+
+export type SimulacaoRendaFixaItem = {
+  nome: string
+  tipo: string
+  taxa_desc: string
+  cor: string
+  isento_ir: boolean
+  saldo_bruto: number
+  imposto_renda: number
+  saldo_liquido: number
+  rendimento_liquido: number
+  rentabilidade_pct: number
+  equivalente_cdb_pct_cdi?: number | null
+}
+
+export type SimulacaoRendaFixaResponse = {
+  parametros: {
+    valor_inicial: number
+    prazo_meses: number
+    aporte_mensal: number
+    total_investido: number
+    aliquota_ir_pct: number
+    cdi_anual_pct: number
+    selic_anual_pct: number
+    ipca_anual_pct: number
+  }
+  resultados: SimulacaoRendaFixaItem[]
+  indicadores: Record<string, IndicadorBcb>
 }

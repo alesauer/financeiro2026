@@ -72,5 +72,6 @@ export const httpClient = {
     request<T>(path, { method: 'PUT', body, token, signal }),
   patch: <T>(path: string, body?: unknown, token?: string, signal?: AbortSignal) =>
     request<T>(path, { method: 'PATCH', body, token, signal }),
-  del: <T>(path: string, token?: string, signal?: AbortSignal) => request<T>(path, { method: 'DELETE', token, signal }),
+  del: <T>(path: string, token?: string, signal?: AbortSignal, body?: unknown) =>
+    request<T>(path, { method: 'DELETE', token, signal, body }),
 }

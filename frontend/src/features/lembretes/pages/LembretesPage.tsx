@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
-
 import { useAuth } from '@/app/providers/AuthProvider'
 import { lembretesService } from '@/features/lembretes/services/lembretesService'
 import type {
@@ -10,40 +8,49 @@ import type {
   LembretePrioridade,
   LembreteStatus,
 } from '@/shared/types/lembrete'
-import { formatDateBr } from '@/shared/utils/date'
 import { getErrorMessage } from '@/shared/utils/error'
 
-const STATUS: LembreteStatus[] = ['Pendente', 'Concluído']
-const PRIORIDADES: LembretePrioridade[] = ['Baixa', 'Média', 'Alta']
+import { LembretesKpis } from '../components/LembretesKpis'
+import { LembreteQuickAdd } from '../components/LembreteQuickAdd'
+import { LembretesListGrouped } from '../components/LembretesListGrouped'
+import { LembretesKanban } from '../components/LembretesKanban'
+import { LembreteModal } from '../components/LembreteModal'
+import {
+  CATEGORIAS_FINANCEIRAS,
+  type LembreteTemplate,
+} from '../utils/lembretesConfig'
 
-const EMPTY_FORM: LembretePayload = {
-  titulo: '',
-  descricao: null,
-  categoria: null,
-  data_lembrete: null,
-  hora_lembrete: null,
-  status: 'Pendente',
-  prioridade: 'Média',
-}
+import {
+  Plus,
+  ListFilter,
+  Columns3,
+  Search,
+  Filter,
+} from 'lucide-react'
+
+type ViewMode = 'lista' | 'kanban'
 
 export function LembretesPage() {
   const { token } = useAuth()
 
+  const [viewMode, setViewMode] = useState<ViewMode>('lista')
   const [dashboard, setDashboard] = useState<LembreteDashboard | null>(null)
   const [items, setItems] = useState<Lembrete[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Filtros
   const [statusFiltro, setStatusFiltro] = useState<LembreteStatus | ''>('')
   const [prioridadeFiltro, setPrioridadeFiltro] = useState<LembretePrioridade | ''>('')
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string>('')
   const [busca, setBusca] = useState('')
 
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState<LembretePayload>(EMPTY_FORM)
-  const [isFormOpen, setIsFormOpen] = useState(false)
+  // Modal de Criação / Edição
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<Lembrete | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = useState<LembreteTemplate | null>(null)
 
-  const tituloFormulario = useMemo(() => (editingId ? 'Editar lembrete' : 'Novo lembrete'), [editingId])
-
+  // Carregar dados
   const carregar = async () => {
     if (!token) return
     setLoading(true)
@@ -54,7 +61,7 @@ export function LembretesPage() {
         lembretesService.dashboard(token),
         lembretesService.list(token, {
           page: 1,
-          per_page: 50,
+          per_page: 100,
           status: statusFiltro,
           prioridade: prioridadeFiltro,
           busca,
@@ -74,78 +81,52 @@ export function LembretesPage() {
     carregar()
   }, [token, statusFiltro, prioridadeFiltro, busca])
 
-  const resetForm = () => {
-    setEditingId(null)
-    setForm(EMPTY_FORM)
+  // Filtragem local adicional de categoria se selecionada
+  const filteredItems = useMemo(() => {
+    if (!categoriaFiltro) return items
+    return items.filter(
+      (item) => (item.categoria || '').toLowerCase() === categoriaFiltro.toLowerCase()
+    )
+  }, [items, categoriaFiltro])
+
+  // Cálculo de atrasados em tempo real
+  const qtdAtrasados = useMemo(() => {
+    const hojeStr = new Date().toISOString().slice(0, 10)
+    return items.filter(
+      (i) => i.status === 'Pendente' && i.data_lembrete && i.data_lembrete < hojeStr
+    ).length
+  }, [items])
+
+  // Ações CRUD
+  const handleOpenNewModal = () => {
+    setEditingItem(null)
+    setSelectedTemplate(null)
+    setIsModalOpen(true)
   }
 
-  const abrirNovoFormulario = () => {
-    resetForm()
-    setIsFormOpen(true)
+  const handleOpenEditModal = (item: Lembrete) => {
+    setEditingItem(item)
+    setSelectedTemplate(null)
+    setIsModalOpen(true)
   }
 
-  const cancelarFormulario = () => {
-    resetForm()
-    setIsFormOpen(false)
+  const handleApplyTemplateFromList = (tpl: LembreteTemplate) => {
+    setEditingItem(null)
+    setSelectedTemplate(tpl)
+    setIsModalOpen(true)
   }
 
-  const carregarParaEditar = async (id: number) => {
+  const handleSave = async (payload: LembretePayload, id?: number) => {
     if (!token) return
-    try {
-      const item = await lembretesService.get(token, id)
-      setEditingId(item.id)
-      setIsFormOpen(true)
-      setForm({
-        titulo: item.titulo,
-        descricao: item.descricao,
-        categoria: item.categoria,
-        data_lembrete: item.data_lembrete,
-        hora_lembrete: item.hora_lembrete ? item.hora_lembrete.slice(0, 5) : null,
-        status: item.status,
-        prioridade: item.prioridade,
-      })
-    } catch (err) {
-      setError(getErrorMessage(err, 'Não foi possível carregar lembrete para edição.'))
+    if (id) {
+      await lembretesService.update(token, id, payload)
+    } else {
+      await lembretesService.create(token, payload)
     }
+    await carregar()
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!token) return
-
-    if (!form.titulo.trim()) {
-      setError('Informe o título do lembrete.')
-      return
-    }
-
-    if (form.hora_lembrete && !form.data_lembrete) {
-      setError('Para definir hora, informe também a data do lembrete.')
-      return
-    }
-
-    const payload: LembretePayload = {
-      ...form,
-      titulo: form.titulo.trim(),
-      descricao: form.descricao?.trim() || null,
-      categoria: form.categoria?.trim() || null,
-      hora_lembrete: form.hora_lembrete || null,
-    }
-
-    try {
-      if (editingId) {
-        await lembretesService.update(token, editingId, payload)
-      } else {
-        await lembretesService.create(token, payload)
-      }
-      resetForm()
-      setIsFormOpen(false)
-      await carregar()
-    } catch (err) {
-      setError(getErrorMessage(err, 'Não foi possível salvar lembrete.'))
-    }
-  }
-
-  const toggleStatus = async (item: Lembrete) => {
+  const handleToggleStatus = async (item: Lembrete) => {
     if (!token) return
     const novoStatus: LembreteStatus = item.status === 'Concluído' ? 'Pendente' : 'Concluído'
     try {
@@ -156,323 +137,222 @@ export function LembretesPage() {
     }
   }
 
-  const handleDelete = async (id: number) => {
+  const handleExcluir = async (id: number) => {
     if (!token) return
     if (!window.confirm('Confirma a exclusão deste lembrete?')) return
 
     try {
       await lembretesService.remove(token, id)
       await carregar()
-      if (editingId === id) cancelarFormulario()
     } catch (err) {
       setError(getErrorMessage(err, 'Não foi possível excluir lembrete.'))
     }
   }
 
+  const handleAdiar = async (item: Lembrete, dias: number) => {
+    if (!token) return
+    const baseDate = item.data_lembrete ? new Date(item.data_lembrete + 'T00:00:00') : new Date()
+    baseDate.setDate(baseDate.getDate() + dias)
+    const novaData = baseDate.toISOString().slice(0, 10)
+
+    try {
+      await lembretesService.update(token, item.id, {
+        data_lembrete: novaData,
+      })
+      await carregar()
+    } catch (err) {
+      setError(getErrorMessage(err, 'Erro ao adiar lembrete.'))
+    }
+  }
+
   return (
-    <section className="space-y-6">
-      <header className="space-y-2">
-        <h2 className="text-2xl font-semibold text-[var(--color-text)]">Lembretes</h2>
-        <p className="text-sm text-[var(--color-muted)]">Organize compromissos financeiros e tarefas recorrentes.</p>
-      </header>
-
-      {dashboard ? (
-        <div className="grid gap-3 md:grid-cols-4">
-          <Metric title="Total" value={dashboard.total} />
-          <Metric title="Pendentes" value={dashboard.pendentes} />
-          <Metric title="Concluídos" value={dashboard.concluidos} />
-          <Metric title="Hoje" value={dashboard.hoje} />
+    <section className="space-y-6 pb-12">
+      {/* 1. Header com Título e Ações */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold tracking-tight text-[var(--color-text)]">
+              Lembretes & Compromissos
+            </h2>
+            <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-0.5 text-xs font-semibold text-[var(--color-text)] shadow-2xs">
+              {dashboard?.pendentes ?? 0} pendentes
+            </span>
+            {qtdAtrasados > 0 && (
+              <span className="rounded-full bg-rose-500 px-2 py-0.5 text-xs font-bold text-white shadow-2xs">
+                {qtdAtrasados} atrasado(s)
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-[var(--color-muted)] mt-1">
+            Acompanhe vencimentos de faturas, boletos, impostos, investimentos e renovações.
+          </p>
         </div>
-      ) : null}
 
-      <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Lembretes</h3>
+        {/* Botão de Criação */}
+        <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={abrirNovoFormulario}
-            className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white"
+            onClick={handleOpenNewModal}
+            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:opacity-90"
           >
-            Novo lembrete
+            <Plus className="h-4 w-4" />
+            Novo Lembrete
+          </button>
+        </div>
+      </header>
+
+      {error && (
+        <div className="rounded-[var(--radius-sm)] bg-rose-50 p-3 text-xs font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+          {error}
+        </div>
+      )}
+
+      {/* 2. KPIs de Visão Geral */}
+      <LembretesKpis
+        dashboard={dashboard}
+        qtdAtrasados={qtdAtrasados}
+        loading={loading}
+      />
+
+      {/* 3. Quick-Add Bar (Estilo Todoist / Linear) */}
+      <LembreteQuickAdd onCriar={async (payload) => handleSave(payload)} />
+
+      {/* 4. Toolbar de Modos de Exibição & Filtros */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-[var(--color-border)] pb-3">
+        {/* Alternador de Visualização (Lista vs Kanban) */}
+        <div className="flex rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg)] p-0.5 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={() => setViewMode('lista')}
+            className={`flex items-center gap-1.5 rounded px-3 py-1.5 transition ${
+              viewMode === 'lista'
+                ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-xs'
+                : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+            }`}
+          >
+            <ListFilter className="h-3.5 w-3.5" />
+            Lista Inteligente
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('kanban')}
+            className={`flex items-center gap-1.5 rounded px-3 py-1.5 transition ${
+              viewMode === 'kanban'
+                ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-xs'
+                : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+            }`}
+          >
+            <Columns3 className="h-3.5 w-3.5" />
+            Quadro Kanban
           </button>
         </div>
 
-        {isFormOpen ? (
-          <div className="mb-4 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg)]/30 p-4">
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">{tituloFormulario}</h4>
+        {/* Filtros de Categoria, Prioridade, Status e Busca */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          {/* Categoria */}
+          <select
+            value={categoriaFiltro}
+            onChange={(e) => setCategoriaFiltro(e.target.value)}
+            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-hidden"
+          >
+            <option value="">Todas categorias</option>
+            {Object.keys(CATEGORIAS_FINANCEIRAS).map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
 
-            <form className="space-y-3" onSubmit={handleSubmit}>
-            <Field label="Título">
-              <input
-                value={form.titulo}
-                onChange={(event) => setForm((prev) => ({ ...prev, titulo: event.target.value }))}
-                className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              />
-            </Field>
+          {/* Prioridade */}
+          <select
+            value={prioridadeFiltro}
+            onChange={(e) => setPrioridadeFiltro(e.target.value as LembretePrioridade | '')}
+            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-hidden"
+          >
+            <option value="">Todas prioridades</option>
+            <option value="Alta">Alta</option>
+            <option value="Média">Média</option>
+            <option value="Baixa">Baixa</option>
+          </select>
 
-            <Field label="Categoria">
-              <input
-                value={form.categoria ?? ''}
-                onChange={(event) => setForm((prev) => ({ ...prev, categoria: event.target.value || null }))}
-                className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              />
-            </Field>
+          {/* Status */}
+          <select
+            value={statusFiltro}
+            onChange={(e) => setStatusFiltro(e.target.value as LembreteStatus | '')}
+            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1.5 text-xs text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-hidden"
+          >
+            <option value="">Todos status</option>
+            <option value="Pendente">Pendentes</option>
+            <option value="Concluído">Concluídos</option>
+          </select>
 
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <Field label="Data">
-                <input
-                  type="date"
-                  value={form.data_lembrete ?? ''}
-                  onChange={(event) => setForm((prev) => ({ ...prev, data_lembrete: event.target.value || null }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                />
-              </Field>
-
-              <Field label="Hora">
-                <input
-                  type="time"
-                  value={form.hora_lembrete ?? ''}
-                  onChange={(event) => setForm((prev) => ({ ...prev, hora_lembrete: event.target.value || null }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                />
-              </Field>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <Field label="Prioridade">
-                <select
-                  value={form.prioridade}
-                  onChange={(event) => setForm((prev) => ({ ...prev, prioridade: event.target.value as LembretePrioridade }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                >
-                  {PRIORIDADES.map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              <Field label="Status">
-                <select
-                  value={form.status}
-                  onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as LembreteStatus }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                >
-                  {STATUS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-
-            <Field label="Descrição">
-              <textarea
-                rows={3}
-                value={form.descricao ?? ''}
-                onChange={(event) => setForm((prev) => ({ ...prev, descricao: event.target.value || null }))}
-                className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              />
-            </Field>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white">
-                {editingId ? 'Salvar alterações' : 'Adicionar'}
-              </button>
-              <button
-                type="button"
-                onClick={cancelarFormulario}
-                className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-          </div>
-        ) : null}
-
-        {editingId ? null : <div className="mb-4 grid gap-2 md:grid-cols-4">
-            <select
-              value={statusFiltro}
-              onChange={(event) => setStatusFiltro(event.target.value as LembreteStatus | '')}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-            >
-              <option value="">Todos status</option>
-              {STATUS.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-            <select
-              value={prioridadeFiltro}
-              onChange={(event) => setPrioridadeFiltro(event.target.value as LembretePrioridade | '')}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-            >
-              <option value="">Todas prioridades</option>
-              {PRIORIDADES.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
+          {/* Busca */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-[var(--color-muted)]" />
             <input
+              type="text"
+              placeholder="Buscar título..."
               value={busca}
-              onChange={(event) => setBusca(event.target.value)}
-              placeholder="Buscar por título"
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-36 sm:w-44 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] py-1.5 pl-8 pr-2.5 text-xs text-[var(--color-text)] placeholder:text-[var(--color-muted)] focus:border-[var(--color-primary)] focus:outline-hidden"
             />
+          </div>
+
+          {/* Limpar Filtros se algum estiver ativo */}
+          {(statusFiltro || prioridadeFiltro || categoriaFiltro || busca) && (
             <button
               type="button"
               onClick={() => {
                 setStatusFiltro('')
                 setPrioridadeFiltro('')
+                setCategoriaFiltro('')
                 setBusca('')
               }}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
+              className="flex items-center gap-1 rounded border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-[11px] font-medium text-[var(--color-muted)] hover:text-[var(--color-text)]"
             >
-              Limpar filtros
+              <Filter className="h-3 w-3" />
+              Limpar
             </button>
-        </div>}
-
-        {error ? <p className="mb-3 text-sm text-rose-600">{error}</p> : null}
-
-          {editingId ? null : loading ? (
-            <p className="mb-3 text-sm text-[var(--color-muted)] md:hidden">Carregando...</p>
-          ) : items.length === 0 ? (
-            <p className="mb-3 text-sm text-[var(--color-muted)] md:hidden">Nenhum lembrete encontrado.</p>
-          ) : (
-            <div className="mb-3 space-y-2 md:hidden">
-              {items.map((item) => (
-                <article
-                  key={item.id}
-                  className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
-                >
-                  <p className="text-sm font-semibold text-[var(--color-text)]">{item.titulo}</p>
-                  <div className="mt-1 space-y-0.5 text-xs text-[var(--color-muted)]">
-                    <p>Categoria: {item.categoria ?? '-'}</p>
-                    <p>
-                      Quando: {formatDateBr(item.data_lembrete)} {item.hora_lembrete ? `· ${item.hora_lembrete.slice(0, 5)}` : ''}
-                    </p>
-                    <p>Prioridade: {item.prioridade}</p>
-                    <p>Status: {item.status}</p>
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => toggleStatus(item)}
-                      className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                    >
-                      {item.status === 'Concluído' ? 'Reabrir' : 'Concluir'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => carregarParaEditar(item.id)}
-                      className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(item.id)}
-                      className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs text-rose-600"
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
           )}
+        </div>
+      </div>
 
-          {editingId ? null : <div className="overflow-x-auto">
-            <table className="hidden min-w-full border-collapse text-sm md:table">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-left">
-                  <th className="py-2 pr-3">Título</th>
-                  <th className="py-2 pr-3">Quando</th>
-                  <th className="py-2 pr-3">Prioridade</th>
-                  <th className="py-2 pr-3">Status</th>
-                  <th className="py-2 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center text-[var(--color-muted)]">
-                      Carregando...
-                    </td>
-                  </tr>
-                ) : items.length === 0 ? (
-                  <tr>
-                    <td colSpan={5} className="py-4 text-center text-[var(--color-muted)]">
-                      Nenhum lembrete encontrado.
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((item) => (
-                    <tr key={item.id} className="border-b border-[var(--color-border)]/70">
-                      <td className="py-2 pr-3">
-                        <p className="font-medium">{item.titulo}</p>
-                        <p className="text-xs text-[var(--color-muted)]">{item.categoria ?? '-'}</p>
-                      </td>
-                      <td className="py-2 pr-3">
-                        {formatDateBr(item.data_lembrete)} {item.hora_lembrete ? `· ${item.hora_lembrete.slice(0, 5)}` : ''}
-                      </td>
-                      <td className="py-2 pr-3">{item.prioridade}</td>
-                      <td className="py-2 pr-3">{item.status}</td>
-                      <td className="py-2 text-right">
-                        <div className="inline-flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleStatus(item)}
-                            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                          >
-                            {item.status === 'Concluído' ? 'Reabrir' : 'Concluir'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => carregarParaEditar(item.id)}
-                            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(item.id)}
-                            className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs text-rose-600"
-                          >
-                            Excluir
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>}
-      </article>
+      {/* 5. Conteúdo Principal (Lista Agrupada ou Kanban) */}
+      <div className="animate-in fade-in duration-150">
+        {viewMode === 'lista' ? (
+          <LembretesListGrouped
+            items={filteredItems}
+            loading={loading}
+            onToggleStatus={handleToggleStatus}
+            onEditar={handleOpenEditModal}
+            onExcluir={handleExcluir}
+            onAdiar={handleAdiar}
+            onUsarTemplate={handleApplyTemplateFromList}
+          />
+        ) : (
+          <LembretesKanban
+            items={filteredItems}
+            onToggleStatus={handleToggleStatus}
+            onEditar={handleOpenEditModal}
+            onExcluir={handleExcluir}
+            onAdiar={handleAdiar}
+          />
+        )}
+      </div>
+
+      {/* 6. Modal de Lembrete */}
+      <LembreteModal
+        isOpen={isModalOpen}
+        editingItem={editingItem}
+        initialTemplate={selectedTemplate}
+        onClose={() => {
+          setIsModalOpen(false)
+          setEditingItem(null)
+          setSelectedTemplate(null)
+        }}
+        onSave={handleSave}
+      />
     </section>
-  )
-}
-
-function Metric({ title, value }: { title: string; value: number }) {
-  return (
-    <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{title}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
-    </article>
-  )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block space-y-1 text-sm">
-      <span className="font-medium">{label}</span>
-      {children}
-    </label>
   )
 }

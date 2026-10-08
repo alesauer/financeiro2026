@@ -22,12 +22,14 @@ class CategoriaAlias(db.Model):
     descricao_exemplo = db.Column(db.String(255), nullable=False)
     categoria_id = db.Column(db.Integer, db.ForeignKey("categorias.id", ondelete="CASCADE"), nullable=False)
     ocorrencias = db.Column(db.Integer, default=1, nullable=False)
+    origem = db.Column(db.String(30), default="usuario", nullable=False)  # 'usuario', 'ia', 'regra', 'historico'
+    confianca = db.Column(db.Float, default=1.0, nullable=False)
     atualizado_em = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
 
     categoria = db.relationship("Categoria", lazy=True)
 
     def __repr__(self):
-        return f"<CategoriaAlias {self.descricao_normalizada} -> {self.categoria_id}>"
+        return f"<CategoriaAlias {self.descricao_normalizada} -> {self.categoria_id} (origem={self.origem})>"
 
 class FormaPagamento(db.Model):
     __tablename__ = "formas_pagamento"
@@ -41,6 +43,8 @@ class FormaPagamento(db.Model):
     dia_fechamento = db.Column(db.Integer, nullable=True)
     dia_vencimento = db.Column(db.Integer, nullable=True)
     ativo = db.Column(db.Boolean, default=True, nullable=False)
+    icone = db.Column(db.Text, nullable=True)
+    cor = db.Column(db.String(30), nullable=True)
 
     def __repr__(self):
         flag = "CC" if self.cartao_credito else "Geral"
@@ -89,6 +93,7 @@ class Transacao(db.Model):
 
     observacoes = db.Column(db.Text, nullable=True)
     competencia_fatura = db.Column(db.Date, nullable=True)
+    identificador_externo = db.Column(db.String(120), unique=True, index=True, nullable=True)
 
     def __repr__(self):
         return f"<Transacao {self.tipo} - {self.descricao} R${self.valor}>"
@@ -104,6 +109,8 @@ class TipoDocumento(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nome = db.Column(db.String(100), nullable=False, unique=True)
     descricao = db.Column(db.String(255), nullable=True)
+    icone = db.Column(db.String(50), nullable=True, default="FileText")
+    cor = db.Column(db.String(60), nullable=True, default="from-blue-600 to-indigo-700")
     ativo = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.now())
     updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
@@ -123,6 +130,14 @@ class Documento(db.Model):
 
     nome = db.Column(db.String(150), nullable=False)
     registro = db.Column(db.String(120), nullable=True)
+    emissor = db.Column(db.String(150), nullable=True)
+    titular = db.Column(db.String(120), nullable=True)
+    data_emissao = db.Column(db.Date, nullable=True)
+    data_validade = db.Column(db.Date, nullable=True)
+    cor_pass = db.Column(db.String(60), nullable=True)
+    icone = db.Column(db.String(50), nullable=True)
+    favorito = db.Column(db.Boolean, default=False, nullable=False)
+    tags = db.Column(db.String(255), nullable=True)
     outras_informacoes = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(db.DateTime, default=db.func.now())
@@ -165,12 +180,23 @@ class Milha(db.Model):
     tipo = db.Column(db.String(10), nullable=False)  # 'entrada' | 'saida' (validado no schema)
     quantidade = db.Column(db.Integer, nullable=False)
     origem = db.Column(db.String(120), nullable=True)
+    categoria_origem = db.Column(db.String(50), nullable=True)
+    custo_reais = db.Column(db.Numeric(12, 2), nullable=True)
+    taxa_bonus = db.Column(db.Numeric(5, 2), nullable=True)
+    transferencia_id = db.Column(db.String(36), nullable=True)
     data_movimentacao = db.Column(db.Date, nullable=False, default=date.today)
     data_expiracao = db.Column(db.Date, nullable=True)
     descricao = db.Column(db.Text, nullable=True)
 
     created_at = db.Column(db.DateTime, default=db.func.now())
     updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    @property
+    def cpm(self):
+        """Custo por Milheiro (R$ / 1.000 milhas)."""
+        if self.custo_reais is not None and self.quantidade and self.quantidade > 0:
+            return round(float(self.custo_reais) / (float(self.quantidade) / 1000.0), 2)
+        return None
 
     def __repr__(self):
         return f"<Milha {self.programa} tipo={self.tipo} qtd={self.quantidade}>"
@@ -459,3 +485,50 @@ class InvestmentProviderConfig(db.Model):
 
     def __repr__(self):
         return f"<InvestmentProviderConfig {self.nome} ativo={self.ativo}>"
+
+
+# =======================
+# Open Finance (Pluggy)
+# =======================
+
+class OpenFinanceConexao(db.Model):
+    __tablename__ = "openfinance_conexoes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False)
+    item_id = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    connector_id = db.Column(db.Integer, nullable=True)
+    connector_name = db.Column(db.String(120), nullable=True)
+    connector_image_url = db.Column(db.String(500), nullable=True)
+    connector_primary_color = db.Column(db.String(30), nullable=True)
+    status = db.Column(db.String(40), default="UPDATED", nullable=False)
+    last_sync_at = db.Column(db.DateTime, nullable=True)
+    consent_expires_at = db.Column(db.DateTime, nullable=True)
+    erro_mensagem = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    contas = db.relationship("OpenFinanceContaMap", backref="conexao", lazy=True, cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<OpenFinanceConexao {self.connector_name} item={self.item_id} status={self.status}>"
+
+
+class OpenFinanceContaMap(db.Model):
+    __tablename__ = "openfinance_contas_map"
+
+    id = db.Column(db.Integer, primary_key=True)
+    conexao_id = db.Column(db.Integer, db.ForeignKey("openfinance_conexoes.id", ondelete="CASCADE"), nullable=False)
+    pluggy_account_id = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    tipo_pluggy = db.Column(db.String(30), nullable=False)  # 'CREDIT' | 'BANK'
+    nome = db.Column(db.String(150), nullable=False)
+    numero = db.Column(db.String(50), nullable=True)
+    forma_pagamento_id = db.Column(db.Integer, db.ForeignKey("formas_pagamento.id", ondelete="SET NULL"), nullable=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    forma_pagamento = db.relationship("FormaPagamento", lazy=True)
+
+    def __repr__(self):
+        return f"<OpenFinanceContaMap {self.nome} type={self.tipo_pluggy} account={self.pluggy_account_id}>"
+

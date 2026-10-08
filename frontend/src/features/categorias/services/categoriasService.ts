@@ -1,5 +1,14 @@
 import { httpClient } from '@/shared/api/httpClient'
-import type { Categoria, CategoriaPayload, CategoriaTipo } from '@/shared/types/categoria'
+import type {
+  Categoria,
+  CategoriaPayload,
+  CategoriaTipo,
+  AssociacoesResponse,
+  CategoriaAliasItem,
+  SalvarAliasPayload,
+  AtualizarAliasPayload,
+  TestarAssociacaoResultado,
+} from '@/shared/types/categoria'
 
 const BASE = '/api/categorias'
 
@@ -17,4 +26,20 @@ export const categoriasService = {
   remove(token: string, id: number) {
     return httpClient.del<{ message: string }>(`${BASE}/${id}`, token)
   },
+  getAssociacoes(token: string) {
+    return httpClient.get<AssociacoesResponse>(`${BASE}/associacoes`, token)
+  },
+  salvarAlias(token: string, payload: SalvarAliasPayload) {
+    return httpClient.post<CategoriaAliasItem>(`${BASE}/aliases`, payload, token)
+  },
+  atualizarAlias(token: string, id: number, payload: AtualizarAliasPayload) {
+    return httpClient.put<CategoriaAliasItem>(`${BASE}/aliases/${id}`, payload, token)
+  },
+  removerAlias(token: string, id: number) {
+    return httpClient.del<{ message: string }>(`${BASE}/aliases/${id}`, token)
+  },
+  testarAssociacao(token: string, descricao: string) {
+    return httpClient.post<TestarAssociacaoResultado>(`${BASE}/associacoes/testar`, { descricao }, token)
+  },
 }
+

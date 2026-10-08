@@ -1,11 +1,86 @@
 from flask import Blueprint, request, jsonify
-from datetime import datetime
+from datetime import datetime, date
+from calendar import monthrange
+from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
 from app import db
 from app.models import Transacao, Categoria, FormaPagamento
 from flask_jwt_extended import jwt_required
+from services.fatura_service import (
+    calcular_competencia_fatura,
+    calcular_vencimento_fatura,
+)
 
 bp_relatorios = Blueprint("relatorios", __name__)
+
+
+def _data_referencia_transacao(transacao, eh_cartao=False, dia_fechamento=None, dia_vencimento=None, usar_competencia=False):
+    """Calcula a data de referência de uma transação para relatórios e matriz.
+
+    Se eh_cartao:
+      - base 'competencia' (usar_competencia=True): data de competência da fatura (dia 1 do ciclo de fechamento)
+      - base 'data' / caixa (usar_competencia=False): data exata de vencimento do boleto da fatura
+    Se não for cartão:
+      - data da própria transação
+    """
+    if eh_cartao:
+        dia_fech = dia_fechamento or 28
+        dia_venc = dia_vencimento or 5
+        comp = (
+            getattr(transacao, "competencia_fatura", None)
+            or calcular_competencia_fatura(transacao.data_transacao, dia_fech)
+            or (date(transacao.data_transacao.year, transacao.data_transacao.month, 1) if transacao.data_transacao else None)
+        )
+        if usar_competencia:
+            return comp or transacao.data_transacao
+        else:
+            venc = calcular_vencimento_fatura(comp, dia_fech, dia_venc)
+            return venc or transacao.data_transacao
+    return transacao.data_transacao
+
+
+def _obter_transacoes_periodo(inicio_dt, fim_dt, tipo=None, status=None, apenas_cartao=None, base="data"):
+    """Retorna lista de (Transacao, Categoria, FormaPagamento, data_efetiva) cuja data de referência cai entre inicio_dt e fim_dt."""
+    usar_competencia = (base == "competencia")
+    busca_ini = inicio_dt - relativedelta(months=2)
+    busca_fim = fim_dt + relativedelta(months=1)
+
+    query = (
+        db.session.query(Transacao, Categoria, FormaPagamento)
+        .outerjoin(Categoria, Transacao.categoria_id == Categoria.id)
+        .outerjoin(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+        .filter(
+            db.or_(
+                Transacao.data_transacao.between(busca_ini, busca_fim),
+                Transacao.competencia_fatura.between(busca_ini, busca_fim),
+            )
+        )
+    )
+
+    if tipo:
+        query = query.filter(Transacao.tipo == tipo)
+    if status:
+        query = query.filter(Transacao.status == status)
+    if apenas_cartao is True:
+        query = query.filter(FormaPagamento.cartao_credito.is_(True))
+    elif apenas_cartao is False:
+        query = query.filter(db.or_(FormaPagamento.id.is_(None), FormaPagamento.cartao_credito.is_(False)))
+
+    resultados = []
+    for tx, cat, forma in query.all():
+        eh_cartao = bool(forma and forma.cartao_credito)
+        ref = _data_referencia_transacao(
+            tx,
+            eh_cartao=eh_cartao,
+            dia_fechamento=getattr(forma, "dia_fechamento", None),
+            dia_vencimento=getattr(forma, "dia_vencimento", None),
+            usar_competencia=usar_competencia,
+        )
+        if ref and inicio_dt <= ref <= fim_dt:
+            resultados.append((tx, cat, forma, ref))
+
+    return resultados
+
 
 # Resumo mensal: saldo diário e acúmulo de investimentos
 @bp_relatorios.route("/resumo", methods=["GET"])
@@ -14,138 +89,158 @@ def resumo_mensal():
     mes = request.args.get("mes", type=int)
     if not ano or not mes:
         return jsonify({"error": "Informe ano e mes"}), 400
-    from calendar import monthrange
-    dias = [str(d).zfill(2) for d in range(1, monthrange(ano, mes)[1]+1)]
-    saldo = []
-    acum_invest = []
-    total_invest = 0
-    for dia in range(1, monthrange(ano, mes)[1]+1):
-        ini = datetime(ano, mes, dia)
-        fim = datetime(ano, mes, dia)
-        receita = db.session.query(func.sum(Transacao.valor)).filter(
-            Transacao.tipo == "Receita",
-            Transacao.data_transacao.between(ini, fim)
-        ).scalar() or 0
-        despesa = db.session.query(func.sum(Transacao.valor)).filter(
-            Transacao.tipo == "Despesa",
-            Transacao.data_transacao.between(ini, fim)
-        ).scalar() or 0
-        investimento = db.session.query(func.sum(Transacao.valor)).filter(
-            Transacao.tipo == "Investimento",
-            Transacao.data_transacao.between(ini, fim)
-        ).scalar() or 0
-        saldo.append(float(receita) - float(despesa))
-        total_invest += float(investimento)
-        acum_invest.append(total_invest)
+
+    num_dias = monthrange(ano, mes)[1]
+    dias = [str(d).zfill(2) for d in range(1, num_dias + 1)]
+    saldo = [0.0] * num_dias
+    acum_invest = [0.0] * num_dias
+
+    ini_mes = date(ano, mes, 1)
+    fim_mes = date(ano, mes, num_dias)
+
+    itens = _obter_transacoes_periodo(ini_mes, fim_mes, base="data")
+
+    receitas_dia = [0.0] * num_dias
+    despesas_dia = [0.0] * num_dias
+    invest_dia = [0.0] * num_dias
+
+    for tx, _, _, ref in itens:
+        dia_idx = ref.day - 1
+        val = float(tx.valor or 0)
+        if tx.tipo == "Receita":
+            receitas_dia[dia_idx] += val
+        elif tx.tipo == "Despesa":
+            despesas_dia[dia_idx] += val
+        elif tx.tipo == "Investimento":
+            invest_dia[dia_idx] += val
+
+    total_invest = 0.0
+    for d in range(num_dias):
+        saldo[d] = round(receitas_dia[d] - despesas_dia[d], 2)
+        total_invest += invest_dia[d]
+        acum_invest[d] = round(total_invest, 2)
+
     return jsonify({
         "dias": dias,
         "saldo": saldo,
-        "acum_invest": acum_invest
+        "acum_invest": acum_invest,
     })
+
 
 # Totais por tipo em um período
 @bp_relatorios.route("/totais", methods=["GET"])
 def totais():
     inicio = request.args.get("inicio")
     fim = request.args.get("fim")
+    base = (request.args.get("base") or "data").lower()
 
-    query = db.session.query(
-        Transacao.tipo,
-        func.sum(Transacao.valor).label("total")
-    )
+    if not (inicio and fim):
+        query = db.session.query(Transacao.tipo, func.sum(Transacao.valor).label("total")).group_by(Transacao.tipo).all()
+        return jsonify([{"tipo": tipo, "total": float(total)} for tipo, total in query]), 200
 
-    if inicio and fim:
-        try:
-            inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
-            fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
-            query = query.filter(Transacao.data_transacao.between(inicio_dt, fim_dt))
-        except ValueError:
-            return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+    try:
+        inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+        fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    query = query.group_by(Transacao.tipo).all()
-    resultado = [{ "tipo": tipo, "total": float(total) } for tipo, total in query]
+    itens = _obter_transacoes_periodo(inicio_dt, fim_dt, base=base)
+    totais_por_tipo = {}
+    for tx, _, _, _ in itens:
+        t = tx.tipo or "Outros"
+        totais_por_tipo[t] = totais_por_tipo.get(t, 0.0) + float(tx.valor or 0)
+
+    resultado = [{"tipo": tipo, "total": round(total, 2)} for tipo, total in totais_por_tipo.items()]
     return jsonify(resultado), 200
 
-# (fim do arquivo)
 
 # Totais por categoria em um período
 @bp_relatorios.route("/categorias", methods=["GET"])
 def por_categoria():
     inicio = request.args.get("inicio")
     fim = request.args.get("fim")
-
     tipo = request.args.get("tipo")
-    query = db.session.query(
-        Categoria.nome,
-        func.sum(Transacao.valor).label("total")
-    ).join(Categoria, Transacao.categoria_id == Categoria.id)
+    base = (request.args.get("base") or "data").lower()
 
-    if inicio and fim:
-        try:
-            inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
-            fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
-            query = query.filter(Transacao.data_transacao.between(inicio_dt, fim_dt))
-        except ValueError:
-            return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+    if not (inicio and fim):
+        query = db.session.query(Categoria.nome, func.sum(Transacao.valor).label("total")).join(Categoria, Transacao.categoria_id == Categoria.id)
+        if tipo:
+            query = query.filter(Transacao.tipo == tipo)
+        query = query.group_by(Categoria.nome).all()
+        return jsonify([{"categoria": cat, "total": float(total)} for cat, total in query]), 200
 
-    if tipo:
-        query = query.filter(Transacao.tipo == tipo)
+    try:
+        inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+        fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    query = query.group_by(Categoria.nome).all()
-    resultado = [{ "categoria": cat, "total": float(total) } for cat, total in query]
+    itens = _obter_transacoes_periodo(inicio_dt, fim_dt, tipo=tipo, base=base)
+    totais_cat = {}
+    for tx, cat, _, _ in itens:
+        nome_cat = cat.nome if cat else "Sem categoria"
+        totais_cat[nome_cat] = totais_cat.get(nome_cat, 0.0) + float(tx.valor or 0)
+
+    resultado = [{"categoria": cat, "total": round(total, 2)} for cat, total in sorted(totais_cat.items(), key=lambda x: x[1], reverse=True)]
     return jsonify(resultado), 200
+
 
 # Totais por forma de pagamento em um período (ou geral)
 @bp_relatorios.route("/formas_pagamento_totais", methods=["GET"])
 def formas_pagamento_totais():
     inicio = request.args.get("inicio")
     fim = request.args.get("fim")
+    base = (request.args.get("base") or "data").lower()
 
-    query = db.session.query(
-        FormaPagamento.nome.label("forma_pagamento"),
-        func.sum(Transacao.valor).label("total")
-    ).join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+    if not (inicio and fim):
+        query = db.session.query(FormaPagamento.nome.label("forma_pagamento"), func.sum(Transacao.valor).label("total")).join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id).group_by(FormaPagamento.nome).order_by(FormaPagamento.nome.asc()).all()
+        return jsonify([{"forma_pagamento": nome, "total": float(total)} for nome, total in query]), 200
 
-    if inicio and fim:
-        try:
-            inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
-            fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
-            query = query.filter(Transacao.data_transacao.between(inicio_dt, fim_dt))
-        except ValueError:
-            return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+    try:
+        inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+        fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    query = query.group_by(FormaPagamento.nome).order_by(FormaPagamento.nome.asc()).all()
-    resultado = [{"forma_pagamento": nome, "total": float(total)} for nome, total in query]
+    itens = _obter_transacoes_periodo(inicio_dt, fim_dt, base=base)
+    totais_forma = {}
+    for tx, _, forma, _ in itens:
+        nome_forma = forma.nome if forma else "Sem forma"
+        totais_forma[nome_forma] = totais_forma.get(nome_forma, 0.0) + float(tx.valor or 0)
+
+    resultado = [{"forma_pagamento": nome, "total": round(total, 2)} for nome, total in sorted(totais_forma.items(), key=lambda x: x[0])]
     return jsonify(resultado), 200
+
 
 # Despesas por cartão de crédito (agrupado por cartão)
 @bp_relatorios.route("/despesas_por_cartao", methods=["GET"])
 def despesas_por_cartao():
     inicio = request.args.get("inicio")
     fim = request.args.get("fim")
+    base = (request.args.get("base") or "data").lower()
 
-    query = db.session.query(
-        FormaPagamento.nome.label("cartao"),
-        func.count(Transacao.id).label("qtd"),
-        func.sum(Transacao.valor).label("total")
-    ).join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+    if not (inicio and fim):
+        query = db.session.query(FormaPagamento.nome.label("cartao"), func.count(Transacao.id).label("qtd"), func.sum(Transacao.valor).label("total")).join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id).filter(Transacao.tipo == "Despesa", FormaPagamento.cartao_credito.is_(True)).group_by(FormaPagamento.nome).order_by(FormaPagamento.nome.asc()).all()
+        return jsonify([{"cartao": nome, "qtd": int(qtd), "total": float(total)} for nome, qtd, total in query]), 200
 
-    query = query.filter(
-        Transacao.tipo == "Despesa",
-        FormaPagamento.cartao_credito.is_(True)
-    )
+    try:
+        inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+        fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    if inicio and fim:
-        try:
-            inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
-            fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
-            query = query.filter(Transacao.data_transacao.between(inicio_dt, fim_dt))
-        except ValueError:
-            return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+    itens = _obter_transacoes_periodo(inicio_dt, fim_dt, tipo="Despesa", apenas_cartao=True, base=base)
+    cartoes_map = {}
+    for tx, _, forma, _ in itens:
+        nome_cartao = forma.nome if forma else "Cartão de Crédito"
+        if nome_cartao not in cartoes_map:
+            cartoes_map[nome_cartao] = {"cartao": nome_cartao, "qtd": 0, "total": 0.0}
+        cartoes_map[nome_cartao]["qtd"] += 1
+        cartoes_map[nome_cartao]["total"] += float(tx.valor or 0)
 
-    query = query.group_by(FormaPagamento.nome).order_by(FormaPagamento.nome.asc()).all()
-    resultado = [{"cartao": nome, "qtd": int(qtd), "total": float(total)} for nome, qtd, total in query]
+    resultado = [{"cartao": v["cartao"], "qtd": v["qtd"], "total": round(v["total"], 2)} for v in sorted(cartoes_map.values(), key=lambda x: x["cartao"])]
     return jsonify(resultado), 200
+
 
 def _parse_periodo(query):
     """Aplica filtro de período (inicio/fim) na query. Retorna (query, erro)."""
@@ -160,79 +255,109 @@ def _parse_periodo(query):
             return query, (jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400)
     return query, None
 
+
 # Maiores despesas individuais em um período
 @bp_relatorios.route("/top_despesas", methods=["GET"])
 def top_despesas():
     limite = request.args.get("limite", 20, type=int)
     limite = max(1, min(limite, 100))
+    inicio = request.args.get("inicio")
+    fim = request.args.get("fim")
+    base = (request.args.get("base") or "data").lower()
 
-    query = (
-        db.session.query(Transacao, Categoria.nome, FormaPagamento.nome)
-        .join(Categoria, Transacao.categoria_id == Categoria.id)
-        .join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
-        .filter(Transacao.tipo == "Despesa")
-    )
-    query, erro = _parse_periodo(query)
-    if erro:
-        return erro
+    if not (inicio and fim):
+        query = (
+            db.session.query(Transacao, Categoria.nome, FormaPagamento.nome)
+            .join(Categoria, Transacao.categoria_id == Categoria.id)
+            .join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+            .filter(Transacao.tipo == "Despesa")
+            .order_by(Transacao.valor.desc())
+            .limit(limite)
+            .all()
+        )
+        return jsonify([
+            {
+                "id": t.id,
+                "descricao": t.descricao,
+                "categoria": categoria,
+                "forma_pagamento": forma,
+                "data": t.data_transacao.isoformat() if t.data_transacao else None,
+                "status": t.status,
+                "valor": float(t.valor),
+            }
+            for t, categoria, forma in query
+        ]), 200
 
-    itens = query.order_by(Transacao.valor.desc()).limit(limite).all()
+    try:
+        inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+        fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
+
+    itens = _obter_transacoes_periodo(inicio_dt, fim_dt, tipo="Despesa", base=base)
+    itens.sort(key=lambda x: float(x[0].valor or 0), reverse=True)
+    top = itens[:limite]
+
     resultado = [
         {
             "id": t.id,
             "descricao": t.descricao,
-            "categoria": categoria,
-            "forma_pagamento": forma,
-            "data": t.data_transacao.isoformat() if t.data_transacao else None,
+            "categoria": cat.nome if cat else "Sem categoria",
+            "forma_pagamento": forma.nome if forma else "Sem forma",
+            "data": ref.isoformat() if ref else (t.data_transacao.isoformat() if t.data_transacao else None),
             "status": t.status,
             "valor": float(t.valor),
         }
-        for t, categoria, forma in itens
+        for t, cat, forma, ref in top
     ]
     return jsonify(resultado), 200
+
 
 # Resumo de status (Pago x Pendente) em um período
 @bp_relatorios.route("/status_periodo", methods=["GET"])
 def status_periodo():
-    query = db.session.query(
-        Transacao.status,
-        Transacao.tipo,
-        func.count(Transacao.id).label("qtd"),
-        func.sum(Transacao.valor).label("total"),
-    )
-    query, erro = _parse_periodo(query)
-    if erro:
-        return erro
+    inicio = request.args.get("inicio")
+    fim = request.args.get("fim")
+    base = (request.args.get("base") or "data").lower()
 
-    resumo = [
-        {"status": status, "tipo": tipo, "qtd": int(qtd), "total": float(total or 0)}
-        for status, tipo, qtd, total in query.group_by(Transacao.status, Transacao.tipo).all()
-    ]
+    if not (inicio and fim):
+        query = db.session.query(Transacao.status, Transacao.tipo, func.count(Transacao.id).label("qtd"), func.sum(Transacao.valor).label("total")).group_by(Transacao.status, Transacao.tipo).all()
+        resumo = [{"status": status, "tipo": tipo, "qtd": int(qtd), "total": float(total or 0)} for status, tipo, qtd, total in query]
+        return jsonify({"resumo": resumo, "pendentes": []}), 200
 
-    pendentes_query = (
-        db.session.query(Transacao, Categoria.nome, FormaPagamento.nome)
-        .join(Categoria, Transacao.categoria_id == Categoria.id)
-        .join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
-        .filter(Transacao.status == "Pendente")
-    )
-    pendentes_query, erro = _parse_periodo(pendentes_query)
-    if erro:
-        return erro
+    try:
+        inicio_dt = datetime.strptime(inicio, "%Y-%m-%d").date()
+        fim_dt = datetime.strptime(fim, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    pendentes = [
-        {
-            "id": t.id,
-            "descricao": t.descricao,
-            "tipo": t.tipo,
-            "categoria": categoria,
-            "forma_pagamento": forma,
-            "data": t.data_transacao.isoformat() if t.data_transacao else None,
-            "valor": float(t.valor),
-        }
-        for t, categoria, forma in pendentes_query.order_by(Transacao.data_transacao.asc()).limit(200).all()
-    ]
+    itens = _obter_transacoes_periodo(inicio_dt, fim_dt, base=base)
+    resumo_map = {}
+    pendentes = []
 
-    return jsonify({"resumo": resumo, "pendentes": pendentes}), 200
+    for t, cat, forma, ref in itens:
+        chave = (t.status or "Pendente", t.tipo or "Outros")
+        if chave not in resumo_map:
+            resumo_map[chave] = {"status": chave[0], "tipo": chave[1], "qtd": 0, "total": 0.0}
+        resumo_map[chave]["qtd"] += 1
+        resumo_map[chave]["total"] += float(t.valor or 0)
+
+        if (t.status or "").lower() == "pendente":
+            pendentes.append({
+                "id": t.id,
+                "descricao": t.descricao,
+                "tipo": t.tipo,
+                "categoria": cat.nome if cat else "Sem categoria",
+                "forma_pagamento": forma.nome if forma else "Sem forma",
+                "data": ref.isoformat() if ref else (t.data_transacao.isoformat() if t.data_transacao else None),
+                "valor": float(t.valor),
+            })
+
+    resumo = [{"status": v["status"], "tipo": v["tipo"], "qtd": v["qtd"], "total": round(v["total"], 2)} for v in resumo_map.values()]
+    pendentes.sort(key=lambda x: x["data"] or "")
+
+    return jsonify({"resumo": resumo, "pendentes": pendentes[:200]}), 200
+
 
 # Parcelamentos com parcelas futuras (compromissos já assumidos)
 @bp_relatorios.route("/parcelamentos_futuros", methods=["GET"])
@@ -270,6 +395,8 @@ def parcelamentos_futuros():
             "forma_pagamento": forma,
             "total_parcelas": t.total_parcelas,
             "parcelas_restantes": 0,
+            "proxima_parcela": t.parcela_atual or 1,
+            "parcela_atual": max(1, (t.parcela_atual or 1) - 1),
             "valor_parcela": float(t.valor_parcela or t.valor),
             "valor_restante": 0.0,
             "proxima_data": t.data_transacao.isoformat(),
@@ -277,6 +404,9 @@ def parcelamentos_futuros():
         })
         grupo["parcelas_restantes"] += 1
         grupo["valor_restante"] = round(grupo["valor_restante"] + valor, 2)
+        if t.parcela_atual and t.parcela_atual < grupo["proxima_parcela"]:
+            grupo["proxima_parcela"] = t.parcela_atual
+            grupo["parcela_atual"] = max(1, t.parcela_atual - 1)
         data_iso = t.data_transacao.isoformat()
         if data_iso < grupo["proxima_data"]:
             grupo["proxima_data"] = data_iso
@@ -295,60 +425,30 @@ def parcelamentos_futuros():
         "qtd_grupos": len(grupos_lista),
     }), 200
 
+
 # Resumo anual
 @bp_relatorios.route("/sumario_anual", methods=["GET"])
 def sumario_anual():
-    from calendar import monthrange
     ano = request.args.get("ano", datetime.now().year)
     try:
         ano = int(ano)
-    except:
+    except Exception:
         ano = datetime.now().year
-    meses = [
-        "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
-        "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
-    ]
-    receita = []
-    despesa = []
-    investimento = []
-    sobrou = []
-    for m in range(1, 13):
-        ini = datetime(ano, m, 1)
-        fim = datetime(ano, m, monthrange(ano, m)[1])
-        # Receita
-        r = db.session.query(func.sum(Transacao.valor)).filter(
-            Transacao.tipo == "Receita",
-            Transacao.data_transacao.between(ini, fim)
-        ).scalar() or 0
-        receita.append(float(r))
-        # Despesa
-        d = db.session.query(func.sum(Transacao.valor)).filter(
-            Transacao.tipo == "Despesa",
-            Transacao.data_transacao.between(ini, fim)
-        ).scalar() or 0
-        despesa.append(float(d))
-        # Investimento
-        i = db.session.query(func.sum(Transacao.valor)).filter(
-            Transacao.tipo == "Investimento",
-            Transacao.data_transacao.between(ini, fim)
-        ).scalar() or 0
-        investimento.append(float(i))
-        # Quanto sobrou
-        sobrou.append(float(r) - float(d))
-    total_receita = sum(receita)
-    total_despesa = sum(despesa)
-    total_investimento = sum(investimento)
-    total_sobrou = sum(sobrou)
+
+    matriz = _calcular_matriz(ano, "categoria", False, None, "categoria")
+    sumario = matriz["sumario"]
+    totais = sumario["totais"]
+
     return jsonify({
-        "meses": meses,
-        "receita": receita,
-        "despesa": despesa,
-        "investimento": investimento,
-        "sobrou": sobrou,
-        "total_receita": total_receita,
-        "total_despesa": total_despesa,
-        "total_investimento": total_investimento,
-        "total_sobrou": total_sobrou
+        "meses": MESES_PT,
+        "receita": sumario["receita"],
+        "despesa": sumario["despesa"],
+        "investimento": sumario["investimento"],
+        "sobrou": sumario["saldo"],
+        "total_receita": totais["receita"],
+        "total_despesa": totais["despesa"],
+        "total_investimento": totais["investimento"],
+        "total_sobrou": totais["saldo"],
     })
 
 
@@ -370,11 +470,15 @@ def _zeros():
     return [0.0] * 12
 
 
-def _mes_referencia(transacao, usar_competencia, eh_cartao):
+def _mes_referencia(transacao, usar_competencia, eh_cartao, dia_fechamento=None, dia_vencimento=None):
     """Define em qual mês a transação será posicionada na matriz."""
-    if usar_competencia and eh_cartao and transacao.competencia_fatura:
-        return transacao.competencia_fatura
-    return transacao.data_transacao
+    return _data_referencia_transacao(
+        transacao,
+        eh_cartao=eh_cartao,
+        dia_fechamento=dia_fechamento,
+        dia_vencimento=dia_vencimento,
+        usar_competencia=usar_competencia,
+    )
 
 
 def _arredondar_linha(linha):
@@ -417,6 +521,8 @@ def _calcular_matriz(ano, agrupar, usar_competencia, status, cartoes_modo):
             Categoria.nome.label("categoria_nome"),
             FormaPagamento.cartao_credito.label("eh_cartao"),
             FormaPagamento.nome.label("forma_nome"),
+            FormaPagamento.dia_fechamento.label("dia_fechamento"),
+            FormaPagamento.dia_vencimento.label("dia_vencimento"),
         )
         .join(Categoria, Transacao.categoria_id == Categoria.id)
         .outerjoin(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
@@ -439,7 +545,13 @@ def _calcular_matriz(ano, agrupar, usar_competencia, status, cartoes_modo):
         if row.tipo not in sumario:
             continue
 
-        referencia = _mes_referencia(row, usar_competencia, bool(row.eh_cartao))
+        referencia = _mes_referencia(
+            row,
+            usar_competencia=usar_competencia,
+            eh_cartao=bool(row.eh_cartao),
+            dia_fechamento=row.dia_fechamento,
+            dia_vencimento=row.dia_vencimento,
+        )
         if not referencia or referencia.year != ano:
             continue
 

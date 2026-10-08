@@ -4,11 +4,13 @@ import type {
   InvestmentAssetPayload,
   InvestmentDashboard,
   MarketSnapshotResponse,
+  MarketSearchResult,
   InvestmentQuote,
   InvestmentTransaction,
   InvestmentTransactionPayload,
   InvestmentWallet,
   InvestmentWalletPayload,
+  SimulacaoRendaFixaResponse,
 } from '@/shared/types/investimento'
 
 const BASE = '/api/investimentos'
@@ -77,5 +79,29 @@ export const investimentosService = {
 
   marketSnapshot(token: string) {
     return httpClient.get<MarketSnapshotResponse>(`${BASE}/mercado/snapshot`, token)
+  },
+
+  getQuote(token: string, codigo: string) {
+    return httpClient.get<any>(`${BASE}/mercado/quote/${codigo}`, token)
+  },
+
+  searchMarket(token: string, query: string) {
+    const search = new URLSearchParams()
+    search.set('q', query)
+    return httpClient.get<MarketSearchResult[]>(`${BASE}/mercado/search?${search.toString()}`, token)
+  },
+
+  simulateFixedIncome(
+    token: string,
+    params: { valor_inicial?: number; prazo_meses?: number; aporte_mensal?: number }
+  ) {
+    const search = new URLSearchParams()
+    if (params.valor_inicial !== undefined) search.set('valor_inicial', String(params.valor_inicial))
+    if (params.prazo_meses !== undefined) search.set('prazo_meses', String(params.prazo_meses))
+    if (params.aporte_mensal !== undefined) search.set('aporte_mensal', String(params.aporte_mensal))
+    return httpClient.get<SimulacaoRendaFixaResponse>(
+      `${BASE}/mercado/renda-fixa/simular?${search.toString()}`,
+      token
+    )
   },
 }

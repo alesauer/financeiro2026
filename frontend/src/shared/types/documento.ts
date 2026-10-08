@@ -4,6 +4,8 @@ export type TipoDocumento = {
   id: number
   nome: string
   descricao: string | null
+  icone?: string | null
+  cor?: string | null
   ativo: boolean
 }
 
@@ -23,8 +25,18 @@ export type Documento = {
   usuario_id: number
   tipo_documento_id: number
   tipo_documento_nome?: string | null
+  tipo_documento_icone?: string | null
+  tipo_documento_cor?: string | null
   nome: string
   registro: string | null
+  emissor?: string | null
+  titular?: string | null
+  data_emissao?: string | null
+  data_validade?: string | null
+  cor_pass?: string | null
+  icone?: string | null
+  favorito?: boolean
+  tags?: string | null
   outras_informacoes: string | null
   anexos?: DocumentoAnexo[]
   created_at: string
@@ -34,8 +46,17 @@ export type Documento = {
 export type DocumentoPayload = {
   tipo_documento_id: number
   nome: string
-  registro: string | null
-  outras_informacoes: string | null
+  registro?: string | null
+  emissor?: string | null
+  titular?: string | null
+  data_emissao?: string | null
+  data_validade?: string | null
+  cor_pass?: string | null
+  icone?: string | null
+  favorito?: boolean
+  tags?: string | null
+  outras_informacoes?: string | null
 }
 
 export type DocumentoPaginated = PaginatedResponse<Documento>
+

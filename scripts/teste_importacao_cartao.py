@@ -127,8 +127,8 @@ def eh_pagamento_fatura(descricao, valor):
 
 
 def eh_ignorada(descricao, valor):
-    """Espelha ignorar_lancamento_importacao: qualquer negativo é descartado."""
-    return valor < 0
+    """Apenas pagamentos de fatura são descartados; estornos são importados."""
+    return eh_pagamento_fatura(descricao, valor)
 
 
 # ---------------------------------------------------------------------------
@@ -214,8 +214,9 @@ checar_pag = len(pagamentos) >= 1
 checa("pagamento de fatura identificado", checar_pag,
       f"{len(pagamentos)}: {[p['title'] for p in pagamentos]}")
 negativos = [x for x in linhas if x["amount"] < 0]
-checa("todo lançamento negativo é descartado", all(x in ignoradas for x in negativos),
-      f"{len(negativos)} negativos, {len(ignoradas)} ignorados")
+estornos = [x for x in negativos if not eh_pagamento_fatura(x["title"], x["amount"])]
+checa("pagamentos descartados e estornos preservados", len(pagamentos) + len(estornos) == len(negativos),
+      f"{len(negativos)} negativos = {len(pagamentos)} pags + {len(estornos)} estornos")
 
 duplicadas_no_arquivo = [
     k for k, v in Counter((x["date"], x["title"], x["amount"]) for x in linhas if not x["parcelado"]).items()
@@ -296,9 +297,9 @@ checa("competência única para toda a fatura (2026-05-01)", comp_ok, str(comps)
 checa("todas marcadas como Pago", all(x["status"] == "Pago" for x in importadas),
       str(sorted({x["status"] for x in importadas})))
 
-checa("nenhum valor negativo persistido",
-      all(float(x["valor"]) > 0 for x in importadas),
-      str([(x["descricao"], x["valor"]) for x in importadas if float(x["valor"]) <= 0][:4]))
+checa("estornos importados com valor negativo para abater da fatura",
+      any(float(x["valor"]) < 0 for x in importadas),
+      str([(x["descricao"], x["valor"]) for x in importadas if float(x["valor"]) < 0][:4]))
 
 soma_arquivo = sum(Decimal(str(x["amount"])) for x in linhas if x not in ignoradas)
 soma_banco = sum(Decimal(str(x["valor"])) for x in importadas)

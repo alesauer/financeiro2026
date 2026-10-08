@@ -9,6 +9,9 @@ services:
       SECRET_KEY: docker-secret-key
       JWT_SECRET_KEY: docker-jwt-secret-key
       OPENAI_API_KEY: ""
+      BRAPI_API_TOKEN: rXb5f2VaNRrJpg3DGA342h
+      PLUGGY_CLIENT_ID: d46104dd-3c5f-4b2a-8d44-cdece3212d91
+      PLUGGY_CLIENT_SECRET: e8c4505e-c877-4ddf-9c28-9799a151d8ec
       MAILGUN_API_KEY: ""
       MAILGUN_DOMAIN: ""
       MAILGUN_BASE_URL: https://api.mailgun.net

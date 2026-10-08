@@ -6,6 +6,8 @@ export type FormaPagamento = {
   dia_fechamento: number | null
   dia_vencimento: number | null
   ativo: boolean
+  icone?: string | null
+  cor?: string | null
 }
 
 export type FormaPagamentoPayload = {
@@ -15,4 +17,6 @@ export type FormaPagamentoPayload = {
   dia_fechamento: number | null
   dia_vencimento: number | null
   ativo: boolean
+  icone?: string | null
+  cor?: string | null
 }

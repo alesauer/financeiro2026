@@ -6,6 +6,7 @@ import { PrivateRoute } from '@/app/router/PrivateRoute'
 import { LoginPage } from '@/features/auth/pages/LoginPage'
 import { CategoriasPage } from '@/features/categorias/pages/CategoriasPage'
 import { DashboardPage } from '@/features/dashboard/pages/DashboardPage'
+import { ConfiguracoesPage } from '@/features/configuracoes/pages/ConfiguracoesPage'
 import { DocumentosPage } from '@/features/documentos/pages/DocumentosPage'
 import { FormasPagamentoPage } from '@/features/formasPagamento/pages/FormasPagamentoPage'
 import { IaPage } from '@/features/ia/pages/IaPage'
@@ -45,6 +46,7 @@ export function AppRouter() {
             <Route path="/viagens" element={<ViagensPage />} />
             <Route path="/ia" element={<IaPage />} />
             <Route path="/importacao" element={<ImportacaoPage />} />
+            <Route path="/configuracoes" element={<ConfiguracoesPage />} />
           </Route>
         </Route>
 

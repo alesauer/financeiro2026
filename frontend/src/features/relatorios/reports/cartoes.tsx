@@ -168,11 +168,12 @@ export function ParcelamentosFuturosReport() {
           ? {
               titulo: 'Parcelamentos futuros',
               subtitulo: `Gerado em ${formatDateBr(new Date().toISOString().slice(0, 10))}`,
-              colunas: ['Descrição', 'Cartão/Forma', 'Parcelas restantes', 'Valor parcela', 'Valor restante', 'Próxima', 'Última'],
+              colunas: ['Descrição', 'Cartão/Forma', 'Parcela Atual', 'Parcelas Restantes', 'Valor parcela', 'Valor restante', 'Próxima', 'Última'],
               linhas: dados.grupos.map((g) => [
                 g.descricao,
                 g.forma_pagamento,
-                g.total_parcelas ? `${g.parcelas_restantes}/${g.total_parcelas}` : String(g.parcelas_restantes),
+                g.parcela_atual && g.total_parcelas ? `${g.parcela_atual}/${g.total_parcelas}` : String(g.total_parcelas ?? '-'),
+                String(g.parcelas_restantes),
                 g.valor_parcela,
                 g.valor_restante,
                 formatDateBr(g.proxima_data),
@@ -213,6 +214,7 @@ export function ParcelamentosFuturosReport() {
                 <tr className="border-b border-[var(--color-border)]">
                   <th className={thCls}>Descrição</th>
                   <th className={thCls}>Cartão/Forma</th>
+                  <th className={thNumCls}>Parcela Atual</th>
                   <th className={thNumCls}>Restantes</th>
                   <th className={thNumCls}>Valor parcela</th>
                   <th className={thNumCls}>Valor restante</th>
@@ -226,7 +228,14 @@ export function ParcelamentosFuturosReport() {
                     <td className={tdCls}>{grupo.descricao}</td>
                     <td className={tdCls}>{grupo.forma_pagamento}</td>
                     <td className={tdNumCls}>
-                      {grupo.total_parcelas ? `${grupo.parcelas_restantes} de ${grupo.total_parcelas}` : grupo.parcelas_restantes}
+                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                        {grupo.parcela_atual ? `${grupo.parcela_atual} de ${grupo.total_parcelas}` : `${grupo.total_parcelas}x`}
+                      </span>
+                    </td>
+                    <td className={tdNumCls}>
+                      <span className="font-semibold text-purple-900">
+                        {grupo.parcelas_restantes} {grupo.parcelas_restantes === 1 ? 'parcela' : 'parcelas'}
+                      </span>
                     </td>
                     <td className={tdNumCls}>{fmt(grupo.valor_parcela)}</td>
                     <td className={`${tdNumCls} font-medium`}>{fmt(grupo.valor_restante)}</td>

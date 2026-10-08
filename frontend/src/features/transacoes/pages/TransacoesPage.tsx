@@ -1,14 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import { RefreshCw } from 'lucide-react'
 
 import { useAuth } from '@/app/providers/AuthProvider'
+import { MonthNavigator } from '@/features/transacoes/components/MonthNavigator'
+import { FaturaCard } from '@/features/transacoes/components/FaturaCard'
+import { FaturaDrawer } from '@/features/transacoes/components/FaturaDrawer'
 import { categoriasService } from '@/features/categorias/services/categoriasService'
 import { formasPagamentoService } from '@/features/formasPagamento/services/formasPagamentoService'
 import { transacoesService } from '@/features/transacoes/services/transacoesService'
 import type { Categoria } from '@/shared/types/categoria'
 import type { FormaPagamento } from '@/shared/types/formaPagamento'
 import type {
+  FaturaCartao,
   FrequenciaRecorrencia,
   PaginatedResponse,
   Transacao,
@@ -22,20 +27,6 @@ import { getErrorMessage } from '@/shared/utils/error'
 const TIPOS = ['Receita', 'Despesa', 'Investimento'] as const
 const STATUS: TransacaoStatus[] = ['Pago', 'Pendente']
 const FREQUENCIAS: FrequenciaRecorrencia[] = ['Diária', 'Semanal', 'Mensal', 'Semestral', 'Anual']
-const MESES_NOME = [
-  'Janeiro',
-  'Fevereiro',
-  'Março',
-  'Abril',
-  'Maio',
-  'Junho',
-  'Julho',
-  'Agosto',
-  'Setembro',
-  'Outubro',
-  'Novembro',
-  'Dezembro',
-]
 
 function isoToday() {
   return new Date().toISOString().slice(0, 10)
@@ -72,7 +63,9 @@ export function TransacoesPage() {
 
   const [listagem, setListagem] = useState<PaginatedResponse<Transacao> | null>(null)
   const [resumo, setResumo] = useState<TransacaoSummary | null>(null)
-  const [cartaoTransacoes, setCartaoTransacoes] = useState<Transacao[]>([])
+  const [faturas, setFaturas] = useState<FaturaCartao[]>([])
+  const [faturaDrawerOpen, setFaturaDrawerOpen] = useState(false)
+  const [faturaSelecionada, setFaturaSelecionada] = useState<FaturaCartao | null>(null)
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -92,13 +85,9 @@ export function TransacoesPage() {
   })
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
-  const [paginaCartao, setPaginaCartao] = useState(1)
-  const [porPaginaCartao] = useState(4)
-
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState<TransacaoPayload>(EMPTY_FORM)
   const [isFormOpen, setIsFormOpen] = useState(false)
-  const [openGruposCartao, setOpenGruposCartao] = useState<Record<string, boolean>>({})
   const [acoesOpen, setAcoesOpen] = useState(false)
   const acoesRef = useRef<HTMLDivElement | null>(null)
 
@@ -119,69 +108,23 @@ export function TransacoesPage() {
 
   const tituloFormulario = useMemo(() => (editingId ? 'Editar transação' : 'Nova transação'), [editingId])
 
-  const gruposCartao = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        key: string
-        formaPagamentoId: number
-        cartaoNome: string
-        competencia: string | null
-        vencimentoLabel: string
-        total: number
-        items: Transacao[]
-      }
-    >()
-
-    for (const item of cartaoTransacoes) {
-      if (statusFiltro && item.status !== statusFiltro) continue
-
-      const forma = formasById.get(item.forma_pagamento_id)
-      const isCartao = item.forma_pagamento_cartao ?? forma?.cartao_credito ?? false
-      if (!isCartao) continue
-
-      const competencia =
-        normalizarCompetencia(item.competencia_fatura) ?? calcularCompetenciaFatura(item.data_transacao, forma?.dia_fechamento)
-      const key = `${item.forma_pagamento_id}|${competencia ?? 'sem-competencia'}`
-      const cartaoNome = item.forma_pagamento_nome ?? forma?.nome ?? 'Cartão de crédito'
-      const vencimentoLabel = formatarVencimento(competencia, forma?.dia_vencimento)
-      const valorEfetivo = getValorEfetivo(item)
-
-      const existente = map.get(key)
-      if (existente) {
-        existente.total += valorEfetivo
-        existente.items.push(item)
-      } else {
-        map.set(key, {
-          key,
-          formaPagamentoId: item.forma_pagamento_id,
-          cartaoNome,
-          competencia,
-          vencimentoLabel,
-          total: valorEfetivo,
-          items: [item],
-        })
-      }
+  const totaisCartaoGeral = useMemo(() => {
+    if (faturas.length > 0) {
+      const gastosReais = faturas.reduce((acc, f) => acc + f.total, 0)
+      const prePagos = faturas.reduce((acc, f) => acc + f.total_pagas, 0)
+      const saldoPendente = faturas.reduce((acc, f) => acc + f.total_pendentes, 0)
+      const qtdEstornos = faturas.reduce((acc, f) => acc + f.qtd_estornos, 0)
+      const somaEstornos = faturas.reduce((acc, f) => acc + f.soma_estornos, 0)
+      return { gastosReais, prePagos, saldoPendente, qtdEstornos, somaEstornos }
     }
-
-    return Array.from(map.values()).sort((a, b) => {
-      const compA = a.competencia ?? ''
-      const compB = b.competencia ?? ''
-      if (compA !== compB) return compB.localeCompare(compA)
-      return a.cartaoNome.localeCompare(b.cartaoNome)
-    })
-  }, [cartaoTransacoes, formasById, statusFiltro])
-  const totalPaginasCartao = Math.max(1, Math.ceil(gruposCartao.length / porPaginaCartao))
-  const paginaCartaoAtual = Math.min(paginaCartao, totalPaginasCartao)
-  const gruposCartaoPaginados = useMemo(() => {
-    const inicioSlice = (paginaCartaoAtual - 1) * porPaginaCartao
-    const fimSlice = inicioSlice + porPaginaCartao
-    return gruposCartao.slice(inicioSlice, fimSlice)
-  }, [gruposCartao, paginaCartaoAtual, porPaginaCartao])
-
-  const toggleGrupoCartao = (key: string) => {
-    setOpenGruposCartao((prev) => ({ ...prev, [key]: !prev[key] }))
-  }
+    return {
+      gastosReais: resumo?.cartao_credito_total ?? 0,
+      prePagos: resumo?.cartao_credito_pago ?? 0,
+      saldoPendente: resumo?.cartao_credito_pendente ?? (resumo?.cartao_credito_total ?? 0),
+      qtdEstornos: 0,
+      somaEstornos: 0,
+    }
+  }, [faturas, resumo])
 
   // Categorias compatíveis com o tipo escolhido no formulário.
   const categoriasDoTipo = useMemo(
@@ -230,15 +173,39 @@ export function TransacoesPage() {
 
   const carregarCartaoCredito = async () => {
     if (!token) {
-      setCartaoTransacoes([])
+      setFaturas([])
       return
     }
 
     try {
       const data = await transacoesService.cartaoCredito(token, inicio, fim)
-      setCartaoTransacoes(data.transacoes ?? [])
+      setFaturas(data.faturas ?? [])
+      if (faturaSelecionada) {
+        const faturaAtualizada = data.faturas?.find((f) => f.key === faturaSelecionada.key)
+        if (faturaAtualizada) setFaturaSelecionada(faturaAtualizada)
+      }
     } catch {
-      setCartaoTransacoes([])
+      setFaturas([])
+    }
+  }
+
+  const handleQuitarFatura = async (fatura: FaturaCartao, status: 'Pago' | 'Pendente') => {
+    if (!token) return
+    try {
+      await transacoesService.quitarFatura(token, fatura.forma_pagamento_id, fatura.competencia, status)
+      await Promise.all([carregarListagem(), carregarCartaoCredito()])
+    } catch (err) {
+      setError(getErrorMessage(err, 'Erro ao atualizar status da fatura.'))
+    }
+  }
+
+  const handleExcluirLoteFatura = async (ids: number[]) => {
+    if (!token || ids.length === 0) return
+    try {
+      await transacoesService.removeLote(token, ids)
+      await Promise.all([carregarListagem(), carregarCartaoCredito()])
+    } catch (err) {
+      setError(getErrorMessage(err, 'Erro ao excluir lançamentos da fatura.'))
     }
   }
 
@@ -289,14 +256,6 @@ export function TransacoesPage() {
   }, [inicio, fim, mesFiltro, tipoFiltro, categoriaFiltro, setSearchParams])
 
   useEffect(() => {
-    setPaginaCartao(1)
-  }, [inicio, fim, statusFiltro])
-
-  useEffect(() => {
-    setPaginaCartao((prev) => Math.min(prev, totalPaginasCartao))
-  }, [totalPaginasCartao])
-
-  useEffect(() => {
     carregarCartaoCredito()
   }, [token, inicio, fim])
 
@@ -325,6 +284,15 @@ export function TransacoesPage() {
     resetForm()
     setIsFormOpen(true)
   }
+
+  useEffect(() => {
+    if (searchParams.get('novo') === 'true') {
+      abrirNovoFormulario()
+      const params = new URLSearchParams(searchParams)
+      params.delete('novo')
+      setSearchParams(params, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   const cancelarFormulario = () => {
     resetForm()
@@ -486,11 +454,64 @@ export function TransacoesPage() {
       </header>
 
       {resumo ? (
-        <div className="grid gap-3 md:grid-cols-4">
-          <ResumoCard label="Receitas" valor={resumo.receitas} tone="text-emerald-600" />
-          <ResumoCard label="Despesas" valor={resumo.despesas} tone="text-rose-600" />
-          <ResumoCard label="Cartão Crédito" valor={resumo.cartao_credito_total} tone="text-sky-600" />
-          <ResumoCard label="Saldo" valor={resumo.saldo} tone="text-[var(--color-text)]" />
+        <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+          <ResumoCard
+            label="Receitas"
+            valor={resumo.receitas}
+            tone="text-emerald-600"
+            subContent={
+              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Total entradas do mês</p>
+            }
+          />
+          <ResumoCard
+            label="Outras Despesas"
+            valor={resumo.despesas_conta}
+            tone="text-amber-600"
+            subContent={
+              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Conta corrente / Pix / Boletos</p>
+            }
+          />
+          <ResumoCard
+            label="Cartão Crédito"
+            valor={totaisCartaoGeral.gastosReais || resumo.cartao_credito_total}
+            tone="text-sky-600"
+            subContent={
+              totaisCartaoGeral.saldoPendente > 0 ? (
+                <div className="mt-2.5 space-y-1 border-t border-[var(--color-border)]/70 pt-2 text-xs">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-[var(--color-muted)]">Pré-pagos:</span>
+                    <span className="font-semibold text-emerald-700">
+                      {formatCurrency(totaisCartaoGeral.prePagos)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-[var(--color-text)]">Total fatura:</span>
+                    <span className="font-bold text-purple-900">
+                      {formatCurrency(totaisCartaoGeral.saldoPendente)}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-1 text-[11px] text-[var(--color-muted)]">Faturas do período</p>
+              )
+            }
+          />
+          <ResumoCard
+            label="Total Despesas"
+            valor={(resumo.despesas_conta ?? 0) + (totaisCartaoGeral.gastosReais || resumo.cartao_credito_total)}
+            tone="text-rose-600"
+            subContent={
+              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Outras Desp. + Cartão</p>
+            }
+          />
+          <ResumoCard
+            label="Saldo"
+            valor={resumo.receitas - ((resumo.despesas_conta ?? 0) + (totaisCartaoGeral.gastosReais || resumo.cartao_credito_total))}
+            tone={(resumo.receitas - ((resumo.despesas_conta ?? 0) + (totaisCartaoGeral.gastosReais || resumo.cartao_credito_total))) >= 0 ? 'text-emerald-600' : 'text-rose-600'}
+            subContent={
+              <p className="mt-1 text-[11px] text-[var(--color-muted)]">Receitas − Total Desp.</p>
+            }
+          />
         </div>
       ) : null}
 
@@ -819,100 +840,71 @@ export function TransacoesPage() {
           </div>
         ) : null}
 
-        {editingId ? null : <div className="mb-4 grid gap-2 md:grid-cols-6">
-            <div className="flex items-center gap-2">
+        {editingId ? null : (
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            {/* Seletor de Mês SaaS (Setas < Mês Ano >, Popover e Mês Atual) */}
+            <MonthNavigator
+              inicio={inicio}
+              fim={fim}
+              mesFiltro={mesFiltro}
+              onChangeRange={(novoInicio, novoFim, novoMes) => {
+                setPage(1)
+                setInicio(novoInicio)
+                setFim(novoFim)
+                setMesFiltro(novoMes)
+              }}
+            />
+
+            {/* Filtros de Tipo, Status e Ação de Atualizar */}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={tipoFiltro}
+                onChange={(event) => {
+                  setPage(1)
+                  setTipoFiltro(event.target.value as Categoria['tipo'] | '')
+                }}
+                className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-medium text-[var(--color-text)] outline-none transition focus:border-[var(--color-primary)]"
+              >
+                <option value="">Todos os tipos</option>
+                {TIPOS.map((tipo) => (
+                  <option key={tipo} value={tipo}>
+                    {tipo}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                value={statusFiltro}
+                onChange={(event) => {
+                  setPage(1)
+                  setStatusFiltro(event.target.value as TransacaoStatus | '')
+                }}
+                className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-medium text-[var(--color-text)] outline-none transition focus:border-[var(--color-primary)]"
+              >
+                <option value="">Todos os status</option>
+                {STATUS.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+
               <button
                 type="button"
-                className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white"
-              >
-                Mês
-              </button>
-              <select
-                value={mesFiltro.slice(5, 7)}
-                onChange={(event) => {
-                  const mesNumero = event.target.value
-                  const anoSelecionado = inicio.slice(0, 4) || new Date().getFullYear().toString()
-                  const mes = `${anoSelecionado}-${mesNumero}`
-                  const [ano, mesNum] = mes.split('-').map(Number)
-                  const ultimoDia = new Date(ano, mesNum, 0).getDate()
+                onClick={() => {
                   setPage(1)
-                  setMesFiltro(mes)
-                  setInicio(`${mes}-01`)
-                  setFim(`${mes}-${String(ultimoDia).padStart(2, '0')}`)
+                  carregarListagem(1)
+                  carregarCartaoCredito()
                 }}
-                className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
+                title="Atualizar lançamentos"
+                className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-medium text-[var(--color-text)] shadow-sm transition hover:bg-[var(--color-bg)] hover:text-[var(--color-primary)]"
               >
-                {MESES_NOME.map((nome, index) => {
-                  const valor = String(index + 1).padStart(2, '0')
-                  return (
-                    <option key={valor} value={valor}>
-                      {nome}
-                    </option>
-                  )
-                })}
-              </select>
+                <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+                <span className="hidden sm:inline">Atualizar</span>
+              </button>
             </div>
-            <input
-              type="date"
-              value={inicio}
-              onChange={(event) => {
-                setPage(1)
-                setInicio(event.target.value)
-                if (event.target.value) setMesFiltro(event.target.value.slice(0, 7))
-              }}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-            />
-            <input
-              type="date"
-              value={fim}
-              onChange={(event) => {
-                setPage(1)
-                setFim(event.target.value)
-                if (event.target.value) setMesFiltro(event.target.value.slice(0, 7))
-              }}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-            />
-            <select
-              value={tipoFiltro}
-              onChange={(event) => {
-                setPage(1)
-                setTipoFiltro(event.target.value as Categoria['tipo'] | '')
-              }}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-            >
-              <option value="">Todos os tipos</option>
-              {TIPOS.map((tipo) => (
-                <option key={tipo} value={tipo}>
-                  {tipo}
-                </option>
-              ))}
-            </select>
-            <select
-              value={statusFiltro}
-              onChange={(event) => {
-                setPage(1)
-                setStatusFiltro(event.target.value as TransacaoStatus | '')
-              }}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-            >
-              <option value="">Todos os status</option>
-              {STATUS.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-            <button
-              type="button"
-              onClick={() => {
-                setPage(1)
-                carregarListagem(1)
-              }}
-              className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm font-medium"
-            >
-              Atualizar
-            </button>
-        </div>}
+          </div>
+        )}
 
         {editingId || !categoriaFiltro ? null : (
           <div className="mb-4 flex items-center gap-2 rounded-[var(--radius-sm)] border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-800">
@@ -938,148 +930,33 @@ export function TransacoesPage() {
 
         {error ? <p className="mb-3 text-sm text-rose-600">{error}</p> : null}
 
-        {editingId ? null : gruposCartao.length > 0 ? (
-          <section className="mb-4 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg)]/30 p-3">
-            <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Faturas de cartão</h4>
-            <div className="space-y-2">
-              {gruposCartaoPaginados.map((grupo) => {
-                const isOpen = Boolean(openGruposCartao[grupo.key])
-                return (
-                  <div key={grupo.key} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]">
-                    <button
-                      type="button"
-                      onClick={() => toggleGrupoCartao(grupo.key)}
-                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
-                    >
-                      <div>
-                        <p className="text-sm font-semibold text-[var(--color-text)]">{grupo.cartaoNome}</p>
-                        <p className="text-xs text-[var(--color-muted)]">
-                          Fatura {formatarCompetencia(grupo.competencia)} · {grupo.vencimentoLabel} · {grupo.items.length} compra(s)
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-sm font-semibold text-[var(--color-text)]">{formatCurrency(grupo.total)}</p>
-                        <p className="text-xs text-[var(--color-muted)]">{isOpen ? 'Ocultar compras' : 'Ver compras'}</p>
-                      </div>
-                    </button>
-
-                    {isOpen ? (
-                      <div className="border-t border-[var(--color-border)] px-3 py-2">
-                        <div className="space-y-2 md:hidden">
-                          {grupo.items.map((item) => (
-                            <article key={item.id} className="rounded-[var(--radius-sm)] border border-[var(--color-border)] p-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-sm font-medium text-[var(--color-text)]">{item.descricao}</p>
-                                <p className="text-sm font-semibold">{formatCurrency(getValorEfetivo(item))}</p>
-                              </div>
-                              <p className="mt-1 text-xs text-[var(--color-muted)]">
-                                {item.data_transacao} · {item.status} · {item.categoria_nome ?? '-'}
-                              </p>
-                              <div className="mt-2 flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => iniciarEdicao(item)}
-                                  className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                                >
-                                  Editar
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDelete(item.id)}
-                                  className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs text-rose-600"
-                                >
-                                  Excluir
-                                </button>
-                              </div>
-                            </article>
-                          ))}
-                        </div>
-
-                        <div className="hidden overflow-x-auto md:block">
-                          <table className="min-w-full border-collapse text-sm">
-                            <thead>
-                              <tr className="border-b border-[var(--color-border)] text-left">
-                                <th className="py-2 pr-3">Data</th>
-                                <th className="py-2 pr-3">Descrição</th>
-                                <th className="py-2 pr-3">Categoria</th>
-                                <th className="py-2 pr-3">Status</th>
-                                <th className="py-2 pr-3">Valor</th>
-                                <th className="py-2 text-right">Ações</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {grupo.items.map((item) => (
-                                <tr key={item.id} className="border-b border-[var(--color-border)]/70">
-                                  <td className="py-2 pr-3">{item.data_transacao}</td>
-                                  <td className="py-2 pr-3">{item.descricao}</td>
-                                  <td className="py-2 pr-3">{item.categoria_nome ?? '-'}</td>
-                                  <td className="py-2 pr-3">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleToggleStatus(item)}
-                                      disabled={statusUpdatingId === item.id}
-                                      className={`rounded-[var(--radius-sm)] border px-2 py-1 text-xs disabled:opacity-50 ${getStatusClassName(item.status)}`}
-                                      title="Clique para alternar entre Pago e Pendente"
-                                    >
-                                      {statusUpdatingId === item.id ? 'Salvando...' : item.status}
-                                    </button>
-                                  </td>
-                                  <td className="py-2 pr-3">{formatCurrency(getValorEfetivo(item))}</td>
-                                  <td className="py-2 text-right">
-                                    <div className="inline-flex items-center gap-2">
-                                      <button
-                                        type="button"
-                                        onClick={() => iniciarEdicao(item)}
-                                        className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                                      >
-                                        Editar
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDelete(item.id)}
-                                        className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs text-rose-600"
-                                      >
-                                        Excluir
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                )
-              })}
+        {editingId ? null : faturas.length > 0 ? (
+          <section className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-xs">
+            <div className="mb-2 flex items-center justify-between gap-2 border-b border-[var(--color-border)] pb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm">💳</span>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-[var(--color-text)]">
+                  Faturas com Vencimento no Mês
+                </h4>
+                <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 border border-indigo-200">
+                  {faturas.length} {faturas.length === 1 ? 'cartão' : 'cartões'}
+                </span>
+              </div>
             </div>
 
-            {gruposCartao.length > porPaginaCartao ? (
-              <footer className="mt-3 flex items-center justify-between text-sm">
-                <span className="text-[var(--color-muted)]">
-                  Página {paginaCartaoAtual} de {totalPaginasCartao}
-                </span>
-                <div className="inline-flex items-center gap-2">
-                  <button
-                    type="button"
-                    disabled={paginaCartaoAtual <= 1}
-                    onClick={() => setPaginaCartao((prev) => Math.max(1, prev - 1))}
-                    className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-1 disabled:opacity-50"
-                  >
-                    Anterior
-                  </button>
-                  <button
-                    type="button"
-                    disabled={paginaCartaoAtual >= totalPaginasCartao}
-                    onClick={() => setPaginaCartao((prev) => Math.min(totalPaginasCartao, prev + 1))}
-                    className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-1 disabled:opacity-50"
-                  >
-                    Próxima
-                  </button>
-                </div>
-              </footer>
-            ) : null}
+            <div className="flex flex-col gap-2">
+              {faturas.map((fatura) => (
+                <FaturaCard
+                  key={fatura.key}
+                  fatura={fatura}
+                  onAbrirDrawer={(f) => {
+                    setFaturaSelecionada(f)
+                    setFaturaDrawerOpen(true)
+                  }}
+                  onQuitarFatura={(f, status) => handleQuitarFatura(f, status)}
+                />
+              ))}
+            </div>
           </section>
         ) : null}
 
@@ -1232,96 +1109,31 @@ export function TransacoesPage() {
           </div>
         </footer>}
       </article>
+
+      {/* Drawer Lateral de Fatura Consolidada */}
+      <FaturaDrawer
+        isOpen={faturaDrawerOpen}
+        fatura={faturaSelecionada}
+        onClose={() => setFaturaDrawerOpen(false)}
+        onEditarTransacao={(t) => {
+          setFaturaDrawerOpen(false)
+          iniciarEdicao(t)
+        }}
+        onExcluirTransacao={async (id) => {
+          await handleDelete(id)
+          await carregarCartaoCredito()
+        }}
+        onQuitarFatura={(fatura, status) => handleQuitarFatura(fatura, status)}
+        onExcluirLote={(ids) => handleExcluirLoteFatura(ids)}
+      />
     </section>
   )
-}
-
-function calcularCompetenciaFatura(dataTransacao: string, diaFechamento?: number | null) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(dataTransacao)) return null
-  const [anoStr, mesStr, diaStr] = dataTransacao.split('-')
-  const ano = Number(anoStr)
-  const mes = Number(mesStr)
-  const dia = Number(diaStr)
-  if (!ano || !mes || !dia) return null
-
-  if (!diaFechamento || diaFechamento <= 0) {
-    return `${anoStr}-${mesStr}`
-  }
-
-  const dataCompetencia = new Date(ano, mes - 1, 1)
-  if (dia > diaFechamento) {
-    dataCompetencia.setMonth(dataCompetencia.getMonth() + 1)
-  }
-
-  const anoComp = dataCompetencia.getFullYear()
-  const mesComp = String(dataCompetencia.getMonth() + 1).padStart(2, '0')
-  return `${anoComp}-${mesComp}`
-}
-
-function formatarCompetencia(competencia: string | null) {
-  if (!competencia) return '-'
-
-  const matchIsoDia = competencia.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (matchIsoDia) return `${matchIsoDia[2]}/${matchIsoDia[1]}`
-
-  const matchIso = competencia.match(/^(\d{4})-(\d{2})$/)
-  if (matchIso) return `${matchIso[2]}/${matchIso[1]}`
-
-  const matchBr = competencia.match(/^(\d{2})\/(\d{4})$/)
-  if (matchBr) return competencia
-
-  return competencia
-}
-
-function formatarVencimento(competencia: string | null, diaVencimento?: number | null) {
-  if (!competencia || !diaVencimento || diaVencimento <= 0) return 'Vencimento não informado'
-
-  let ano: number | null = null
-  let mes: number | null = null
-
-  const matchIso = competencia.match(/^(\d{4})-(\d{2})$/)
-  if (matchIso) {
-    ano = Number(matchIso[1])
-    mes = Number(matchIso[2])
-  } else {
-    const matchIsoDia = competencia.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-    if (matchIsoDia) {
-      ano = Number(matchIsoDia[1])
-      mes = Number(matchIsoDia[2])
-    }
-
-    const matchBr = competencia.match(/^(\d{2})\/(\d{4})$/)
-    if (matchBr) {
-      mes = Number(matchBr[1])
-      ano = Number(matchBr[2])
-    }
-  }
-
-  if (!ano || !mes) return `Venc. dia ${diaVencimento}`
-
-  const ultimoDiaMes = new Date(ano, mes, 0).getDate()
-  const dia = Math.min(diaVencimento, ultimoDiaMes)
-  return `Venc. ${String(dia).padStart(2, '0')}/${String(mes).padStart(2, '0')}/${ano}`
 }
 
 function getTipoClassName(tipo: Categoria['tipo']) {
   if (tipo === 'Receita') return 'text-emerald-600'
   if (tipo === 'Despesa') return 'text-rose-600'
   return 'text-[var(--color-text)]'
-}
-
-function normalizarCompetencia(competencia?: string | null) {
-  if (!competencia) return null
-  const isoDia = competencia.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (isoDia) return `${isoDia[1]}-${isoDia[2]}`
-
-  const isoMes = competencia.match(/^(\d{4})-(\d{2})$/)
-  if (isoMes) return competencia
-
-  const brMes = competencia.match(/^(\d{2})\/(\d{4})$/)
-  if (brMes) return `${brMes[2]}-${brMes[1]}`
-
-  return competencia
 }
 
 function getValorEfetivo(item: Transacao) {
@@ -1340,11 +1152,24 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function ResumoCard({ label, valor, tone }: { label: string; valor: number; tone: string }) {
+function ResumoCard({
+  label,
+  valor,
+  tone,
+  subContent,
+}: {
+  label: string
+  valor: number
+  tone: string
+  subContent?: React.ReactNode
+}) {
   return (
-    <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
-      <p className={`mt-2 text-xl font-semibold ${tone}`}>{formatCurrency(valor)}</p>
+    <article className="flex flex-col justify-between rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3 shadow-2xs">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)]">{label}</p>
+        <p className={`mt-2 text-xl font-semibold ${tone}`}>{formatCurrency(valor)}</p>
+      </div>
+      {subContent}
     </article>
   )
 }

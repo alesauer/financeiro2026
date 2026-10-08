@@ -6,6 +6,7 @@ from datetime import datetime
 from app.utils.texto import normalizar_texto
 from app.utils.datas import parse_dia_override
 from services.fatura_service import aplicar_competencia_transacao
+from services.categorization import salvar_ou_atualizar_alias
 from flask_jwt_extended import jwt_required
 from uuid import uuid4
 from dateutil.relativedelta import relativedelta
@@ -24,52 +25,65 @@ def limpar_marcador_parcela(texto: str | None) -> str:
     return limpo.strip()
 
 
-def ignorar_lancamento_importacao(descricao: str | None, valor: float) -> bool:
-    """Lançamentos que não representam compra: pagamento de fatura e estornos/créditos.
-
-    Valores negativos (IOF devolvido, estornos, créditos) não podem virar despesa
-    negativa — o schema de transações exige valor > 0.
-    """
-    if valor >= 0:
+def eh_pagamento_fatura(descricao: str | None, valor: float = 0) -> bool:
+    if not descricao:
         return False
-    return True
+    texto_norm = normalizar_texto(descricao)
+    termos = [
+        "pagamento recebido",
+        "pagamento da fatura",
+        "pagamento fatura",
+        "pagamento de fatura",
+        "pagamento cartao",
+        "pagamento efetuado",
+        "pagamento antecipado"
+    ]
+    return any(t in texto_norm for t in termos)
 
 
-def contar_duplicatas_nao_parceladas(
+def ignorar_lancamento_importacao(descricao: str | None, valor: float) -> bool:
+    """Lançamentos que não representam compra nem crédito da fatura.
+
+    Apenas pagamentos da fatura são descartados (eles quitam faturas anteriores e
+    não compõem o extrato de novas despesas/créditos).
+    Estornos, devoluções e IOF devolvido (valores negativos) SÃO importados
+    para abater da fatura e garantir paridade de 100% com o extrato.
+    """
+    if valor == 0:
+        return True
+    return eh_pagamento_fatura(descricao, valor)
+
+
+def buscar_duplicatas_nao_parceladas(
     descricao_original: str,
     descricao_limpa: str,
     valor_transacao: float,
     data_transacao,
     forma_pagamento_id: int,
-    tipo_transacao: str
-) -> int:
-    """Quantas transações idênticas já existem NO BANCO (ignora pendentes do lote).
-
-    Usa no_autoflush para não enxergar linhas recém-adicionadas na mesma importação —
-    duas cobranças iguais no mesmo dia são legítimas e devem ser importadas.
-    """
+    tipo_transacao: str | None = None
+) -> list[Transacao]:
+    """Busca transações idênticas já existentes no banco de dados."""
     if not data_transacao or not forma_pagamento_id:
-        return 0
+        return []
 
     descricao_referencia = normalizar_texto(descricao_limpa or descricao_original)
     with db.session.no_autoflush:
         candidatos = Transacao.query.filter(
             Transacao.parcelado.is_(False),
             Transacao.forma_pagamento_id == forma_pagamento_id,
-            Transacao.tipo == tipo_transacao,
-            Transacao.data_transacao == data_transacao,
-            Transacao.valor == valor_transacao
+            Transacao.data_transacao == data_transacao
         ).all()
 
-    total = 0
+    matches = []
     for existente in candidatos:
-        descricao_existente = normalizar_texto(
-            limpar_marcador_parcela(existente.descricao or "")
-        )
-        if descricao_existente == descricao_referencia:
-            total += 1
+        if existente.valor is not None and abs(float(existente.valor) - float(valor_transacao)) < 0.005:
+            descricao_existente = normalizar_texto(
+                limpar_marcador_parcela(existente.descricao or "")
+            )
+            if descricao_existente == descricao_referencia:
+                matches.append(existente)
 
-    return total
+    return matches
 
 
 def gerar_parcelas_restantes(transacao_base: Transacao, forma_pagamento: FormaPagamento, total_parcelas: int,
@@ -132,7 +146,8 @@ def importar_transacoes():
     atualizadas = []
     parcelas_geradas_total = 0
     duplicadas_ignoradas = 0
-    creditos_ignorados = 0
+    pagamentos_ignorados = 0
+    estornos_importados = 0
     erros = []
     # Ocorrências de linhas idênticas dentro do próprio lote (cobranças repetidas legítimas).
     ocorrencias_lote: dict = {}
@@ -164,7 +179,9 @@ def importar_transacoes():
 
             nome_categoria = (t.get("categoria") or "").strip()
             if not categoria and nome_categoria:
-                categoria = Categoria.query.filter(func.lower(Categoria.nome) == nome_categoria.lower()).first()
+                categoria = Categoria.query.filter(func.lower(Categoria.nome) == nome_categoria.lower(), Categoria.tipo == "Despesa").first()
+                if not categoria:
+                    categoria = Categoria.query.filter(func.lower(Categoria.nome) == nome_categoria.lower()).first()
 
             if not categoria and categoria_padrao:
                 categoria = categoria_padrao
@@ -174,6 +191,10 @@ def importar_transacoes():
 
             if not categoria:
                 raise Exception("Nenhuma categoria de despesa disponível para associar a transação.")
+
+            # Transações de fatura de cartão de crédito são sempre do tipo Despesa (ou Investimento se categorizado assim)
+            tipo_transacao = "Investimento" if (categoria and categoria.tipo == "Investimento") else "Despesa"
+
             # Mapeia forma de pagamento (aqui assumimos cartão de crédito)
             fp = forma_pagamento_padrao
             if not fp:
@@ -190,27 +211,38 @@ def importar_transacoes():
             except (TypeError, ValueError):
                 raise ValueError("Valor inválido informado para a transação.")
 
-            if ignorar_lancamento_importacao(descricao_original, valor_transacao):
-                creditos_ignorados += 1
-                texto_norm = normalizar_texto(descricao_original)
-                if "pagamento" in texto_norm:
-                    motivo = "pagamento de fatura não é importado como compra de cartão."
-                else:
-                    motivo = "crédito/estorno (valor negativo) não é importado como despesa."
-                erros.append({
-                    "linha": idx + 1,
-                    "erro": f"Transação ignorada: {motivo}"
-                })
+            if valor_transacao == 0:
                 continue
 
-            parcelado = bool(t.get("parcelado"))
+            data_transacao = datetime.strptime(t.get("date"), "%Y-%m-%d").date() if t.get("date") else None
+            dia_venc = dia_vencimento_override or (fp.dia_vencimento if fp else None) or 3
+            is_pagamento = eh_pagamento_fatura(descricao_original, valor_transacao)
+            is_antecipacao = False
+
+            if is_pagamento:
+                # Se o pagamento ocorreu até o dia do vencimento da fatura anterior, é quitação do mês anterior.
+                if data_transacao and data_transacao.day <= dia_venc:
+                    pagamentos_ignorados += 1
+                    erros.append({
+                        "linha": idx + 1,
+                        "erro": "Transação ignorada: quitação da fatura anterior."
+                    })
+                    continue
+                else:
+                    # Pagamento efetuado após o vencimento dentro do ciclo: antecipação / pré-pagamento da fatura atual.
+                    is_antecipacao = True
+                    valor_transacao = -abs(valor_transacao)
+
+            if valor_transacao < 0 and not is_antecipacao:
+                estornos_importados += 1
+
+            parcelado = bool(t.get("parcelado")) and valor_transacao > 0
             parcela_atual = int(t.get("parcela_atual") or 1)
             total_parcelas = int(t.get("total_parcelas") or (parcela_atual if parcela_atual > 1 else 1))
             valor_parcela = float(t.get("valor_parcela")) if t.get("valor_parcela") is not None else valor_transacao
             parcelamento_id = t.get("parcelamento_id") if t.get("parcelamento_id") else (str(uuid4()) if parcelado else None)
 
             transacao_existente = None
-            data_transacao = datetime.strptime(t.get("date"), "%Y-%m-%d").date() if t.get("date") else None
             if parcelado and parcelamento_id and parcela_atual:
                 transacao_existente = Transacao.query.filter_by(
                     parcelamento_id=parcelamento_id,
@@ -222,49 +254,70 @@ def importar_transacoes():
                     data_transacao,
                     round(valor_transacao, 2),
                     fp.id,
-                    categoria.tipo,
                     normalizar_texto(descricao_limpa or descricao_original),
                 )
                 vistos_no_lote = ocorrencias_lote.get(chave_lote, 0)
-                existentes_no_banco = contar_duplicatas_nao_parceladas(
+                existentes = buscar_duplicatas_nao_parceladas(
                     descricao_original=descricao_original,
                     descricao_limpa=descricao_limpa,
                     valor_transacao=valor_transacao,
                     data_transacao=data_transacao,
                     forma_pagamento_id=fp.id,
-                    tipo_transacao=categoria.tipo
                 )
                 ocorrencias_lote[chave_lote] = vistos_no_lote + 1
-                # Só é duplicata se o banco já cobre esta ocorrência do lote.
-                if vistos_no_lote < existentes_no_banco:
-                    duplicadas_ignoradas += 1
+                if vistos_no_lote < len(existentes):
+                    transacao_existente_np = existentes[vistos_no_lote]
+                    # Se a categoria enviada na importação for diferente da que estava no banco, atualiza
+                    if transacao_existente_np.categoria_id != categoria.id:
+                        transacao_existente_np.categoria_id = categoria.id
+                        transacao_existente_np.tipo = tipo_transacao
+                        atualizadas.append(transacao_existente_np)
+                    else:
+                        # Garante que mesmo duplicada não fique com tipo Receita por engano de importações antigas
+                        if transacao_existente_np.tipo == "Receita":
+                            transacao_existente_np.tipo = tipo_transacao
+                            atualizadas.append(transacao_existente_np)
+                        else:
+                            duplicadas_ignoradas += 1
+
+                    # Aprender/reforçar o alias da categoria definida pelo usuário
+                    if (descricao_limpa or descricao_original) and categoria.id:
+                        salvar_ou_atualizar_alias(
+                            descricao_original=descricao_limpa or descricao_original,
+                            categoria_id=categoria.id,
+                            origem="usuario",
+                            confianca=1.0,
+                            commit=False
+                        )
                     continue
 
+            status_padrao = "Pago" if is_antecipacao else "Pendente"
+
             if transacao_existente:
-                if transacao_existente.status == "Pago":
+                if transacao_existente.status == "Pago" and not is_antecipacao:
                     erros.append({
                         "linha": idx + 1,
                         "erro": "Parcela já marcada como paga anteriormente."
                     })
                     continue
                 transacao = transacao_existente
-                transacao.tipo = categoria.tipo
+                transacao.tipo = tipo_transacao
                 transacao.categoria_id = categoria.id
                 transacao.descricao = descricao_limpa or descricao_original
                 transacao.valor = valor_transacao
                 transacao.data_transacao = data_transacao
                 transacao.forma_pagamento_id = fp.id
-                transacao.status = "Pago"
+                transacao.status = status_padrao
                 criou_transacao = False
             else:
                 transacao = Transacao(
-                    tipo=categoria.tipo,  # Usa o tipo da categoria
+                    tipo=tipo_transacao,
                     categoria_id=categoria.id,
                     descricao=descricao_limpa or descricao_original,
                     valor=valor_transacao,
                     data_transacao=data_transacao,
                     forma_pagamento_id=fp.id,
-                    status="Pago"
+                    status=status_padrao
                 )
                 criou_transacao = True
 
@@ -303,21 +356,15 @@ def importar_transacoes():
                     dia_fechamento_override=dia_fechamento_override,
                     dia_vencimento_override=dia_vencimento_override
                 )
-            chave_normalizada = normalizar_texto(descricao_limpa or descricao_original)
-            if chave_normalizada:
-                alias = CategoriaAlias.query.filter_by(descricao_normalizada=chave_normalizada).first()
-                if alias:
-                    alias.categoria_id = categoria.id
-                    alias.descricao_exemplo = descricao_original[:255] if descricao_original else alias.descricao_exemplo
-                    alias.ocorrencias = (alias.ocorrencias or 0) + 1
-                else:
-                    alias = CategoriaAlias(
-                        descricao_normalizada=chave_normalizada,
-                        descricao_exemplo=descricao_original[:255] if descricao_original else categoria.nome,
-                        categoria_id=categoria.id,
-                        ocorrencias=1
-                    )
-                    db.session.add(alias)
+            # Aprendizado contínuo: Registrar ou reforçar alias com origem 'usuario'
+            if (descricao_limpa or descricao_original) and categoria.id:
+                salvar_ou_atualizar_alias(
+                    descricao_original=descricao_limpa or descricao_original,
+                    categoria_id=categoria.id,
+                    origem="usuario",
+                    confianca=1.0,
+                    commit=False
+                )
             if criou_transacao:
                 inseridas.append(transacao)
             else:
@@ -331,6 +378,8 @@ def importar_transacoes():
         "atualizadas": len(atualizadas),
         "parcelas_geradas": parcelas_geradas_total,
         "duplicadas_ignoradas": duplicadas_ignoradas,
-        "creditos_ignorados": creditos_ignorados,
+        "pagamentos_ignorados": pagamentos_ignorados,
+        "estornos_importados": estornos_importados,
+        "creditos_ignorados": pagamentos_ignorados,
         "erros": erros
     }), 200

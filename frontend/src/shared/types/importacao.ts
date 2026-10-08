@@ -23,8 +23,19 @@ export type ClassificacaoCategoriasPayload = {
   descricoes: string[]
 }
 
+export type ClassificacaoTransacaoDetalhe = {
+  categoria: string
+  categoria_id?: number | null
+  confianca: number
+  metodo: 'alias' | 'regra' | 'historico' | 'fuzzy' | 'ia' | 'fallback'
+  motivo: string
+  descricao_original: string
+  descricao_normalizada: string
+}
+
 export type ClassificacaoCategoriasResultado = {
   categorias: string[]
+  classificacoes?: ClassificacaoTransacaoDetalhe[]
   erro?: string
   erros?: string[]
 }
@@ -34,6 +45,8 @@ export type ImportacaoResultado = {
   atualizadas: number
   parcelas_geradas: number
   duplicadas_ignoradas: number
+  pagamentos_ignorados?: number
+  estornos_importados?: number
   creditos_ignorados?: number
   erros: Array<{ linha: number; erro: string }>
 }

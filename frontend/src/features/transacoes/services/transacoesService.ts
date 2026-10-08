@@ -1,5 +1,6 @@
 import { httpClient } from '@/shared/api/httpClient'
 import type {
+  CartaoCreditoResponse,
   PaginatedResponse,
   Transacao,
   TransacaoListFilters,
@@ -36,7 +37,14 @@ export const transacoesService = {
   },
   cartaoCredito(token: string, inicio: string, fim: string) {
     const search = new URLSearchParams({ inicio, fim })
-    return httpClient.get<{ transacoes: Transacao[] }>(`${BASE}/cartao_credito?${search.toString()}`, token)
+    return httpClient.get<CartaoCreditoResponse>(`${BASE}/cartao_credito?${search.toString()}`, token)
+  },
+  quitarFatura(token: string, formaPagamentoId: number, competencia: string, status: 'Pago' | 'Pendente' = 'Pago') {
+    return httpClient.post<{ message: string; quantidade: number; status: string }>(
+      `${BASE}/quitar_fatura`,
+      { forma_pagamento_id: formaPagamentoId, competencia, status },
+      token
+    )
   },
   summary(token: string, inicio: string, fim: string) {
     return httpClient.get<TransacaoSummary>(`${BASE}/summary?inicio=${inicio}&fim=${fim}`, token)
@@ -49,5 +57,8 @@ export const transacoesService = {
   },
   remove(token: string, id: number) {
     return httpClient.del<{ message: string }>(`${BASE}/${id}`, token)
+  },
+  removeLote(token: string, ids: number[]) {
+    return httpClient.del<{ message: string; quantidade: number }>(`${BASE}/lote`, token, undefined, { ids })
   },
 }

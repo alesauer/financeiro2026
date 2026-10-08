@@ -81,6 +81,51 @@ export type TransacaoListFilters = {
 export type TransacaoSummary = {
   receitas: number
   despesas: number
+  despesas_conta?: number
   saldo: number
   cartao_credito_total: number
+  cartao_credito_pago?: number
+  cartao_credito_pendente?: number
+}
+
+export type FaturaCategoriaResumo = {
+  categoria: string
+  total: number
+  percentual: number
+}
+
+export type FaturaCartao = {
+  key: string
+  forma_pagamento_id: number
+  forma_pagamento_nome: string
+  cartao_nome: string
+  forma_pagamento_icone?: string | null
+  forma_pagamento_cor?: string | null
+  competencia: string
+  competencia_label: string
+  dia_fechamento: number
+  dia_vencimento: number
+  data_fechamento?: string | null
+  data_vencimento: string
+  data_vencimento_label: string
+  periodo_compras_inicio?: string | null
+  periodo_compras_fim?: string | null
+  periodo_compras_label: string
+  total: number
+  total_pagas: number
+  total_pendentes: number
+  qtd_transacoes: number
+  qtd_compras: number
+  qtd_estornos: number
+  soma_estornos: number
+  status_fatura: 'Pago' | 'Pendente' | 'Parcial'
+  categorias_resumo: FaturaCategoriaResumo[]
+  transacoes: Transacao[]
+}
+
+export type CartaoCreditoResponse = {
+  transacoes: Transacao[]
+  faturas?: FaturaCartao[]
+  total_geral: number
+  total_geral_pendentes: number
 }

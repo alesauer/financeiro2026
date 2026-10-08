@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta, date
+import os
+import uuid
+
 from flask import Blueprint, request, jsonify, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from werkzeug.utils import secure_filename
-import os
-import uuid
+
 from app import db
 from app.models import TipoDocumento, Documento, DocumentoAnexo, Usuario
 from app.schemas import TipoDocumentoSchema, DocumentoSchema, DocumentoAnexoSchema
@@ -20,7 +23,19 @@ anexo_schemas = DocumentoAnexoSchema(many=True)
 
 # Configs de upload (defaults)
 ALLOWED_MIME = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
-MAX_FILES_PER_DOC = 5
+MAX_FILES_PER_DOC = 10
+
+DEFAULT_TIPOS = [
+    {"nome": "Identificação Pessoal", "descricao": "RG, CPF, CNH, Passaporte, Certidões", "icone": "CreditCard", "cor": "from-blue-600 via-indigo-600 to-slate-900"},
+    {"nome": "Saúde, Laudos & Exames", "descricao": "Laudos Médicos, Exames, Receitas, SUS, Vacinas", "icone": "Activity", "cor": "from-emerald-600 via-teal-700 to-cyan-950"},
+    {"nome": "Veículos & Condução", "descricao": "CRLV, CNH Digital, Seguro Auto, IPVA", "icone": "Car", "cor": "from-amber-500 via-orange-600 to-stone-900"},
+    {"nome": "Contratos & Residência", "descricao": "Aluguel, Escritura, Comprovante Residência", "icone": "Building", "cor": "from-violet-600 via-purple-700 to-slate-950"},
+    {"nome": "Seguros & Previdência", "descricao": "Apólices de Seguro Vida, Residencial, Planos", "icone": "ShieldCheck", "cor": "from-sky-600 via-blue-700 to-slate-900"},
+    {"nome": "Garantias & Comprovantes", "descricao": "Notas Fiscais, Certificados de Garantia, Manuais", "icone": "Receipt", "cor": "from-rose-600 via-pink-700 to-neutral-900"},
+    {"nome": "Educação & Certificados", "descricao": "Diplomas, Cursos, Certificações, Carteirinhas", "icone": "GraduationCap", "cor": "from-amber-600 via-yellow-700 to-zinc-900"},
+    {"nome": "Profissional & Empresas", "descricao": "CTPS Digital, CNPJ, Contrato Social, Registro de Classe", "icone": "Briefcase", "cor": "from-cyan-600 via-blue-800 to-slate-950"},
+    {"nome": "Outros Passes & Registros", "descricao": "Cartões de fidelidade, ingressos e registros gerais", "icone": "FileText", "cor": "from-slate-700 via-zinc-800 to-neutral-900"},
+]
 
 
 def get_upload_root():
@@ -41,6 +56,19 @@ def ensure_doc_dir(usuario_id: int, documento_id: int):
 @jwt_required()
 def listar_tipos():
     tipos = TipoDocumento.query.filter_by(ativo=True).all()
+    if not tipos:
+        for t in DEFAULT_TIPOS:
+            db.session.add(
+                TipoDocumento(
+                    nome=t["nome"],
+                    descricao=t["descricao"],
+                    icone=t["icone"],
+                    cor=t["cor"],
+                    ativo=True,
+                )
+            )
+        db.session.commit()
+        tipos = TipoDocumento.query.filter_by(ativo=True).all()
     return jsonify(tipo_schemas.dump(tipos)), 200
 
 
@@ -49,9 +77,54 @@ def listar_tipos():
 def listar_documentos():
     usuario_id = int(get_jwt_identity())
     page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    per_page = request.args.get("per_page", 50, type=int)
+    tipo_id = request.args.get("tipo_id", type=int)
+    favorito = request.args.get("favorito", type=str)
+    search = request.args.get("search", request.args.get("q", "")).strip()
+    status = request.args.get("status", "").strip().lower()
 
-    query = Documento.query.filter_by(usuario_id=usuario_id).order_by(Documento.updated_at.desc())
+    query = Documento.query.filter_by(usuario_id=usuario_id)
+
+    if tipo_id:
+        query = query.filter(Documento.tipo_documento_id == tipo_id)
+
+    if favorito is not None and favorito.lower() in ("true", "1"):
+        query = query.filter(Documento.favorito == True)
+
+    if search:
+        s = f"%{search}%"
+        query = query.filter(
+            db.or_(
+                Documento.nome.ilike(s),
+                Documento.registro.ilike(s),
+                Documento.emissor.ilike(s),
+                Documento.titular.ilike(s),
+                Documento.tags.ilike(s),
+                Documento.outras_informacoes.ilike(s),
+            )
+        )
+
+    hoje = datetime.utcnow().date()
+    if status == "validos":
+        query = query.filter(
+            db.or_(
+                Documento.data_validade == None,
+                Documento.data_validade >= hoje,
+            )
+        )
+    elif status == "expirando":
+        daqui_30_dias = hoje + timedelta(days=30)
+        query = query.filter(
+            Documento.data_validade >= hoje,
+            Documento.data_validade <= daqui_30_dias,
+        )
+    elif status == "expirados":
+        query = query.filter(
+            Documento.data_validade != None,
+            Documento.data_validade < hoje,
+        )
+
+    query = query.order_by(Documento.favorito.desc(), Documento.updated_at.desc())
     paginated = query.paginate(page=page, per_page=per_page, error_out=False)
 
     return jsonify({
@@ -73,10 +146,8 @@ def criar_documento():
     try:
         validado = doc_schema.load(data)
     except Exception as err:
-        # Marshmallow ValidationError
         return jsonify(getattr(err, 'messages', {"error": "Dados inválidos"})), 400
 
-    # confirmar tipo existe e ativo
     tipo = TipoDocumento.query.get(validado["tipo_documento_id"])
     if not tipo or not tipo.ativo:
         return jsonify({"error": "Tipo de documento inválido ou inativo"}), 400
@@ -86,11 +157,32 @@ def criar_documento():
         tipo_documento_id=validado["tipo_documento_id"],
         nome=validado["nome"],
         registro=validado.get("registro"),
+        emissor=validado.get("emissor"),
+        titular=validado.get("titular"),
+        data_emissao=validado.get("data_emissao"),
+        data_validade=validado.get("data_validade"),
+        cor_pass=validado.get("cor_pass") or tipo.cor,
+        icone=validado.get("icone") or tipo.icone,
+        favorito=validado.get("favorito", False),
+        tags=validado.get("tags"),
         outras_informacoes=validado.get("outras_informacoes"),
     )
     db.session.add(doc)
     db.session.commit()
     return jsonify(doc_schema.dump(doc)), 201
+
+
+@bp_documentos.route("/<int:id>/favorito", methods=["PATCH"])
+@jwt_required()
+def toggle_favorito(id):
+    usuario_id = int(get_jwt_identity())
+    doc = Documento.query.get_or_404(id)
+    if doc.usuario_id != usuario_id:
+        return jsonify({"error": "Não autorizado"}), 403
+    doc.favorito = not bool(doc.favorito)
+    db.session.commit()
+    return jsonify(doc_schema.dump(doc)), 200
+
 
 
 @bp_documentos.route("/<int:id>", methods=["GET"])

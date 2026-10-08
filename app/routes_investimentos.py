@@ -45,25 +45,21 @@ _MERCADO_CACHE = {
 _MERCADO_CACHE_TTL_SECONDS = 45
 
 
+from app.services.investments.fixed_income import (
+    obter_indicadores_bcb,
+    obter_titulos_tesouro_direto,
+    simular_comparativo_renda_fixa,
+)
+
 def _montar_payload_mercado() -> dict:
-    provider = get_fallback_provider()
-    data = provider.get_market_snapshot() or {}
-    source = getattr(provider, "nome", "yahoo")
+    provider = get_default_provider()
+    try:
+        data = provider.get_market_snapshot() or {}
+    except Exception:
+        fallback = get_fallback_provider()
+        data = fallback.get_market_snapshot() or {}
 
-    if not data.get("indices"):
-        provider2 = get_default_provider()
-        data2 = provider2.get_market_snapshot() or {}
-        if data2.get("indices"):
-            data = data2
-            source = getattr(provider2, "nome", source)
-
-    return {
-        "source": source,
-        "indices": data.get("indices", []),
-        "movers": data.get("movers", []),
-        "fx": data.get("fx", []),
-        "updated_at": data.get("updated_at"),
-    }
+    return data
 
 
 def _to_decimal(value, fallback="0"):
@@ -535,3 +531,55 @@ def mercado_snapshot():
         _MERCADO_CACHE["expires_at"] = datetime.utcnow() + timedelta(seconds=_MERCADO_CACHE_TTL_SECONDS)
 
     return jsonify(payload), 200
+
+
+@bp_investimentos.route("/mercado/quote/<string:codigo>", methods=["GET"])
+@jwt_required()
+def mercado_quote(codigo):
+    provider = get_default_provider()
+    quote = provider.get_quote(codigo)
+    if not quote:
+        return jsonify({"error": f"Ativo {codigo} não encontrado"}), 404
+
+    # Convert Decimal to float for JSON serialization
+    serialized = {}
+    for k, v in quote.items():
+        if isinstance(v, Decimal):
+            serialized[k] = float(v)
+        elif isinstance(v, datetime):
+            serialized[k] = v.isoformat() + "Z"
+        else:
+            serialized[k] = v
+
+    return jsonify(serialized), 200
+
+
+@bp_investimentos.route("/mercado/renda-fixa/simular", methods=["GET"])
+@jwt_required()
+def simular_renda_fixa():
+    valor_inicial = request.args.get("valor_inicial", 10000.0, type=float)
+    prazo_meses = request.args.get("prazo_meses", 24, type=int)
+    aporte_mensal = request.args.get("aporte_mensal", 0.0, type=float)
+
+    resultado = simular_comparativo_renda_fixa(
+        valor_inicial=max(100.0, valor_inicial),
+        prazo_meses=max(1, min(prazo_meses, 360)),
+        aporte_mensal=max(0.0, aporte_mensal),
+    )
+    return jsonify(resultado), 200
+
+
+@bp_investimentos.route("/mercado/search", methods=["GET"])
+@jwt_required()
+def mercado_search():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify([]), 200
+
+    provider = get_default_provider()
+    try:
+        results = provider.search_assets(q)
+        return jsonify(results), 200
+    except Exception:
+        return jsonify([]), 200
+

@@ -8,6 +8,7 @@ import {
   Landmark,
   LogOut,
   Menu,
+  Plus,
   Settings,
   Tags,
   User,
@@ -159,6 +160,15 @@ export function PrivateLayout() {
               >
                 Usuários
               </NavItem>
+              <NavItem
+                to="/configuracoes"
+                icon={<Settings className="h-4 w-4" />}
+                collapsed={isSidebarCollapsed}
+                nested
+                onClick={handleNavigate}
+              >
+                Outros
+              </NavItem>
             </div>
           </div>
         </nav>
@@ -188,24 +198,57 @@ export function PrivateLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-          <div className="flex h-16 items-center gap-3 px-4 sm:px-6">
-            <button
-              type="button"
-              onClick={() => setIsMobileSidebarOpen(true)}
-              className="inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-border)] p-2 text-[var(--color-text)] lg:hidden"
-              aria-label="Abrir menu"
-            >
-              <Menu className="h-4 w-4" />
-            </button>
-            <h1 className="text-lg font-semibold text-[var(--color-text)]">Painel</h1>
+        <header className="border-b border-[var(--color-border)] bg-[var(--color-surface)] sticky top-0 z-30">
+          <div className="flex h-16 items-center justify-between px-4 sm:px-6">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsMobileSidebarOpen(true)}
+                className="inline-flex items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-border)] p-2 text-[var(--color-text)] lg:hidden"
+                aria-label="Abrir menu"
+              >
+                <Menu className="h-4 w-4" />
+              </button>
+              <h1 className="text-lg font-semibold text-[var(--color-text)]">Finanças</h1>
+            </div>
+            
+            <div className="flex items-center gap-2 lg:hidden">
+              <div className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-primary)] text-xs font-semibold text-white">
+                {userInitial}
+              </div>
+            </div>
           </div>
         </header>
 
-        <main className="px-4 py-6 sm:px-6 sm:py-8">
+        <main className="px-4 py-6 pb-24 sm:px-6 sm:py-8 lg:pb-8">
           <Outlet />
         </main>
       </div>
+
+      {/* Floating Action Button (FAB) for Quick Transaction Launch */}
+      <button
+        type="button"
+        onClick={() => navigate('/transacoes?novo=true')}
+        className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-[var(--color-primary)] text-white shadow-xl hover:bg-[var(--color-primary)]/90 transition-transform active:scale-95 lg:hidden"
+        title="Nova Transação"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+
+      {/* Bottom Navigation Bar for Mobile */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 border-t border-[var(--color-border)] bg-[var(--color-surface)] lg:hidden shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+        <BottomTabItem to="/" icon={<Home className="h-5 w-5" />} label="Início" />
+        <BottomTabItem to="/transacoes" icon={<Wallet className="h-5 w-5" />} label="Transações" />
+        <BottomTabItem to="/ia" icon={<Bot className="h-5 w-5" />} label="IA" />
+        <button
+          type="button"
+          onClick={() => setIsMobileSidebarOpen(true)}
+          className="flex flex-1 flex-col items-center justify-center text-[var(--color-muted)] active:text-[var(--color-primary)] transition-colors"
+        >
+          <Menu className="h-5 w-5" />
+          <span className="text-[10px] mt-1 font-medium">Mais</span>
+        </button>
+      </nav>
     </div>
   )
 }
@@ -242,6 +285,33 @@ function NavItem({
     >
       <span>{icon}</span>
       <span className={collapsed ? 'inline lg:hidden' : 'inline'}>{children}</span>
+    </NavLink>
+  )
+}
+
+function BottomTabItem({
+  to,
+  icon,
+  label,
+}: {
+  to: string
+  icon: ReactNode
+  label: string
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={to === '/'}
+      className={({ isActive }) =>
+        `flex flex-1 flex-col items-center justify-center transition-colors ${
+          isActive
+            ? 'text-[var(--color-primary)] font-semibold'
+            : 'text-[var(--color-muted)] hover:text-[var(--color-text)]'
+        }`
+      }
+    >
+      {icon}
+      <span className="text-[10px] mt-1 font-medium">{label}</span>
     </NavLink>
   )
 }

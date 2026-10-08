@@ -15,6 +15,8 @@ class FormaPagamentoSchema(Schema):
     dia_fechamento = fields.Int(allow_none=True)
     dia_vencimento = fields.Int(allow_none=True)
     ativo = fields.Bool(load_default=True)
+    icone = fields.Str(allow_none=True)
+    cor = fields.Str(allow_none=True)
 
     @validates("dia_fechamento")
     def validate_dia_fechamento(self, value, **kwargs):

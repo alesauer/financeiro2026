@@ -1,351 +1,352 @@
-import { useEffect, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
-
+import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { milhasService } from '@/features/milhas/services/milhasService'
-import type { Milha, MilhaPayload, MilhaTipo } from '@/shared/types/milha'
-import { formatDateBr } from '@/shared/utils/date'
+import type {
+  Milha,
+  MilhaPayload,
+  MilhaTipo,
+  MilhasFiltros,
+  MilhasResumoResponse,
+  TransferenciaPayload,
+} from '@/shared/types/milha'
 import { getErrorMessage } from '@/shared/utils/error'
 
-const TIPOS: MilhaTipo[] = ['entrada', 'saida']
+import { MilhasKpis } from '../components/MilhasKpis'
+import { ProgramasGrid } from '../components/ProgramasGrid'
+import { MilhasTable } from '../components/MilhasTable'
+import { ExpiracoesView } from '../components/ExpiracoesView'
+import { MilhaModalForm } from '../components/MilhaModalForm'
+import { TransferenciaModal } from '../components/TransferenciaModal'
+import { CpmCalculadoraModal } from '../components/CpmCalculadoraModal'
 
-const EMPTY_FORM: MilhaPayload = {
-  programa: '',
-  tipo: 'entrada',
-  quantidade: 0,
-  origem: null,
-  data_movimentacao: null,
-  data_expiracao: null,
-  descricao: null,
-}
+import {
+  Plus,
+  ArrowRightLeft,
+  Calculator,
+  LayoutGrid,
+  ListOrdered,
+  AlertTriangle,
+} from 'lucide-react'
+
+type TabMode = 'visao' | 'extrato' | 'expiracoes'
 
 export function MilhasPage() {
   const { token } = useAuth()
 
+  const [tab, setTab] = useState<TabMode>('visao')
+  const [resumo, setResumo] = useState<MilhasResumoResponse | null>(null)
   const [items, setItems] = useState<Milha[]>([])
+  const [totalItems, setTotalItems] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [loadingList, setLoadingList] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState<MilhaPayload>(EMPTY_FORM)
-  const [isFormOpen, setIsFormOpen] = useState(false)
+  // Filtros de listagem
+  const [filtros, setFiltros] = useState<MilhasFiltros>({
+    page: 1,
+    per_page: 20,
+    sort_by: 'data_movimentacao',
+    sort_dir: 'desc',
+  })
 
-  const carregar = async () => {
+  // Modais
+  const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false)
+  const [isCalcModalOpen, setIsCalcModalOpen] = useState(false)
+  const [editingItem, setEditingItem] = useState<Milha | null>(null)
+  const [modalInitialProg, setModalInitialProg] = useState<string | undefined>()
+  const [modalInitialTipo, setModalInitialTipo] = useState<MilhaTipo>('entrada')
+  const [transferInitialOrigem, setTransferInitialOrigem] = useState<string | undefined>()
+
+  // Carregar resumo consolidado
+  const carregarResumo = async () => {
     if (!token) return
-    setLoading(true)
+    try {
+      const data = await milhasService.resumo(token)
+      setResumo(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }
+
+  // Carregar lista de movimentações
+  const carregarListagem = async (novosFiltros = filtros) => {
+    if (!token) return
+    setLoadingList(true)
     setError(null)
     try {
-      const data = await milhasService.list(token, 1, 50)
+      const data = await milhasService.list(token, novosFiltros)
       setItems(data.items)
+      setTotalItems(data.total_items)
+      setTotalPages(data.total_pages)
+      setCurrentPage(data.current_page)
     } catch (err) {
-      setError(getErrorMessage(err, 'Não foi possível carregar milhas.'))
+      setError(getErrorMessage(err, 'Não foi possível carregar movimentações de milhas.'))
     } finally {
-      setLoading(false)
+      setLoadingList(false)
     }
+  }
+
+  // Carregar dados iniciais
+  const carregarTudo = async () => {
+    setLoading(true)
+    await Promise.all([carregarResumo(), carregarListagem()])
+    setLoading(false)
   }
 
   useEffect(() => {
-    carregar()
+    carregarTudo()
   }, [token])
 
-  const resetForm = () => {
-    setEditingId(null)
-    setForm(EMPTY_FORM)
+  const handleFiltrosChange = (novos: Partial<MilhasFiltros>) => {
+    const atualizados = { ...filtros, ...novos }
+    setFiltros(atualizados)
+    carregarListagem(atualizados)
   }
 
-  const abrirNovoFormulario = () => {
-    resetForm()
-    setIsFormOpen(true)
+  const handleSelectProgramaFiltro = (nome: string | null) => {
+    handleFiltrosChange({ programa: nome || undefined, page: 1 })
+    setTab('extrato')
   }
 
-  const cancelarFormulario = () => {
-    resetForm()
-    setIsFormOpen(false)
+  // Abertura de Modais
+  const abrirNovaMovimentacao = (programa?: string, tipo: MilhaTipo = 'entrada') => {
+    setEditingItem(null)
+    setModalInitialProg(programa)
+    setModalInitialTipo(tipo)
+    setIsModalOpen(true)
   }
 
-  const carregarParaEditar = async (id: number) => {
+  const abrirEditarMovimentacao = (item: Milha) => {
+    setEditingItem(item)
+    setIsModalOpen(true)
+  }
+
+  const abrirTransferencia = (programaOrigem?: string) => {
+    setTransferInitialOrigem(programaOrigem)
+    setIsTransferModalOpen(true)
+  }
+
+  // Operações de CRUD
+  const handleSaveMovimentacao = async (payload: MilhaPayload, id?: number) => {
     if (!token) return
-    try {
-      const item = await milhasService.get(token, id)
-      setEditingId(item.id)
-      setIsFormOpen(true)
-      setForm({
-        programa: item.programa,
-        tipo: item.tipo,
-        quantidade: item.quantidade,
-        origem: item.origem,
-        data_movimentacao: item.data_movimentacao,
-        data_expiracao: item.data_expiracao,
-        descricao: item.descricao,
-      })
-    } catch (err) {
-      setError(getErrorMessage(err, 'Não foi possível carregar movimentação para edição.'))
+    if (id) {
+      await milhasService.update(token, id, payload)
+    } else {
+      await milhasService.create(token, payload)
     }
+    await Promise.all([carregarResumo(), carregarListagem()])
   }
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
+  const handleTransferencia = async (payload: TransferenciaPayload) => {
     if (!token) return
-
-    if (!form.programa.trim() || !form.quantidade || form.quantidade <= 0) {
-      setError('Informe programa e quantidade válida (> 0).')
-      return
-    }
-
-    const payload: MilhaPayload = {
-      ...form,
-      programa: form.programa.trim(),
-      origem: form.origem?.trim() || null,
-      descricao: form.descricao?.trim() || null,
-    }
-
-    try {
-      if (editingId) {
-        await milhasService.update(token, editingId, payload)
-      } else {
-        await milhasService.create(token, payload)
-      }
-      resetForm()
-      setIsFormOpen(false)
-      await carregar()
-    } catch (err) {
-      setError(getErrorMessage(err, 'Não foi possível salvar movimentação de milhas.'))
-    }
+    await milhasService.transferencia(token, payload)
+    await Promise.all([carregarResumo(), carregarListagem()])
   }
 
-  const handleDelete = async (id: number) => {
+  const handleExcluir = async (id: number) => {
     if (!token) return
     if (!window.confirm('Confirma a exclusão desta movimentação?')) return
-
     try {
-      await milhasService.remove(token, id)
-      await carregar()
-      if (editingId === id) cancelarFormulario()
+      await milhasService.remove(token, id, true)
+      await Promise.all([carregarResumo(), carregarListagem()])
     } catch (err) {
-      setError(getErrorMessage(err, 'Não foi possível excluir movimentação de milhas.'))
+      setError(getErrorMessage(err, 'Erro ao excluir movimentação.'))
     }
   }
 
-  return (
-    <section className="space-y-6">
-      <header className="space-y-2">
-        <h2 className="text-2xl font-semibold text-[var(--color-text)]">Milhas</h2>
-        <p className="text-sm text-[var(--color-muted)]">Controle entradas e saídas de programas de milhagem.</p>
-      </header>
+  const handleExcluirLote = async (ids: number[]) => {
+    if (!token) return
+    try {
+      await milhasService.batchDelete(token, ids)
+      await Promise.all([carregarResumo(), carregarListagem()])
+    } catch (err) {
+      setError(getErrorMessage(err, 'Erro ao excluir movimentações em lote.'))
+    }
+  }
 
-      <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <div className="mb-4 flex items-center justify-between gap-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Movimentações</h3>
-          <button
-            type="button"
-            onClick={abrirNovoFormulario}
-            className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white"
-          >
-            Nova movimentação
-          </button>
+  const programasNomes = useMemo(() => {
+    const list = resumo?.programas.map((p) => p.nome) || []
+    return Array.from(new Set(list))
+  }, [resumo])
+
+  const qtdExpirandoGeral = (resumo?.expiracoes.proximos_30d.total ?? 0) + (resumo?.expiracoes.proximos_90d.total ?? 0)
+
+  return (
+    <section className="space-y-6 pb-12">
+      {/* 1. Header com Título e Ações Principais */}
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold tracking-tight text-[var(--color-text)]">
+              Milhas & Fidelidade
+            </h2>
+            <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-0.5 text-xs font-semibold text-[var(--color-text)] shadow-2xs">
+              {resumo?.programas.length ?? 0} programas
+            </span>
+          </div>
+          <p className="text-xs text-[var(--color-muted)] mt-1">
+            Acompanhe saldos, cotações em reais, transferências bonificadas e alertas de expiração.
+          </p>
         </div>
 
-        {isFormOpen ? (
-          <div className="mb-4 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg)]/30 p-4">
-            <h4 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">
-              {editingId ? 'Editar movimentação' : 'Nova movimentação'}
-            </h4>
+        {/* Botões de Ação */}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIsCalcModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--color-text)] shadow-xs transition hover:bg-[var(--color-bg)]"
+          >
+            <Calculator className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            Calculadora CPM
+          </button>
 
-            <form className="space-y-3" onSubmit={handleSubmit}>
-            <Field label="Programa">
-              <input
-                value={form.programa}
-                onChange={(event) => setForm((prev) => ({ ...prev, programa: event.target.value }))}
-                className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              />
-            </Field>
+          <button
+            type="button"
+            onClick={() => abrirTransferencia()}
+            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3.5 py-2 text-xs font-semibold text-[var(--color-text)] shadow-xs transition hover:bg-[var(--color-bg)]"
+          >
+            <ArrowRightLeft className="h-4 w-4 text-[var(--color-primary)]" />
+            Transferência Bonificada
+          </button>
 
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <Field label="Tipo">
-                <select
-                  value={form.tipo}
-                  onChange={(event) => setForm((prev) => ({ ...prev, tipo: event.target.value as MilhaTipo }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                >
-                  {TIPOS.map((tipo) => (
-                    <option key={tipo} value={tipo}>
-                      {tipo === 'entrada' ? 'Entrada' : 'Saída'}
-                    </option>
-                  ))}
-                </select>
-              </Field>
+          <button
+            type="button"
+            onClick={() => abrirNovaMovimentacao()}
+            className="flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:opacity-90"
+          >
+            <Plus className="h-4 w-4" />
+            Nova Movimentação
+          </button>
+        </div>
+      </header>
 
-              <Field label="Quantidade">
-                <input
-                  type="number"
-                  min={1}
-                  value={form.quantidade || ''}
-                  onChange={(event) => setForm((prev) => ({ ...prev, quantidade: Number(event.target.value) }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                />
-              </Field>
-            </div>
+      {error && (
+        <div className="rounded-[var(--radius-sm)] bg-rose-50 p-3 text-xs font-medium text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+          {error}
+        </div>
+      )}
 
-            <Field label="Origem">
-              <input
-                value={form.origem ?? ''}
-                onChange={(event) => setForm((prev) => ({ ...prev, origem: event.target.value || null }))}
-                className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              />
-            </Field>
+      {/* 2. KPIs de Destaque no Topo */}
+      <MilhasKpis resumo={resumo} loading={loading} />
 
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-              <Field label="Data movimentação">
-                <input
-                  type="date"
-                  value={form.data_movimentacao ?? ''}
-                  onChange={(event) => setForm((prev) => ({ ...prev, data_movimentacao: event.target.value || null }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                />
-              </Field>
-              <Field label="Data expiração">
-                <input
-                  type="date"
-                  value={form.data_expiracao ?? ''}
-                  onChange={(event) => setForm((prev) => ({ ...prev, data_expiracao: event.target.value || null }))}
-                  className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-                />
-              </Field>
-            </div>
+      {/* 3. Navegação por Abas Modernas */}
+      <div className="flex border-b border-[var(--color-border)]">
+        <button
+          type="button"
+          onClick={() => setTab('visao')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-semibold transition ${
+            tab === 'visao'
+              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+              : 'border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          <LayoutGrid className="h-4 w-4" />
+          Visão Geral & Programas
+        </button>
 
-            <Field label="Descrição">
-              <textarea
-                rows={3}
-                value={form.descricao ?? ''}
-                onChange={(event) => setForm((prev) => ({ ...prev, descricao: event.target.value || null }))}
-                className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              />
-            </Field>
-
-            <div className="flex items-center gap-2 pt-2">
-              <button className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white">
-                {editingId ? 'Salvar alterações' : 'Adicionar'}
-              </button>
-              <button
-                type="button"
-                onClick={cancelarFormulario}
-                className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
-          </div>
-        ) : null}
-
-        {error ? <p className="mb-3 text-sm text-rose-600">{error}</p> : null}
-
-          {editingId ? null : loading ? (
-            <p className="mb-3 text-sm text-[var(--color-muted)] md:hidden">Carregando...</p>
-          ) : items.length === 0 ? (
-            <p className="mb-3 text-sm text-[var(--color-muted)] md:hidden">Nenhuma movimentação encontrada.</p>
-          ) : (
-            <div className="mb-3 space-y-2 md:hidden">
-              {items.map((item) => (
-                <article
-                  key={item.id}
-                  className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
-                >
-                  <p className="text-sm font-semibold text-[var(--color-text)]">{item.programa}</p>
-                  <div className="mt-1 space-y-0.5 text-xs text-[var(--color-muted)]">
-                    <p>Tipo: {item.tipo === 'entrada' ? 'Entrada' : 'Saída'}</p>
-                    <p>Qtd: {item.quantidade}</p>
-                    <p>Data mov.: {formatDateBr(item.data_movimentacao)}</p>
-                    <p>Expira: {formatDateBr(item.data_expiracao)}</p>
-                  </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => carregarParaEditar(item.id)}
-                      className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(item.id)}
-                      className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs text-rose-600"
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                </article>
-              ))}
-            </div>
+        <button
+          type="button"
+          onClick={() => setTab('extrato')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-semibold transition ${
+            tab === 'extrato'
+              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+              : 'border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          <ListOrdered className="h-4 w-4" />
+          Extrato Detalhado
+          {totalItems > 0 && (
+            <span className="rounded-full bg-[var(--color-bg)] px-1.5 py-0.2 text-[10px] text-[var(--color-muted)]">
+              {totalItems}
+            </span>
           )}
+        </button>
 
-          {editingId ? null : <div className="overflow-x-auto">
-            <table className="hidden min-w-full border-collapse text-sm md:table">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-left">
-                  <th className="py-2 pr-3">Programa</th>
-                  <th className="py-2 pr-3">Tipo</th>
-                  <th className="py-2 pr-3">Qtd</th>
-                  <th className="py-2 pr-3">Data mov.</th>
-                  <th className="py-2 pr-3">Expira</th>
-                  <th className="py-2 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={6} className="py-4 text-center text-[var(--color-muted)]">
-                      Carregando...
-                    </td>
-                  </tr>
-                ) : items.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-4 text-center text-[var(--color-muted)]">
-                      Nenhuma movimentação encontrada.
-                    </td>
-                  </tr>
-                ) : (
-                  items.map((item) => (
-                    <tr key={item.id} className="border-b border-[var(--color-border)]/70">
-                      <td className="py-2 pr-3">{item.programa}</td>
-                      <td className="py-2 pr-3">{item.tipo === 'entrada' ? 'Entrada' : 'Saída'}</td>
-                      <td className="py-2 pr-3">{item.quantidade}</td>
-                      <td className="py-2 pr-3">{formatDateBr(item.data_movimentacao)}</td>
-                      <td className="py-2 pr-3">{formatDateBr(item.data_expiracao)}</td>
-                      <td className="py-2 text-right">
-                        <div className="inline-flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => carregarParaEditar(item.id)}
-                            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-2 py-1 text-xs"
-                          >
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDelete(item.id)}
-                            className="rounded-[var(--radius-sm)] border border-rose-200 px-2 py-1 text-xs text-rose-600"
-                          >
-                            Excluir
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>}
-      </article>
+        <button
+          type="button"
+          onClick={() => setTab('expiracoes')}
+          className={`flex items-center gap-2 border-b-2 px-4 py-2.5 text-xs font-semibold transition ${
+            tab === 'expiracoes'
+              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+              : 'border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          <AlertTriangle className="h-4 w-4" />
+          Alertas de Expiração
+          {qtdExpirandoGeral > 0 && (
+            <span className="rounded-full bg-rose-500 px-1.5 py-0.2 text-[10px] font-bold text-white">
+              {qtdExpirandoGeral.toLocaleString('pt-BR')}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* 4. Conteúdo das Abas */}
+      {tab === 'visao' && (
+        <div className="space-y-6 animate-in fade-in duration-150">
+          <ProgramasGrid
+            programas={resumo?.programas || []}
+            saldoTotal={resumo?.saldo_total_milhas || 0}
+            programaSelecionado={filtros.programa || null}
+            onSelectPrograma={handleSelectProgramaFiltro}
+            onNovaMovimentacao={abrirNovaMovimentacao}
+            onTransferir={abrirTransferencia}
+          />
+        </div>
+      )}
+
+      {tab === 'extrato' && (
+        <div className="animate-in fade-in duration-150">
+          <MilhasTable
+            items={items}
+            totalItems={totalItems}
+            currentPage={currentPage}
+            totalPages={totalPages}
+            loading={loadingList}
+            filtros={filtros}
+            programasDisponiveis={programasNomes}
+            onFiltrosChange={handleFiltrosChange}
+            onEditar={abrirEditarMovimentacao}
+            onExcluir={handleExcluir}
+            onExcluirLote={handleExcluirLote}
+          />
+        </div>
+      )}
+
+      {tab === 'expiracoes' && (
+        <div className="animate-in fade-in duration-150">
+          <ExpiracoesView
+            resumo={resumo}
+            onTransferir={(prog) => abrirTransferencia(prog)}
+          />
+        </div>
+      )}
+
+      {/* 5. Modais Globais */}
+      <MilhaModalForm
+        isOpen={isModalOpen}
+        editingItem={editingItem}
+        initialPrograma={modalInitialProg}
+        initialTipo={modalInitialTipo}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleSaveMovimentacao}
+      />
+
+      <TransferenciaModal
+        isOpen={isTransferModalOpen}
+        programasDisponiveis={resumo?.programas || []}
+        initialOrigem={transferInitialOrigem}
+        onClose={() => setIsTransferModalOpen(false)}
+        onTransferir={handleTransferencia}
+      />
+
+      <CpmCalculadoraModal
+        isOpen={isCalcModalOpen}
+        onClose={() => setIsCalcModalOpen(false)}
+      />
     </section>
-  )
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block space-y-1 text-sm">
-      <span className="font-medium">{label}</span>
-      {children}
-    </label>
   )
 }
