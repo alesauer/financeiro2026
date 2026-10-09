@@ -191,7 +191,8 @@ def limpar_dados():
         Transacao, Categoria, CategoriaAlias, FormaPagamento,
         Documento, DocumentoAnexo, Milha, Lembrete,
         Viagem, ViagemCusto, ViagemRoteiro, ViagemCustoAnexo,
-        InvestmentWallet, InvestmentAsset, InvestmentTransaction, InvestmentQuote
+        InvestmentWallet, InvestmentAsset, InvestmentTransaction, InvestmentQuote,
+        OpenFinanceFatura
     )
     import random
 
@@ -205,10 +206,11 @@ def limpar_dados():
     removidos = {}
 
     if tipo == "transacoes":
-        q = Transacao.query.delete(synchronize_session=False)
+        removidos["transacoes"] = Transacao.query.delete(synchronize_session=False)
+        removidos["faturas_openfinance"] = OpenFinanceFatura.query.delete(synchronize_session=False)
+        removidos["invest_txs"] = InvestmentTransaction.query.delete(synchronize_session=False)
         db.session.commit()
-        removidos["transacoes"] = q
-        return jsonify({"mensagem": "Todas as transações foram excluídas com sucesso.", "detalhes": removidos}), 200
+        return jsonify({"mensagem": "Todas as transações e faturas de cartão foram excluídas com sucesso.", "detalhes": removidos}), 200
 
     elif tipo == "milhas":
         q = Milha.query.delete(synchronize_session=False)
@@ -243,6 +245,7 @@ def limpar_dados():
 
     elif tipo == "total":
         removidos["transacoes"] = Transacao.query.delete(synchronize_session=False)
+        removidos["faturas_openfinance"] = OpenFinanceFatura.query.delete(synchronize_session=False)
         removidos["milhas"] = Milha.query.delete(synchronize_session=False)
         removidos["lembretes"] = Lembrete.query.delete(synchronize_session=False)
         removidos["viagem_anexos"] = ViagemCustoAnexo.query.delete(synchronize_session=False)

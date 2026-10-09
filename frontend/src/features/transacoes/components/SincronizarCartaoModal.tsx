@@ -125,6 +125,9 @@ export function SincronizarCartaoModal({
         mes_fatura: mesFatura,
       })
       setResultado(resp.resumo)
+      if (resp.resumo) {
+        onSuccess(resp.resumo)
+      }
     } catch (err) {
       setErro(getErrorMessage(err, 'Falha ao sincronizar cartão via Open Finance.'))
     } finally {
@@ -133,9 +136,6 @@ export function SincronizarCartaoModal({
   }
 
   const handleConcluir = () => {
-    if (resultado) {
-      onSuccess(resultado)
-    }
     onClose()
   }
 

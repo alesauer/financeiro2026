@@ -182,13 +182,18 @@ def listar():
         except Exception:
             return jsonify({"error": "Filtro de forma_pagamento inválido"}), 400
 
+    origem = request.args.get("origem")
     cartao_credito_flag = request.args.get("cartao_credito")
-    if cartao_credito_flag is not None:
-        flag_value = cartao_credito_flag.lower() == "true"
+    if origem == "cartao" or (cartao_credito_flag and cartao_credito_flag.lower() == "true"):
         if not forma_pagamento_joined:
             query = query.outerjoin(Transacao.forma_pagamento)
             forma_pagamento_joined = True
-        query = query.filter(FormaPagamento.cartao_credito.is_(flag_value))
+        query = query.filter(FormaPagamento.cartao_credito.is_(True))
+    elif origem == "contas":
+        if not forma_pagamento_joined:
+            query = query.outerjoin(Transacao.forma_pagamento)
+            forma_pagamento_joined = True
+        query = query.filter(db.or_(FormaPagamento.cartao_credito.is_(False), FormaPagamento.id.is_(None)))
 
     # 3. Tratar filtro de data
     if inicio_str and fim_str:
