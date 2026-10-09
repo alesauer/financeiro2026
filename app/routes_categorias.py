@@ -148,7 +148,7 @@ def listar():
     query = Categoria.query
     if tipo:
         query = query.filter_by(tipo=tipo)
-    categorias = query.all()
+    categorias = query.order_by(Categoria.nome.asc()).all()
     return jsonify(schemas.dump(categorias)), 200
 
 

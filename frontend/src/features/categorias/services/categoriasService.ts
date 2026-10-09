@@ -13,9 +13,10 @@ import type {
 const BASE = '/api/categorias'
 
 export const categoriasService = {
-  list(token: string, tipo?: CategoriaTipo | '') {
+  async list(token: string, tipo?: CategoriaTipo | '') {
     const query = tipo ? `?tipo=${encodeURIComponent(tipo)}` : ''
-    return httpClient.get<Categoria[]>(`${BASE}${query}`, token)
+    const data = await httpClient.get<Categoria[]>(`${BASE}${query}`, token)
+    return [...data].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' }))
   },
   create(token: string, payload: CategoriaPayload) {
     return httpClient.post<Categoria>(BASE, payload, token)
