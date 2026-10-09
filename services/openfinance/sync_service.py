@@ -378,3 +378,256 @@ class OpenFinanceSyncService:
         db.session.delete(conexao)
         db.session.commit()
         return True
+
+    @classmethod
+    def list_cartoes_conectados(cls, usuario_id: int) -> List[Dict[str, Any]]:
+        """Retorna os cartões de crédito mapeados para conexões Open Finance do usuário."""
+        contas = (
+            OpenFinanceContaMap.query.join(OpenFinanceConexao)
+            .filter(
+                OpenFinanceConexao.usuario_id == usuario_id,
+                OpenFinanceContaMap.tipo_pluggy == "CREDIT",
+                OpenFinanceContaMap.forma_pagamento_id.isnot(None),
+            )
+            .all()
+        )
+        resultado = []
+        for c in contas:
+            fp = c.forma_pagamento or FormaPagamento.query.get(c.forma_pagamento_id)
+            if not fp:
+                continue
+            conexao = c.conexao
+            resultado.append({
+                "conta_map_id": c.id,
+                "conexao_id": conexao.id,
+                "conexao_nome": conexao.connector_name,
+                "forma_pagamento_id": fp.id,
+                "forma_pagamento_nome": fp.nome,
+                "forma_pagamento_icone": getattr(fp, "icone", None),
+                "forma_pagamento_cor": getattr(fp, "cor", None),
+                "dia_fechamento": fp.dia_fechamento,
+                "dia_vencimento": fp.dia_vencimento,
+                "pluggy_account_id": c.pluggy_account_id,
+                "pluggy_account_name": c.nome,
+                "sincronizar": c.sincronizar,
+                "last_sync_at": conexao.last_sync_at.isoformat() if conexao.last_sync_at else None,
+            })
+        return resultado
+
+    @classmethod
+    def sync_single_card(
+        cls,
+        usuario_id: int,
+        forma_pagamento_id: Optional[int] = None,
+        conta_map_id: Optional[int] = None,
+        mes_fatura: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Sincroniza exclusivamente um cartão de crédito Open Finance, opcionalmente filtrando por mês de fatura (YYYY-MM)."""
+        query = (
+            OpenFinanceContaMap.query.join(OpenFinanceConexao)
+            .filter(
+                OpenFinanceConexao.usuario_id == usuario_id,
+                OpenFinanceContaMap.tipo_pluggy == "CREDIT",
+            )
+        )
+        if conta_map_id:
+            query = query.filter(OpenFinanceContaMap.id == conta_map_id)
+        elif forma_pagamento_id:
+            query = query.filter(OpenFinanceContaMap.forma_pagamento_id == forma_pagamento_id)
+        else:
+            raise ValueError("Informe forma_pagamento_id ou conta_map_id.")
+
+        conta_map = query.first()
+        if not conta_map:
+            raise ValueError("Cartão não encontrado ou não está vinculado a uma conexão Open Finance.")
+
+        conexao = conta_map.conexao
+        forma_pagamento = conta_map.forma_pagamento or FormaPagamento.query.get(conta_map.forma_pagamento_id)
+        if not forma_pagamento:
+            raise ValueError("Forma de pagamento associada não encontrada.")
+
+        acc_id = conta_map.pluggy_account_id
+        acc_type = conta_map.tipo_pluggy
+
+        # Se mês de fatura foi especificado, parseia
+        alvo_comp: Optional[date] = None
+        if mes_fatura and len(mes_fatura) >= 7 and "-" in mes_fatura:
+            try:
+                y, m = int(mes_fatura[:4]), int(mes_fatura[5:7])
+                alvo_comp = date(y, m, 1)
+            except Exception:
+                pass
+
+        # Categoria padrão de fallback
+        cat_outros = Categoria.query.filter_by(nome="Outros").first()
+        fallback_cat_id = cat_outros.id if cat_outros else 1
+
+        novas_transacoes = 0
+        duplicadas_ignoradas = 0
+        pagamentos_fatura_ignorados = 0
+        fora_do_mes_ignorados = 0
+
+        # Busca transações dos últimos 90 dias
+        data_inicio = (date.today() - timedelta(days=90)).isoformat()
+        tx_page = 1
+        has_more = True
+
+        while has_more:
+            tx_resp = PluggyClient.get_transactions(
+                account_id=acc_id,
+                from_date=data_inicio,
+                page=tx_page,
+                page_size=100,
+            )
+            transactions = tx_resp.get("results", [])
+            if not transactions:
+                break
+
+            for tx in transactions:
+                tx_id = str(tx.get("id"))
+                desc_raw = tx.get("description") or tx.get("descriptionRaw") or "Transação Cartão Open Finance"
+                raw_amount = float(tx.get("amount", 0))
+                amount = abs(raw_amount)
+                tx_date_str = tx.get("date", "")[:10]
+
+                if not tx_date_str or amount == 0:
+                    continue
+
+                data_tx = date.fromisoformat(tx_date_str)
+                credit_meta = tx.get("creditCardMetadata") or {}
+
+                # Descartar pagamentos de fatura
+                if eh_pagamento_fatura(desc_raw) or (raw_amount < 0 and "pagamento" in desc_raw.lower()):
+                    pagamentos_fatura_ignorados += 1
+                    continue
+
+                # Previsão da fatura (mês de vencimento oficial)
+                bill_forecast = credit_meta.get("billForecastDate")
+                competencia_fatura_calculada = None
+                if bill_forecast and len(bill_forecast) == 7 and bill_forecast[4] == "-":
+                    try:
+                        b_ano, b_mes = int(bill_forecast[:4]), int(bill_forecast[5:7])
+                        competencia_fatura_calculada = date(b_ano, b_mes, 1)
+                    except Exception:
+                        pass
+
+                # Se veio purchaseDate na Pluggy, usa a data original da compra
+                purchase_dt_str = credit_meta.get("purchaseDate") or credit_meta.get("transactionDateTime")
+                if purchase_dt_str and len(purchase_dt_str) >= 10:
+                    try:
+                        data_tx = date.fromisoformat(purchase_dt_str[:10])
+                    except Exception:
+                        pass
+
+                if not competencia_fatura_calculada:
+                    dia_fech = getattr(forma_pagamento, "dia_fechamento", None)
+                    dia_venc = getattr(forma_pagamento, "dia_vencimento", None)
+                    competencia_fatura_calculada = calcular_competencia_fatura(data_tx, dia_fech, dia_venc)
+
+                # FILTRO DE MÊS SE ESPECIFICADO PELO USUÁRIO
+                if alvo_comp and competencia_fatura_calculada != alvo_comp:
+                    fora_do_mes_ignorados += 1
+                    continue
+
+                # Determinar tipo (Despesa / Receita)
+                pluggy_type = tx.get("type", "DEBIT")
+                eh_estorno = (
+                    raw_amount < 0
+                    or pluggy_type == "CREDIT"
+                    or any(term in desc_raw.lower() for term in ["estorno", "iof de volta", "devolucao", "devolução", "reembolso"])
+                )
+                tipo_transacao = "Receita" if eh_estorno else "Despesa"
+
+                # Deduplicação por identificador_externo
+                tx_existente = Transacao.query.filter_by(identificador_externo=tx_id).first()
+                if tx_existente:
+                    if competencia_fatura_calculada and tx_existente.competencia_fatura != competencia_fatura_calculada:
+                        tx_existente.competencia_fatura = competencia_fatura_calculada
+                    if tx_existente.tipo != tipo_transacao:
+                        tx_existente.tipo = tipo_transacao
+                    if tx_existente.valor != amount:
+                        tx_existente.valor = amount
+                    duplicadas_ignoradas += 1
+                    continue
+
+                # Deduplicação idêntica
+                desc_norm = normalizar_texto(desc_raw)
+                candidatos = Transacao.query.filter_by(
+                    forma_pagamento_id=forma_pagamento.id,
+                    data_transacao=data_tx,
+                ).all()
+
+                ja_existe = False
+                for cand in candidatos:
+                    if cand.valor is not None and abs(float(cand.valor) - amount) < 0.005:
+                        if normalizar_texto(cand.descricao) == desc_norm:
+                            ja_existe = True
+                            cand.identificador_externo = tx_id
+                            if competencia_fatura_calculada:
+                                cand.competencia_fatura = competencia_fatura_calculada
+                            if cand.tipo != tipo_transacao:
+                                cand.tipo = tipo_transacao
+                            break
+
+                if ja_existe:
+                    duplicadas_ignoradas += 1
+                    continue
+
+                # Classificação de categoria
+                cat_result = categorizar_transacao(desc_raw)
+                categoria_id = cat_result.categoria_id or fallback_cat_id
+
+                # Parcelamento
+                payment_data = tx.get("paymentData") or {}
+                total_parcelas = credit_meta.get("totalInstallments") or payment_data.get("totalInstallments")
+                parcela_atual = credit_meta.get("installmentNumber") or payment_data.get("installmentNumber") or 1
+                is_parcelado = bool(total_parcelas and total_parcelas > 1)
+
+                if not is_parcelado:
+                    match_parc = re.search(r"(\d{1,2})\s*[\/\-]\s*(\d{1,2})", desc_raw)
+                    if match_parc:
+                        p_atual, p_total = int(match_parc.group(1)), int(match_parc.group(2))
+                        if 1 <= p_atual <= p_total <= 48:
+                            is_parcelado = True
+                            parcela_atual = p_atual
+                            total_parcelas = p_total
+
+                nova_tx = Transacao(
+                    tipo=tipo_transacao,
+                    categoria_id=categoria_id,
+                    descricao=desc_raw,
+                    valor=amount,
+                    data_transacao=data_tx,
+                    forma_pagamento_id=forma_pagamento.id,
+                    status="Pago",
+                    parcelado=is_parcelado,
+                    total_parcelas=total_parcelas if is_parcelado else None,
+                    parcela_atual=parcela_atual if is_parcelado else 1,
+                    valor_parcela=amount if is_parcelado else None,
+                    identificador_externo=tx_id,
+                    competencia_fatura=competencia_fatura_calculada,
+                    observacoes=f"Sincronizado via Open Finance ({conexao.connector_name})",
+                )
+                db.session.add(nova_tx)
+                novas_transacoes += 1
+
+            total_pages = tx_resp.get("totalPages", 1)
+            if tx_page >= total_pages:
+                has_more = False
+            else:
+                tx_page += 1
+
+        conexao.last_sync_at = datetime.now()
+        db.session.commit()
+
+        mes_label = f"{alvo_comp.strftime('%m/%Y')}" if alvo_comp else "todas as recentes"
+        return {
+            "cartao_nome": forma_pagamento.nome,
+            "forma_pagamento_id": forma_pagamento.id,
+            "mes_fatura": mes_label,
+            "novas_transacoes": novas_transacoes,
+            "duplicadas_ignoradas": duplicadas_ignoradas,
+            "pagamentos_fatura_ignorados": pagamentos_fatura_ignorados,
+            "fora_do_mes_ignorados": fora_do_mes_ignorados,
+            "last_sync_at": conexao.last_sync_at.isoformat(),
+        }

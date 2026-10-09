@@ -5,6 +5,8 @@ import type {
   OpenFinanceStatus,
   ConnectTokenResponse,
   SyncResumoResponse,
+  CartaoOpenFinance,
+  SyncCartaoResponse,
 } from '@/shared/types/openfinance'
 
 const BASE = '/api/openfinance'
@@ -22,6 +24,10 @@ export const openfinanceService = {
     return httpClient.get<{ items: OpenFinanceConexao[]; total: number }>(`${BASE}/conexoes`, token)
   },
 
+  listCartoes(token: string) {
+    return httpClient.get<{ cartoes: CartaoOpenFinance[] }>(`${BASE}/cartoes`, token)
+  },
+
   registerConexao(token: string, itemId: string) {
     return httpClient.post<{ message: string; conexao_id: number; connector_name: string; status: string }>(
       `${BASE}/conexoes`,
@@ -32,6 +38,10 @@ export const openfinanceService = {
 
   syncConexao(token: string, conexaoId: number) {
     return httpClient.post<SyncResumoResponse>(`${BASE}/conexoes/${conexaoId}/sync`, {}, token)
+  },
+
+  syncCartao(token: string, payload: { forma_pagamento_id?: number; conta_map_id?: number; mes_fatura?: string }) {
+    return httpClient.post<SyncCartaoResponse>(`${BASE}/sync_cartao`, payload, token)
   },
 
   disconnectConexao(token: string, conexaoId: number) {

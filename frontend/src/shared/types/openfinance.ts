@@ -52,3 +52,33 @@ export type SyncResumoResponse = {
     last_sync_at: string
   }
 }
+
+export type CartaoOpenFinance = {
+  conta_map_id: number
+  conexao_id: number
+  conexao_nome: string
+  forma_pagamento_id: number
+  forma_pagamento_nome: string
+  forma_pagamento_icone?: string | null
+  forma_pagamento_cor?: string | null
+  dia_fechamento?: number | null
+  dia_vencimento?: number | null
+  pluggy_account_id: string
+  pluggy_account_name: string
+  sincronizar: boolean
+  last_sync_at?: string | null
+}
+
+export type SyncCartaoResponse = {
+  message: string
+  resumo: {
+    cartao_nome: string
+    forma_pagamento_id: number
+    mes_fatura: string
+    novas_transacoes: number
+    duplicadas_ignoradas: number
+    pagamentos_fatura_ignorados: number
+    fora_do_mes_ignorados: number
+    last_sync_at: string
+  }
+}

@@ -7,6 +7,7 @@ import { useAuth } from '@/app/providers/AuthProvider'
 import { MonthNavigator } from '@/features/transacoes/components/MonthNavigator'
 import { FaturaCard } from '@/features/transacoes/components/FaturaCard'
 import { FaturaDrawer } from '@/features/transacoes/components/FaturaDrawer'
+import { SincronizarCartaoModal } from '@/features/transacoes/components/SincronizarCartaoModal'
 import { categoriasService } from '@/features/categorias/services/categoriasService'
 import { formasPagamentoService } from '@/features/formasPagamento/services/formasPagamentoService'
 import { transacoesService } from '@/features/transacoes/services/transacoesService'
@@ -66,6 +67,8 @@ export function TransacoesPage() {
   const [faturas, setFaturas] = useState<FaturaCartao[]>([])
   const [faturaDrawerOpen, setFaturaDrawerOpen] = useState(false)
   const [faturaSelecionada, setFaturaSelecionada] = useState<FaturaCartao | null>(null)
+  const [syncCartaoModalOpen, setSyncCartaoModalOpen] = useState(false)
+  const [feedbackSync, setFeedbackSync] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -207,6 +210,15 @@ export function TransacoesPage() {
     } catch (err) {
       setError(getErrorMessage(err, 'Erro ao excluir lançamentos da fatura.'))
     }
+  }
+
+  const handleSyncCartaoSuccess = async (resumo: any) => {
+    const novas = resumo?.novas_transacoes ?? 0
+    const nome = resumo?.cartao_nome || 'Cartão'
+    const mes = resumo?.mes_fatura ? ` (${resumo.mes_fatura})` : ''
+    setFeedbackSync(`${nome}${mes}: sincronizado com sucesso! ${novas} novos lançamentos importados.`)
+    setTimeout(() => setFeedbackSync(null), 6000)
+    await Promise.all([carregarListagem(), carregarCartaoCredito()])
   }
 
   const carregarDependencias = async () => {
@@ -519,6 +531,16 @@ export function TransacoesPage() {
         <div className="mb-4 flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Lançamentos</h3>
           <div className="flex items-center gap-2" ref={acoesRef}>
+            <button
+              type="button"
+              onClick={() => setSyncCartaoModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-sky-300 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100 transition-colors shadow-2xs"
+              title="Sincronizar fatura de cartão de crédito via Open Finance"
+            >
+              <RefreshCw className="h-4 w-4" />
+              <span>Sincronizar Cartão</span>
+            </button>
+
             <div className="relative">
               <button
                 type="button"
@@ -533,7 +555,7 @@ export function TransacoesPage() {
               {acoesOpen ? (
                 <div
                   role="menu"
-                  className="absolute right-0 z-10 mt-1 min-w-[10rem] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)]"
+                  className="absolute right-0 z-10 mt-1 min-w-[11rem] rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-md"
                 >
                   <button
                     type="button"
@@ -544,7 +566,18 @@ export function TransacoesPage() {
                     }}
                     className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-bg)]"
                   >
-                    Importar
+                    Importar Extrato
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setAcoesOpen(false)
+                      setSyncCartaoModalOpen(true)
+                    }}
+                    className="block w-full px-3 py-2 text-left text-sm hover:bg-[var(--color-bg)] text-sky-700 font-medium"
+                  >
+                    Sincronizar Cartão
                   </button>
                 </div>
               ) : null}
@@ -928,6 +961,19 @@ export function TransacoesPage() {
           </div>
         )}
 
+        {feedbackSync ? (
+          <div className="mb-4 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            <span>✅ {feedbackSync}</span>
+            <button
+              type="button"
+              onClick={() => setFeedbackSync(null)}
+              className="font-bold text-emerald-700 hover:text-emerald-900 ml-2"
+            >
+              ✕
+            </button>
+          </div>
+        ) : null}
+
         {error ? <p className="mb-3 text-sm text-rose-600">{error}</p> : null}
 
         {editingId ? null : faturas.length > 0 ? (
@@ -942,6 +988,15 @@ export function TransacoesPage() {
                   {faturas.length} {faturas.length === 1 ? 'cartão' : 'cartões'}
                 </span>
               </div>
+              <button
+                type="button"
+                onClick={() => setSyncCartaoModalOpen(true)}
+                className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 hover:text-sky-800 transition-colors"
+                title="Sincronizar fatura via Open Finance"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span>Sincronizar</span>
+              </button>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -1125,6 +1180,15 @@ export function TransacoesPage() {
         }}
         onQuitarFatura={(fatura, status) => handleQuitarFatura(fatura, status)}
         onExcluirLote={(ids) => handleExcluirLoteFatura(ids)}
+      />
+
+      {/* Modal para Sincronização de Cartão de Crédito via Open Finance */}
+      <SincronizarCartaoModal
+        isOpen={syncCartaoModalOpen}
+        onClose={() => setSyncCartaoModalOpen(false)}
+        onSuccess={handleSyncCartaoSuccess}
+        token={token}
+        mesFiltroIso={mesFiltro}
       />
     </section>
   )

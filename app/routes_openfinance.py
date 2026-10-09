@@ -195,3 +195,40 @@ def webhook_listener():
         print(f"Erro ao processar webhook Pluggy ({event}) para item {item_id}: {err}")
 
     return jsonify({"received": True}), 200
+
+
+@bp_openfinance.route("/cartoes", methods=["GET"])
+@jwt_required()
+def listar_cartoes_openfinance():
+    """Retorna a lista de cartões de crédito configurados no Open Finance do usuário."""
+    user_id = int(get_jwt_identity())
+    try:
+        cartoes = OpenFinanceSyncService.list_cartoes_conectados(user_id)
+        return jsonify({"cartoes": cartoes}), 200
+    except Exception as err:
+        return jsonify({"error": str(err)}), 500
+
+
+@bp_openfinance.route("/sync_cartao", methods=["POST"])
+@jwt_required()
+def sync_cartao_openfinance():
+    """Sincroniza um cartão de crédito específico sob demanda, com filtro opcional por mês de fatura."""
+    user_id = int(get_jwt_identity())
+    body = request.get_json() or {}
+    forma_pagamento_id = body.get("forma_pagamento_id")
+    conta_map_id = body.get("conta_map_id")
+    mes_fatura = body.get("mes_fatura")  # ex: '2026-10'
+
+    try:
+        resumo = OpenFinanceSyncService.sync_single_card(
+            usuario_id=user_id,
+            forma_pagamento_id=forma_pagamento_id,
+            conta_map_id=conta_map_id,
+            mes_fatura=mes_fatura,
+        )
+        return jsonify({
+            "message": f"Cartão {resumo.get('cartao_nome')} sincronizado com sucesso!",
+            "resumo": resumo,
+        }), 200
+    except Exception as err:
+        return jsonify({"error": f"Erro na sincronização do cartão: {str(err)}"}), 500
