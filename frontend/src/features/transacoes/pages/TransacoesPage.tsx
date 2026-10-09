@@ -86,7 +86,7 @@ export function TransacoesPage() {
     const valor = Number(searchParams.get('categoria_id'))
     return Number.isFinite(valor) && valor > 0 ? valor : ''
   })
-  const [origemFiltro, setOrigemFiltro] = useState<'todos' | 'contas' | 'cartao'>('todos')
+  const [origemFiltro, setOrigemFiltro] = useState<'contas' | 'todos' | 'cartao'>('contas')
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -159,7 +159,7 @@ export function TransacoesPage() {
           tipo: tipoFiltro || undefined,
           status: statusFiltro || undefined,
           categoria_id: categoriaFiltro || undefined,
-          cartao_credito: origemFiltro === 'todos' ? undefined : (origemFiltro === 'cartao'),
+          origem: origemFiltro === 'todos' ? undefined : origemFiltro,
           sort_field: 'tipo_prioridade',
           sort_order: 'asc',
           page: pageToLoad,
@@ -934,8 +934,8 @@ export function TransacoesPage() {
                 className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-medium text-[var(--color-text)] outline-none transition focus:border-[var(--color-primary)]"
                 title="Filtrar por tipo de conta ou cartão"
               >
-                <option value="todos">Origem: Contas & Cartões</option>
-                <option value="contas">Apenas Contas & Pix</option>
+                <option value="contas">Apenas Contas & Pix (Não Cartão)</option>
+                <option value="todos">Todas (Contas & Cartões)</option>
                 <option value="cartao">Apenas Cartão de Crédito</option>
               </select>
 

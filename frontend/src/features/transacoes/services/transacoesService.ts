@@ -24,6 +24,7 @@ function buildListQuery(filters: TransacaoListFilters) {
   if (filters.status) search.set('status', filters.status)
   if (filters.categoria_id) search.set('categoria_id', String(filters.categoria_id))
   if (filters.forma_pagamento_id) search.set('forma_pagamento_id', String(filters.forma_pagamento_id))
+  if (filters.origem) search.set('origem', filters.origem)
   if (typeof filters.cartao_credito === 'boolean') {
     search.set('cartao_credito', String(filters.cartao_credito))
   }

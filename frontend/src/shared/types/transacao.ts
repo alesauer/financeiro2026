@@ -64,6 +64,7 @@ export type TransacaoListFilters = {
   categoria_id?: number | ''
   forma_pagamento_id?: number | ''
   cartao_credito?: boolean
+  origem?: 'contas' | 'cartao' | 'todos'
   sort_field?:
     | 'id'
     | 'data_transacao'
