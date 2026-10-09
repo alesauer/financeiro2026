@@ -437,7 +437,7 @@ def resumo_mes():
         forma = tx.forma_pagamento
         dia_fech = forma.dia_fechamento or 28
         dia_venc = forma.dia_vencimento or 5
-        comp = tx.competencia_fatura or calcular_competencia_fatura(tx.data_transacao, dia_fech)
+        comp = tx.competencia_fatura or calcular_competencia_fatura(tx.data_transacao, dia_fech, dia_venc)
         if not comp:
             continue
         data_venc = calcular_vencimento_fatura(comp, dia_fech, dia_venc)
@@ -739,7 +739,7 @@ def listar_cartao_credito():
 
         competencia = (
             tx.competencia_fatura
-            or calcular_competencia_fatura(tx.data_transacao, dia_fech)
+            or calcular_competencia_fatura(tx.data_transacao, dia_fech, dia_venc)
             or (date(tx.data_transacao.year, tx.data_transacao.month, 1) if tx.data_transacao else None)
         )
 
@@ -758,10 +758,14 @@ def listar_cartao_credito():
         fatura_key = f"{forma.id}|{competencia.isoformat()}"
 
         if fatura_key not in faturas_map:
-            ciclo_ini, ciclo_fim = calcular_ciclo_compras(competencia, dia_fech)
+            ciclo_ini, ciclo_fim = calcular_ciclo_compras(competencia, dia_fech, dia_venc)
             comp_label = f"{MESES_PT_NOMES[competencia.month - 1]} / {competencia.year}"
             venc_label = data_vencimento.strftime("%d/%m/%Y")
-            ciclo_label = f"{ciclo_ini.strftime('%d/%m')} a {ciclo_fim.strftime('%d/%m/%Y')}" if ciclo_ini and ciclo_fim else ""
+            ciclo_label = (
+                f"Compras de {ciclo_ini.strftime('%d/%m')} a {ciclo_fim.strftime('%d/%m/%Y')} (Fechou em {ciclo_fim.strftime('%d/%m')})"
+                if ciclo_ini and ciclo_fim
+                else ""
+            )
 
             faturas_map[fatura_key] = {
                 "key": fatura_key,

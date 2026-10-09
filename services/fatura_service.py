@@ -15,23 +15,53 @@ def _sanitize_dia(dia: Optional[int]) -> Optional[int]:
     return dia_int
 
 
-def calcular_competencia_fatura(data_transacao: Optional[date], dia_fechamento: Optional[int]) -> Optional[date]:
-    """Retorna o primeiro dia do mês/ano da fatura em que a transação cairá."""
+def calcular_competencia_fatura(
+    data_transacao: Optional[date],
+    dia_fechamento: Optional[int],
+    dia_vencimento: Optional[int] = None
+) -> Optional[date]:
+    """Retorna o primeiro dia do mês/ano de VENCIMENTO da fatura (Regime de Caixa).
+
+    Exemplo 1 (fecha 26, vence dia 3 do mês seguinte):
+      - Compra até dia 26/09: fecha 26/09, vence 03/10 -> Competência 2026-10-01 (Fatura de Outubro).
+      - Compra após dia 26/09 (ex: 28/09): fecha 26/10, vence 03/11 -> Competência 2026-11-01 (Fatura de Novembro).
+
+    Exemplo 2 (fecha 12, vence dia 20 do mesmo mês):
+      - Compra até dia 12/10: fecha 12/10, vence 20/10 -> Competência 2026-10-01 (Fatura de Outubro).
+      - Compra após dia 12/10: fecha 12/11, vence 20/11 -> Competência 2026-11-01 (Fatura de Novembro).
+    """
     if not data_transacao:
         return None
-    dia = _sanitize_dia(dia_fechamento)
-    if not dia:
+    dia_fech = _sanitize_dia(dia_fechamento)
+    if not dia_fech:
         return None
+    dia_venc = _sanitize_dia(dia_vencimento) or 5
 
-    if data_transacao.day <= dia:
-        return date(data_transacao.year, data_transacao.month, 1)
+    # 1. Determina mês/ano de fechamento da fatura
+    if data_transacao.day <= dia_fech:
+        ano_fech = data_transacao.year
+        mes_fech = data_transacao.month
+    else:
+        ano_fech = data_transacao.year
+        mes_fech = data_transacao.month + 1
+        if mes_fech > 12:
+            mes_fech = 1
+            ano_fech += 1
 
-    ano = data_transacao.year
-    mes = data_transacao.month + 1
-    if mes > 12:
-        mes = 1
-        ano += 1
-    return date(ano, mes, 1)
+    # 2. Determina mês/ano de vencimento (competência)
+    if dia_venc <= dia_fech:
+        # Vence no mês seguinte ao fechamento
+        ano_venc = ano_fech
+        mes_venc = mes_fech + 1
+        if mes_venc > 12:
+            mes_venc = 1
+            ano_venc += 1
+    else:
+        # Vence no mesmo mês do fechamento
+        ano_venc = ano_fech
+        mes_venc = mes_fech
+
+    return date(ano_venc, mes_venc, 1)
 
 
 def calcular_vencimento_fatura(
@@ -41,26 +71,14 @@ def calcular_vencimento_fatura(
 ) -> Optional[date]:
     """Calcula a data exata de vencimento do boleto da fatura.
 
-    Se dia_vencimento <= dia_fechamento (ex: fecha 26, vence dia 3):
-        O vencimento ocorre no mês seguinte ao da competência da fatura.
-    Se dia_vencimento > dia_fechamento (ex: fecha 12, vence dia 20):
-        O vencimento ocorre no mesmo mês da competência da fatura.
+    No Regime de Caixa, 'competencia' é o próprio mês/ano do vencimento.
     """
     if not competencia:
         return None
 
     venc_dia = _sanitize_dia(dia_vencimento) or 5
-    fech_dia = _sanitize_dia(dia_fechamento) or 28
-
-    if venc_dia <= fech_dia:
-        ano = competencia.year
-        mes = competencia.month + 1
-        if mes > 12:
-            mes = 1
-            ano += 1
-    else:
-        ano = competencia.year
-        mes = competencia.month
+    ano = competencia.year
+    mes = competencia.month
 
     max_dias = calendar.monthrange(ano, mes)[1]
     dia_final = min(venc_dia, max_dias)
@@ -69,21 +87,35 @@ def calcular_vencimento_fatura(
 
 def calcular_ciclo_compras(
     competencia: Optional[date],
-    dia_fechamento: Optional[int]
+    dia_fechamento: Optional[int],
+    dia_vencimento: Optional[int] = None
 ) -> tuple[Optional[date], Optional[date]]:
-    """Retorna o intervalo de datas (inicio, fim) das compras correspondentes a esta fatura."""
+    """Retorna o intervalo de datas (inicio, fim) das compras correspondentes à fatura que vence em 'competencia'."""
     if not competencia:
         return None, None
 
     fech_dia = _sanitize_dia(dia_fechamento) or 28
+    venc_dia = _sanitize_dia(dia_vencimento) or 5
 
-    # Fim do ciclo: dia de fechamento no mês da competência
-    max_dias_comp = calendar.monthrange(competencia.year, competencia.month)[1]
-    fim_ciclo = date(competencia.year, competencia.month, min(fech_dia, max_dias_comp))
+    # Determina o mês de fechamento da fatura
+    if venc_dia <= fech_dia:
+        # Fechou no mês anterior ao vencimento
+        mes_fech = competencia.month - 1
+        ano_fech = competencia.year
+        if mes_fech < 1:
+            mes_fech = 12
+            ano_fech -= 1
+    else:
+        # Fechou no mesmo mês do vencimento
+        mes_fech = competencia.month
+        ano_fech = competencia.year
 
-    # Início do ciclo: dia após o fechamento do mês anterior
-    mes_ant = competencia.month - 1
-    ano_ant = competencia.year
+    max_dias_fech = calendar.monthrange(ano_fech, mes_fech)[1]
+    fim_ciclo = date(ano_fech, mes_fech, min(fech_dia, max_dias_fech))
+
+    # Início do ciclo: dia seguinte ao fechamento do mês anterior
+    mes_ant = mes_fech - 1
+    ano_ant = ano_fech
     if mes_ant < 1:
         mes_ant = 12
         ano_ant -= 1
@@ -116,10 +148,14 @@ def aplicar_competencia_transacao(transacao, forma_pagamento=None, dia_fechament
         dia_fechamento = dia_fechamento_override
         if dia_fechamento is None:
             dia_fechamento = getattr(forma_pagamento, "dia_fechamento", None)
+        dia_vencimento = dia_vencimento_override
+        if dia_vencimento is None:
+            dia_vencimento = getattr(forma_pagamento, "dia_vencimento", None)
 
         transacao.competencia_fatura = calcular_competencia_fatura(
             transacao.data_transacao,
-            dia_fechamento
+            dia_fechamento,
+            dia_vencimento
         )
     else:
         transacao.competencia_fatura = None
