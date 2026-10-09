@@ -119,6 +119,10 @@ export type FaturaCartao = {
   qtd_estornos: number
   soma_estornos: number
   status_fatura: 'Pago' | 'Pendente' | 'Parcial'
+  origem_oficial?: boolean
+  valor_oficial?: number
+  valor_pago_oficial?: number
+  total_lancamentos?: number
   categorias_resumo: FaturaCategoriaResumo[]
   transacoes: Transacao[]
 }

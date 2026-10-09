@@ -5,6 +5,7 @@ from app import db
 from app.models import (
     OpenFinanceConexao,
     OpenFinanceContaMap,
+    OpenFinanceFatura,
     FormaPagamento,
     Transacao,
     Categoria,
@@ -349,6 +350,14 @@ class OpenFinanceSyncService:
                 else:
                     tx_page += 1
 
+        # Sincroniza faturas oficiais dos cartões de crédito
+        for cm in contas_mapeadas_lista:
+            if cm.tipo_pluggy == "CREDIT" and getattr(cm, "sincronizar", True):
+                try:
+                    cls.sync_faturas_oficiais(cm)
+                except Exception as err_fat:
+                    print(f"Aviso ao sincronizar faturas oficiais da conta {cm.id}: {err_fat}")
+
         conexao.last_sync_at = datetime.now()
         db.session.commit()
 
@@ -362,6 +371,82 @@ class OpenFinanceSyncService:
             "status": conexao.status,
             "last_sync_at": conexao.last_sync_at.isoformat(),
         }
+
+    @classmethod
+    def sync_faturas_oficiais(cls, conta_map: OpenFinanceContaMap) -> List[OpenFinanceFatura]:
+        """Busca e sincroniza as faturas oficiais fechadas do cartão via Open Finance."""
+        if conta_map.tipo_pluggy != "CREDIT":
+            return []
+
+        try:
+            bills = PluggyClient.get_bills(conta_map.pluggy_account_id)
+            if not bills:
+                return []
+
+            faturas_sincronizadas = []
+            for b in bills:
+                bill_id = str(b.get("id"))
+                due_date_str = b.get("dueDate")
+                if not due_date_str or len(due_date_str) < 10:
+                    continue
+                due_date = date.fromisoformat(due_date_str[:10])
+
+                closing_date_str = b.get("billClosingDate") or b.get("closingDate")
+                closing_date = (
+                    date.fromisoformat(closing_date_str[:10])
+                    if closing_date_str and len(closing_date_str) >= 10
+                    else None
+                )
+
+                # Competência do vencimento (regime de caixa)
+                competencia = date(due_date.year, due_date.month, 1)
+
+                total_amount = float(b.get("totalAmount") or 0.0)
+                min_amount = float(b.get("minimumPaymentAmount") or 0.0) if b.get("minimumPaymentAmount") is not None else None
+
+                # Somar pagamentos efetuados registrados no banco
+                payments = b.get("payments") or []
+                total_pago = sum(float(p.get("amount") or 0.0) for p in payments)
+
+                # Status da fatura
+                if total_pago >= (total_amount - 0.05):
+                    status_fatura = "PAGO"
+                elif total_pago > 0:
+                    status_fatura = "PARCIAL"
+                else:
+                    status_fatura = "ABERTO"
+
+                fatura_obj = OpenFinanceFatura.query.filter_by(pluggy_bill_id=bill_id).first()
+                if not fatura_obj:
+                    fatura_obj = OpenFinanceFatura(
+                        conta_map_id=conta_map.id,
+                        pluggy_bill_id=bill_id,
+                        data_vencimento=due_date,
+                        data_fechamento=closing_date,
+                        competencia=competencia,
+                        valor_total=round(total_amount, 2),
+                        valor_minimo=round(min_amount, 2) if min_amount is not None else None,
+                        valor_pago=round(total_pago, 2),
+                        status=status_fatura,
+                    )
+                    db.session.add(fatura_obj)
+                else:
+                    fatura_obj.data_vencimento = due_date
+                    fatura_obj.data_fechamento = closing_date
+                    fatura_obj.competencia = competencia
+                    fatura_obj.valor_total = round(total_amount, 2)
+                    fatura_obj.valor_minimo = round(min_amount, 2) if min_amount is not None else None
+                    fatura_obj.valor_pago = round(total_pago, 2)
+                    fatura_obj.status = status_fatura
+
+                faturas_sincronizadas.append(fatura_obj)
+
+            db.session.commit()
+            return faturas_sincronizadas
+        except Exception as e:
+            print(f"Erro ao sincronizar faturas oficiais da conta {conta_map.id}: {e}")
+            db.session.rollback()
+            return []
 
     @classmethod
     def disconnect(cls, conexao_id: int, usuario_id: int) -> bool:
@@ -616,6 +701,12 @@ class OpenFinanceSyncService:
                 has_more = False
             else:
                 tx_page += 1
+
+        # Sincroniza faturas oficiais fechadas do cartão
+        try:
+            cls.sync_faturas_oficiais(conta_map)
+        except Exception as err_fat:
+            print(f"Aviso ao sincronizar faturas oficiais: {err_fat}")
 
         conexao.last_sync_at = datetime.now()
         db.session.commit()

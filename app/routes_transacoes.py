@@ -4,10 +4,9 @@ from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from app import db
-from app.models import Transacao
+from app.models import Transacao, FormaPagamento, Categoria, OpenFinanceContaMap, OpenFinanceFatura
 from app.schemas import TransacaoSchema
 from sqlalchemy import exc, func, case, or_
-from app.models import FormaPagamento, Categoria
 from flask_jwt_extended import jwt_required
 import uuid
 from services.fatura_service import (
@@ -825,6 +824,72 @@ def listar_cartao_credito():
 
         fatura["items"].append(tx)
 
+    # 1. Adiciona faturas oficiais que porventura não tenham transações individuais no período
+    faturas_oficiais_extras = (
+        OpenFinanceFatura.query.join(OpenFinanceContaMap)
+        .join(FormaPagamento, OpenFinanceContaMap.forma_pagamento_id == FormaPagamento.id)
+        .filter(
+            FormaPagamento.ativo.is_(True),
+            db.or_(
+                OpenFinanceFatura.data_vencimento.between(inicio_dt, fim_dt),
+                OpenFinanceFatura.competencia.between(inicio_dt, fim_dt),
+            ),
+        )
+        .all()
+    )
+
+    for fo in faturas_oficiais_extras:
+        forma = fo.conta_map.forma_pagamento if fo.conta_map else None
+        if not forma:
+            continue
+        comp_iso = fo.competencia.isoformat()
+        f_key = f"{forma.id}|{comp_iso}"
+        if f_key not in faturas_map:
+            dia_fech = forma.dia_fechamento or 28
+            dia_venc = forma.dia_vencimento or 5
+            ciclo_ini, ciclo_fim = calcular_ciclo_compras(fo.competencia, dia_fech, dia_venc)
+            comp_label = f"{MESES_PT_NOMES[fo.competencia.month - 1]} / {fo.competencia.year}"
+            venc_label = fo.data_vencimento.strftime("%d/%m/%Y")
+            ciclo_label = (
+                f"Compras de {ciclo_ini.strftime('%d/%m')} a {ciclo_fim.strftime('%d/%m/%Y')} (Fechou em {ciclo_fim.strftime('%d/%m')})"
+                if ciclo_ini and ciclo_fim
+                else ""
+            )
+
+            is_paga = fo.status == "PAGO" or fo.valor_pago >= (fo.valor_total - 0.05)
+            faturas_map[f_key] = {
+                "key": f_key,
+                "forma_pagamento_id": forma.id,
+                "forma_pagamento_nome": forma.nome,
+                "cartao_nome": forma.nome,
+                "forma_pagamento_icone": getattr(forma, "icone", None),
+                "forma_pagamento_cor": getattr(forma, "cor", None),
+                "competencia": comp_iso,
+                "competencia_label": comp_label,
+                "dia_fechamento": dia_fech,
+                "dia_vencimento": dia_venc,
+                "data_fechamento": fo.data_fechamento.isoformat() if fo.data_fechamento else (ciclo_fim.isoformat() if ciclo_fim else None),
+                "data_vencimento": fo.data_vencimento.isoformat(),
+                "data_vencimento_label": venc_label,
+                "periodo_compras_inicio": ciclo_ini.isoformat() if ciclo_ini else None,
+                "periodo_compras_fim": ciclo_fim.isoformat() if ciclo_fim else None,
+                "periodo_compras_label": ciclo_label,
+                "total": round(float(fo.valor_total), 2),
+                "total_pagas": round(float(fo.valor_total), 2) if is_paga else round(float(fo.valor_pago or 0.0), 2),
+                "total_pendentes": 0.0 if is_paga else round(max(0.0, float(fo.valor_total) - float(fo.valor_pago or 0.0)), 2),
+                "qtd_transacoes": 0,
+                "qtd_compras": 0,
+                "qtd_estornos": 0,
+                "soma_estornos": 0.0,
+                "categorias_contagem": {},
+                "items": [],
+                "origem_oficial": True,
+                "total_lancamentos": 0.0,
+                "valor_oficial": round(float(fo.valor_total), 2),
+                "valor_pago_oficial": round(float(fo.valor_pago or 0.0), 2),
+                "status_fatura": "Pago" if is_paga else ("Parcial" if fo.valor_pago > 0 else "Pendente"),
+            }
+
     # Formatar faturas e calcular resumos de categorias
     faturas_lista = []
     total_geral = 0.0
@@ -836,12 +901,53 @@ def listar_cartao_credito():
         fatura["total_pendentes"] = round(max(0.0, fatura["total_pendentes"]), 2)
         fatura["soma_estornos"] = round(fatura["soma_estornos"], 2)
 
-        if fatura["total_pendentes"] <= 0.01:
-            fatura["status_fatura"] = "Pago"
-        elif fatura["total_pagas"] > 0:
-            fatura["status_fatura"] = "Parcial"
-        else:
-            fatura["status_fatura"] = "Pendente"
+        # 2. Se a fatura ainda não tem origem_oficial definida, busca na base de faturas oficiais
+        if not fatura.get("origem_oficial"):
+            try:
+                comp_date = date.fromisoformat(fatura["competencia"])
+                fatura_oficial = (
+                    OpenFinanceFatura.query.join(OpenFinanceContaMap)
+                    .filter(
+                        OpenFinanceContaMap.forma_pagamento_id == fatura["forma_pagamento_id"],
+                        OpenFinanceFatura.competencia == comp_date,
+                    )
+                    .first()
+                )
+                if fatura_oficial:
+                    fatura["origem_oficial"] = True
+                    fatura["total_lancamentos"] = fatura["total"]
+                    fatura["valor_oficial"] = round(float(fatura_oficial.valor_total), 2)
+                    fatura["valor_pago_oficial"] = round(float(fatura_oficial.valor_pago or 0.0), 2)
+                    fatura["total"] = fatura["valor_oficial"]
+
+                    if fatura_oficial.status == "PAGO" or fatura_oficial.valor_pago >= (fatura_oficial.valor_total - 0.05):
+                        fatura["status_fatura"] = "Pago"
+                        fatura["total_pagas"] = fatura["valor_oficial"]
+                        fatura["total_pendentes"] = 0.0
+                    elif fatura_oficial.valor_pago > 0:
+                        fatura["status_fatura"] = "Parcial"
+                        fatura["total_pagas"] = round(float(fatura_oficial.valor_pago), 2)
+                        fatura["total_pendentes"] = round(max(0.0, fatura["valor_oficial"] - fatura["total_pagas"]), 2)
+                    else:
+                        fatura["status_fatura"] = "Pendente"
+                        fatura["total_pendentes"] = fatura["valor_oficial"]
+                        fatura["total_pagas"] = 0.0
+
+                    if fatura_oficial.data_vencimento:
+                        fatura["data_vencimento"] = fatura_oficial.data_vencimento.isoformat()
+                        fatura["data_vencimento_label"] = fatura_oficial.data_vencimento.strftime("%d/%m/%Y")
+                    if fatura_oficial.data_fechamento:
+                        fatura["data_fechamento"] = fatura_oficial.data_fechamento.isoformat()
+            except Exception as e_fo:
+                pass
+
+        if not fatura.get("status_fatura"):
+            if fatura["total_pendentes"] <= 0.01:
+                fatura["status_fatura"] = "Pago"
+            elif fatura["total_pagas"] > 0:
+                fatura["status_fatura"] = "Parcial"
+            else:
+                fatura["status_fatura"] = "Pendente"
 
         # Categorias resumo
         categorias_resumo = []

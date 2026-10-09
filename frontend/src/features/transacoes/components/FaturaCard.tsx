@@ -76,6 +76,11 @@ export function FaturaCard({ fatura, onAbrirDrawer, onQuitarFatura }: FaturaCard
                 </>
               )}
             </span>
+            {fatura.origem_oficial && (
+              <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium bg-sky-50 text-sky-700 border border-sky-200">
+                Fatura Oficial
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 text-[11px] text-[var(--color-muted)]">
             <span className="flex items-center gap-1">
@@ -113,6 +118,11 @@ export function FaturaCard({ fatura, onAbrirDrawer, onQuitarFatura }: FaturaCard
             <span className="text-[11px] text-[var(--color-muted)] font-medium">Total:</span>
             <span className="text-sm font-bold text-[var(--color-text)]">{formatCurrency(fatura.total)}</span>
           </div>
+          {fatura.origem_oficial && fatura.total_lancamentos !== undefined && Math.abs(fatura.total_lancamentos - fatura.total) > 0.05 ? (
+            <p className="text-[10px] text-[var(--color-muted)]" title="Soma dos lançamentos individuais do período">
+              Lançamentos: {formatCurrency(fatura.total_lancamentos)}
+            </p>
+          ) : null}
           {fatura.total_pendentes > 0 && fatura.total_pagas > 0 ? (
             <p className="text-[10px] text-amber-700 font-semibold">
               Saldo: {formatCurrency(fatura.total_pendentes)}

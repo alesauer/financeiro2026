@@ -533,3 +533,25 @@ class OpenFinanceContaMap(db.Model):
     def __repr__(self):
         return f"<OpenFinanceContaMap {self.nome} type={self.tipo_pluggy} account={self.pluggy_account_id} sinc={self.sincronizar}>"
 
+
+class OpenFinanceFatura(db.Model):
+    __tablename__ = "openfinance_faturas"
+
+    id = db.Column(db.Integer, primary_key=True)
+    conta_map_id = db.Column(db.Integer, db.ForeignKey("openfinance_contas_map.id", ondelete="CASCADE"), nullable=False)
+    pluggy_bill_id = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    data_vencimento = db.Column(db.Date, nullable=False, index=True)
+    data_fechamento = db.Column(db.Date, nullable=True)
+    competencia = db.Column(db.Date, nullable=False, index=True)
+    valor_total = db.Column(db.Float, nullable=False)
+    valor_minimo = db.Column(db.Float, nullable=True)
+    valor_pago = db.Column(db.Float, default=0.0, nullable=False)
+    status = db.Column(db.String(30), default="PAGO", nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    conta_map = db.relationship("OpenFinanceContaMap", backref=db.backref("faturas", cascade="all, delete-orphan", lazy=True))
+
+    def __repr__(self):
+        return f"<OpenFinanceFatura bill={self.pluggy_bill_id} comp={self.competencia} total={self.valor_total} pago={self.valor_pago}>"
+

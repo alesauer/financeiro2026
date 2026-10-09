@@ -11,6 +11,7 @@ import {
   PieChart as PieIcon,
   Tag,
   ArrowDownRight,
+  ShieldCheck,
 } from 'lucide-react'
 import type { FaturaCartao, Transacao } from '@/shared/types/transacao'
 import { formatCurrency } from '@/shared/utils/date'
@@ -185,10 +186,14 @@ export function FaturaDrawer({
             {/* Metric Cards da Fatura */}
             <div className="grid grid-cols-3 gap-3 mt-4">
               <div className="rounded-[var(--radius-md)] border border-blue-200 bg-blue-50/70 p-3">
-                <p className="text-[11px] font-semibold text-blue-800 uppercase tracking-wider">Total Gastos</p>
+                <p className="text-[11px] font-semibold text-blue-800 uppercase tracking-wider">
+                  {fatura.origem_oficial ? 'Fatura Fechada' : 'Total Gastos'}
+                </p>
                 <p className="text-base font-bold text-blue-950 mt-0.5">{formatCurrency(fatura.total)}</p>
                 <p className="text-[10px] text-blue-700 mt-0.5 font-medium">
-                  {fatura.qtd_compras} compras {fatura.qtd_estornos > 0 ? `· ${fatura.qtd_estornos} estorno(s)` : ''}
+                  {fatura.origem_oficial && fatura.total_lancamentos !== undefined && Math.abs(fatura.total_lancamentos - fatura.total) > 0.05
+                    ? `Lançamentos: ${formatCurrency(fatura.total_lancamentos)}`
+                    : `${fatura.qtd_compras} compras ${fatura.qtd_estornos > 0 ? `· ${fatura.qtd_estornos} estorno(s)` : ''}`}
                 </p>
               </div>
 
@@ -208,6 +213,18 @@ export function FaturaDrawer({
                 </p>
               </div>
             </div>
+
+            {/* Aviso informativo de conciliação de fatura fechada */}
+            {fatura.origem_oficial && fatura.total_lancamentos !== undefined && Math.abs(fatura.total_lancamentos - fatura.total) > 0.05 && (
+              <div className="mt-3 rounded-lg bg-sky-50/90 border border-sky-200/90 p-2.5 text-xs text-sky-950 flex items-start gap-2.5 shadow-2xs">
+                <ShieldCheck className="h-4 w-4 text-sky-600 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  <span className="font-semibold text-sky-900">Fatura oficial confirmada pelo banco: </span>
+                  O valor fechado cobrado/pago no boleto foi de <strong>{formatCurrency(fatura.total)}</strong>.
+                  Os lançamentos individuais do período totalizam {formatCurrency(fatura.total_lancamentos)}, refletindo pagamentos parciais antecipados e estornos do ciclo.
+                </div>
+              </div>
+            )}
 
             {/* Categorias Resumo Pill Bar */}
             {fatura.categorias_resumo && fatura.categorias_resumo.length > 0 && (
