@@ -86,6 +86,7 @@ export function TransacoesPage() {
     const valor = Number(searchParams.get('categoria_id'))
     return Number.isFinite(valor) && valor > 0 ? valor : ''
   })
+  const [origemFiltro, setOrigemFiltro] = useState<'todos' | 'contas' | 'cartao'>('todos')
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -105,9 +106,11 @@ export function TransacoesPage() {
     return itensListagem.filter((item) => {
       const forma = formasById.get(item.forma_pagamento_id)
       const isCartao = item.forma_pagamento_cartao ?? forma?.cartao_credito ?? false
-      return !isCartao
+      if (origemFiltro === 'contas') return !isCartao
+      if (origemFiltro === 'cartao') return isCartao
+      return true
     })
-  }, [itensListagem, formasById])
+  }, [itensListagem, formasById, origemFiltro])
 
   const tituloFormulario = useMemo(() => (editingId ? 'Editar transação' : 'Nova transação'), [editingId])
 
@@ -156,7 +159,7 @@ export function TransacoesPage() {
           tipo: tipoFiltro || undefined,
           status: statusFiltro || undefined,
           categoria_id: categoriaFiltro || undefined,
-          cartao_credito: false,
+          cartao_credito: origemFiltro === 'todos' ? undefined : (origemFiltro === 'cartao'),
           sort_field: 'tipo_prioridade',
           sort_order: 'asc',
           page: pageToLoad,
@@ -253,7 +256,7 @@ export function TransacoesPage() {
   useEffect(() => {
     if (!token) return
     carregarListagem(page)
-  }, [token, inicio, fim, tipoFiltro, statusFiltro, categoriaFiltro, page])
+  }, [token, inicio, fim, tipoFiltro, statusFiltro, categoriaFiltro, origemFiltro, page])
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams)
@@ -922,6 +925,20 @@ export function TransacoesPage() {
                 ))}
               </select>
 
+              <select
+                value={origemFiltro}
+                onChange={(event) => {
+                  setPage(1)
+                  setOrigemFiltro(event.target.value as 'todos' | 'contas' | 'cartao')
+                }}
+                className="h-9 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-xs font-medium text-[var(--color-text)] outline-none transition focus:border-[var(--color-primary)]"
+                title="Filtrar por tipo de conta ou cartão"
+              >
+                <option value="todos">Origem: Contas & Cartões</option>
+                <option value="contas">Apenas Contas & Pix</option>
+                <option value="cartao">Apenas Cartão de Crédito</option>
+              </select>
+
               <button
                 type="button"
                 onClick={() => {
@@ -1100,7 +1117,20 @@ export function TransacoesPage() {
                 itensGrid.map((item) => (
                   <tr key={item.id} className="border-b border-[var(--color-border)]/70">
                     <td className="py-2 pr-3">{item.data_transacao}</td>
-                    <td className="py-2 pr-3">{item.descricao}</td>
+                    <td className="py-2 pr-3">
+                      <div className="flex items-center gap-2">
+                        <span>{item.descricao}</span>
+                        {item.forma_pagamento_nome && (
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                            item.forma_pagamento_cartao
+                              ? 'bg-purple-50 text-purple-700 border-purple-200'
+                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}>
+                            {item.forma_pagamento_nome}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className={`py-2 pr-3 font-medium ${getTipoClassName(item.tipo)}`}>{item.tipo}</td>
                     <td className="py-2 pr-3">{item.categoria_nome}</td>
                     <td className="py-2 pr-3">{formatCurrency(getValorEfetivo(item))}</td>

@@ -4,7 +4,7 @@ from calendar import monthrange
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import func
 from app import db
-from app.models import Transacao, Categoria, FormaPagamento
+from app.models import Transacao, Categoria, FormaPagamento, OpenFinanceContaMap, OpenFinanceFatura
 from flask_jwt_extended import jwt_required
 from services.fatura_service import (
     calcular_competencia_fatura,
@@ -524,7 +524,7 @@ def _calcular_matriz(ano, agrupar, usar_competencia, status, cartoes_modo):
             FormaPagamento.dia_fechamento.label("dia_fechamento"),
             FormaPagamento.dia_vencimento.label("dia_vencimento"),
         )
-        .join(Categoria, Transacao.categoria_id == Categoria.id)
+        .outerjoin(Categoria, Transacao.categoria_id == Categoria.id)
         .outerjoin(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
         .filter(
             db.or_(
@@ -541,7 +541,9 @@ def _calcular_matriz(ano, agrupar, usar_competencia, status, cartoes_modo):
     secoes = {tipo: {} for tipo in TIPOS_MATRIZ}
     secoes[SECAO_CARTOES] = {}
 
-    for row in query.all():
+    rows_all = query.all()
+
+    for row in rows_all:
         if row.tipo not in sumario:
             continue
 
@@ -583,6 +585,56 @@ def _calcular_matriz(ano, agrupar, usar_competencia, status, cartoes_modo):
 
         linha["valores"][indice] += valor
         linha["total"] += valor
+
+    # 2. Incorpora faturas oficiais de cartão do Open Finance no ano
+    faturas_oficiais_ano = (
+        OpenFinanceFatura.query.join(OpenFinanceContaMap)
+        .join(FormaPagamento, OpenFinanceContaMap.forma_pagamento_id == FormaPagamento.id)
+        .filter(
+            FormaPagamento.ativo.is_(True),
+            db.extract('year', OpenFinanceFatura.competencia) == ano
+        )
+        .all()
+    )
+
+    for fo in faturas_oficiais_ano:
+        forma = fo.conta_map.forma_pagamento if fo.conta_map else None
+        if not forma:
+            continue
+        mes_idx = fo.competencia.month - 1
+        val_oficial = float(fo.valor_total)
+
+        if cartoes_modo == "separado":
+            chave = forma.nome or "Cartão de crédito"
+            linha_cartao = secoes[SECAO_CARTOES].get(chave)
+            if linha_cartao is None:
+                linha_cartao = {"chave": chave, "categoria_id": None, "valores": _zeros(), "total": 0.0}
+                secoes[SECAO_CARTOES][chave] = linha_cartao
+
+            # Ajusta para o valor oficial da fatura caso os lançamentos individuais tenham divergência ou não existam
+            diferenca = val_oficial - linha_cartao["valores"][mes_idx]
+            if abs(diferenca) > 0.01:
+                linha_cartao["valores"][mes_idx] += diferenca
+                linha_cartao["total"] += diferenca
+                sumario["Despesa"][mes_idx] += diferenca
+        else:
+            # Modo categoria: se o mês ainda não tem transações individuais deste cartão,
+            # inclui a fatura oficial consolidada para que relatórios e dashboard não fiquem vazios
+            gastos_cartao_mes = sum(
+                float(r.valor or 0) for r in rows_all
+                if bool(r.eh_cartao) and r.forma_nome == forma.nome and (
+                    (_mes_referencia(r, usar_competencia, True, r.dia_fechamento, r.dia_vencimento) or date.min).month - 1 == mes_idx
+                )
+            )
+            if gastos_cartao_mes <= 0.01 and val_oficial > 0:
+                chave_cat = f"Fatura {forma.nome}"
+                linha_fat = secoes["Despesa"].get(chave_cat)
+                if linha_fat is None:
+                    linha_fat = {"chave": chave_cat, "categoria_id": None, "valores": _zeros(), "total": 0.0}
+                    secoes["Despesa"][chave_cat] = linha_fat
+                linha_fat["valores"][mes_idx] += val_oficial
+                linha_fat["total"] += val_oficial
+                sumario["Despesa"][mes_idx] += val_oficial
 
     receita = [round(v, 2) for v in sumario["Receita"]]
     despesa = [round(v, 2) for v in sumario["Despesa"]]

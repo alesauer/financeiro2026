@@ -186,7 +186,7 @@ def listar():
     if cartao_credito_flag is not None:
         flag_value = cartao_credito_flag.lower() == "true"
         if not forma_pagamento_joined:
-            query = query.join(Transacao.forma_pagamento)
+            query = query.outerjoin(Transacao.forma_pagamento)
             forma_pagamento_joined = True
         query = query.filter(FormaPagamento.cartao_credito.is_(flag_value))
 
@@ -195,7 +195,25 @@ def listar():
         try:
             inicio_dt = datetime.strptime(inicio_str, "%Y-%m-%d").date()
             fim_dt = datetime.strptime(fim_str, "%Y-%m-%d").date()
-            query = query.filter(Transacao.data_transacao.between(inicio_dt, fim_dt))
+            if not forma_pagamento_joined:
+                query = query.outerjoin(Transacao.forma_pagamento)
+                forma_pagamento_joined = True
+
+            # No regime financeiro do app, compras no cartão vinculadas à fatura do mês (competência)
+            # ou lançamentos com data_transacao no período devem ser retornados.
+            query = query.filter(
+                db.or_(
+                    db.and_(
+                        FormaPagamento.cartao_credito.is_(True),
+                        Transacao.competencia_fatura.between(inicio_dt, fim_dt),
+                    ),
+                    db.and_(
+                        db.or_(FormaPagamento.cartao_credito.is_(False), FormaPagamento.id.is_(None)),
+                        Transacao.data_transacao.between(inicio_dt, fim_dt),
+                    ),
+                    Transacao.data_transacao.between(inicio_dt, fim_dt),
+                )
+            )
         except ValueError:
             return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
@@ -449,6 +467,38 @@ def resumo_mes():
             cartao_credito_pago_sum += val
         else:
             cartao_credito_pendente_sum += val
+
+    # Se houver faturas oficiais do Open Finance cadastradas para o período, prioriza os valores oficiais fechados
+    faturas_oficiais = (
+        OpenFinanceFatura.query.join(OpenFinanceContaMap)
+        .join(FormaPagamento, OpenFinanceContaMap.forma_pagamento_id == FormaPagamento.id)
+        .filter(
+            FormaPagamento.ativo.is_(True),
+            db.or_(
+                OpenFinanceFatura.data_vencimento.between(inicio_dt, fim_dt),
+                OpenFinanceFatura.competencia.between(inicio_dt, fim_dt),
+            ),
+        )
+        .all()
+    )
+
+    if faturas_oficiais:
+        cartao_oficial_total = 0.0
+        cartao_oficial_pago = 0.0
+        cartao_oficial_pendente = 0.0
+        for fo in faturas_oficiais:
+            cartao_oficial_total += float(fo.valor_total)
+            is_pago = fo.status == "PAGO" or fo.valor_pago >= (fo.valor_total - 0.05)
+            if is_pago:
+                cartao_oficial_pago += float(fo.valor_total)
+            else:
+                pago_parcial = float(fo.valor_pago or 0.0)
+                cartao_oficial_pago += pago_parcial
+                cartao_oficial_pendente += max(0.0, float(fo.valor_total) - pago_parcial)
+
+        cartao_credito_sum = cartao_oficial_total
+        cartao_credito_pago_sum = cartao_oficial_pago
+        cartao_credito_pendente_sum = cartao_oficial_pendente
 
     cartao_val = round(float(cartao_credito_sum or 0), 2)
     despesas_conta_val = float(despesa_conta_sum or 0)
