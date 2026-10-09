@@ -524,11 +524,12 @@ class OpenFinanceContaMap(db.Model):
     nome = db.Column(db.String(150), nullable=False)
     numero = db.Column(db.String(50), nullable=True)
     forma_pagamento_id = db.Column(db.Integer, db.ForeignKey("formas_pagamento.id", ondelete="SET NULL"), nullable=True)
+    sincronizar = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.now())
     updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
 
     forma_pagamento = db.relationship("FormaPagamento", lazy=True)
 
     def __repr__(self):
-        return f"<OpenFinanceContaMap {self.nome} type={self.tipo_pluggy} account={self.pluggy_account_id}>"
+        return f"<OpenFinanceContaMap {self.nome} type={self.tipo_pluggy} account={self.pluggy_account_id} sinc={self.sincronizar}>"
 

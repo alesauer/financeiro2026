@@ -71,6 +71,7 @@ def list_conexoes():
                 "forma_pagamento_id": conta.forma_pagamento_id,
                 "forma_pagamento_nome": forma_nome,
                 "is_cartao": is_cartao,
+                "sincronizar": getattr(conta, "sincronizar", True),
             })
 
         items.append({
@@ -88,6 +89,35 @@ def list_conexoes():
         })
 
     return jsonify({"items": items, "total": len(items)}), 200
+
+
+@bp_openfinance.route("/contas/<int:conta_id>", methods=["PUT"])
+@jwt_required()
+def update_conta_map(conta_id):
+    """Atualiza se a conta/cartão deve ser sincronizada e a qual FormaPagamento está vinculada."""
+    user_id = int(get_jwt_identity())
+    conta = OpenFinanceContaMap.query.get(conta_id)
+    if not conta or int(conta.conexao.usuario_id) != user_id:
+        return jsonify({"error": "Conta não encontrada ou não autorizada."}), 404
+
+    data = request.get_json() or {}
+    if "sincronizar" in data:
+        conta.sincronizar = bool(data["sincronizar"])
+    if "forma_pagamento_id" in data:
+        fp_id = data["forma_pagamento_id"]
+        conta.forma_pagamento_id = int(fp_id) if fp_id is not None and str(fp_id).isdigit() and int(fp_id) > 0 else None
+
+    db.session.commit()
+    forma_nome = conta.forma_pagamento.nome if conta.forma_pagamento else None
+    return jsonify({
+        "message": "Configurações da conta atualizadas com sucesso!",
+        "conta": {
+            "id": conta.id,
+            "sincronizar": conta.sincronizar,
+            "forma_pagamento_id": conta.forma_pagamento_id,
+            "forma_pagamento_nome": forma_nome,
+        }
+    }), 200
 
 
 @bp_openfinance.route("/conexoes", methods=["POST"])

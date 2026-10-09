@@ -7,6 +7,7 @@ export type OpenFinanceConta = {
   forma_pagamento_id?: number | null
   forma_pagamento_nome?: string | null
   is_cartao: boolean
+  sincronizar: boolean
 }
 
 export type OpenFinanceConexao = {

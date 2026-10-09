@@ -14,7 +14,9 @@ import {
   Calendar,
 } from 'lucide-react'
 import { openfinanceService } from '../services/openfinanceService'
+import { formasPagamentoService } from '@/features/formasPagamento/services/formasPagamentoService'
 import type { OpenFinanceConexao, OpenFinanceStatus } from '@/shared/types/openfinance'
+import type { FormaPagamento } from '@/shared/types/formaPagamento'
 
 declare global {
   interface Window {
@@ -29,9 +31,11 @@ type Props = {
 export function OpenFinanceTab({ token }: Props) {
   const [status, setStatus] = useState<OpenFinanceStatus | null>(null)
   const [conexoes, setConexoes] = useState<OpenFinanceConexao[]>([])
+  const [formas, setFormas] = useState<FormaPagamento[]>([])
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
   const [syncingId, setSyncingId] = useState<number | null>(null)
+  const [savingContaId, setSavingContaId] = useState<number | null>(null)
   const [feedback, setFeedback] = useState<{ tipo: 'sucesso' | 'erro'; texto: string } | null>(null)
 
   // Carregar script do Pluggy Connect dinamicamente
@@ -49,12 +53,14 @@ export function OpenFinanceTab({ token }: Props) {
     if (!token) return
     setLoading(true)
     try {
-      const [statusRes, conexoesRes] = await Promise.all([
+      const [statusRes, conexoesRes, formasRes] = await Promise.all([
         openfinanceService.getStatus(token),
         openfinanceService.listConexoes(token),
+        formasPagamentoService.list(token),
       ])
       setStatus(statusRes)
       setConexoes(conexoesRes.items)
+      setFormas(formasRes)
     } catch (err: any) {
       console.error('Erro ao carregar dados Open Finance:', err)
       setFeedback({
@@ -69,6 +75,50 @@ export function OpenFinanceTab({ token }: Props) {
   useEffect(() => {
     carregarDados()
   }, [token])
+
+  // Atualizar configuração individual de conta/cartão (sincronizar e forma de pagamento de destino)
+  const handleUpdateConta = async (
+    conexaoId: number,
+    contaId: number,
+    updates: { sincronizar?: boolean; forma_pagamento_id?: number | null }
+  ) => {
+    if (!token) return
+    setSavingContaId(contaId)
+    try {
+      await openfinanceService.updateConta(token, contaId, updates)
+
+      // Atualiza o estado local imediatamente
+      setConexoes((prev) =>
+        prev.map((c) => {
+          if (c.id !== conexaoId) return c
+          return {
+            ...c,
+            contas: c.contas.map((cta) => {
+              if (cta.id !== contaId) return cta
+              const novoFpId = updates.forma_pagamento_id !== undefined ? updates.forma_pagamento_id : cta.forma_pagamento_id
+              const novoFpNome = novoFpId ? formas.find((f) => f.id === novoFpId)?.nome || cta.forma_pagamento_nome : null
+              const isCartao = novoFpId ? !!formas.find((f) => f.id === novoFpId)?.cartao_credito : cta.is_cartao
+              return {
+                ...cta,
+                sincronizar: updates.sincronizar !== undefined ? updates.sincronizar : cta.sincronizar,
+                forma_pagamento_id: novoFpId,
+                forma_pagamento_nome: novoFpNome,
+                is_cartao: isCartao,
+              }
+            }),
+          }
+        })
+      )
+    } catch (err: any) {
+      console.error('Erro ao atualizar mapeamento:', err)
+      setFeedback({
+        tipo: 'erro',
+        texto: 'Não foi possível salvar a alteração de sincronização.',
+      })
+    } finally {
+      setSavingContaId(null)
+    }
+  }
 
   // Abrir o widget Pluggy Connect
   const handleConectarBanco = async () => {
@@ -425,31 +475,144 @@ export function OpenFinanceTab({ token }: Props) {
                     </div>
                   </div>
 
-                  {/* Lista de Contas & Cartões Vinculados */}
+                  {/* Lista de Contas & Cartões Vinculados com Configuração de Importação */}
                   {conexao.contas && conexao.contas.length > 0 && (
-                    <div className="pt-3 border-t border-[var(--color-border)]">
-                      <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider block mb-1.5">
-                        Contas & Cartões Vinculados:
-                      </span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {conexao.contas.map((conta) => (
-                          <div
-                            key={conta.id}
-                            className="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-bg)]/50 px-3 py-2 text-xs"
-                          >
-                            <div className="flex items-center gap-2 truncate">
-                              {conta.is_cartao || conta.tipo === 'CREDIT' ? (
-                                <CreditCard className="h-4 w-4 text-indigo-600 shrink-0" />
-                              ) : (
-                                <Landmark className="h-4 w-4 text-teal-600 shrink-0" />
-                              )}
-                              <span className="font-semibold text-[var(--color-text)] truncate">{conta.nome}</span>
+                    <div className="pt-3 border-t border-[var(--color-border)] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-[var(--color-muted)] uppercase tracking-wider block">
+                          Configuração de Importação por Conta / Cartão:
+                        </span>
+                        <span className="text-[10px] text-[var(--color-muted)]">
+                          Defina o que importar e para qual cartão/conta os lançamentos serão destinados
+                        </span>
+                      </div>
+
+                      <div className="space-y-2">
+                        {conexao.contas.map((conta) => {
+                          const isCartao = conta.is_cartao || conta.tipo === 'CREDIT'
+                          const isSaving = savingContaId === conta.id
+
+                          return (
+                            <div
+                              key={conta.id}
+                              className={`rounded-[var(--radius-sm)] border p-3 text-xs transition ${
+                                conta.sincronizar
+                                  ? 'border-[var(--color-border)] bg-[var(--color-bg)]/40'
+                                  : 'border-dashed border-[var(--color-border)] bg-slate-50/50 opacity-60'
+                              }`}
+                            >
+                              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                                {/* Identificação da conta no banco */}
+                                <div className="flex items-center gap-2.5 min-w-[200px]">
+                                  <div
+                                    className={`flex h-8 w-8 items-center justify-center rounded-lg ${
+                                      isCartao ? 'bg-indigo-50 text-indigo-600' : 'bg-teal-50 text-teal-600'
+                                    }`}
+                                  >
+                                    {isCartao ? <CreditCard className="h-4 w-4" /> : <Landmark className="h-4 w-4" />}
+                                  </div>
+                                  <div className="truncate">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-bold text-[var(--color-text)] truncate">{conta.nome}</span>
+                                      <span
+                                        className={`rounded px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider ${
+                                          isCartao ? 'bg-indigo-100 text-indigo-700' : 'bg-teal-100 text-teal-700'
+                                        }`}
+                                      >
+                                        {isCartao ? 'Cartão de Crédito' : 'Débito / Conta'}
+                                      </span>
+                                    </div>
+                                    {conta.numero && (
+                                      <span className="text-[10px] text-[var(--color-muted)] font-mono">
+                                        Nº {conta.numero}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Controles de Importação e Seleção de Cartão de Destino */}
+                                <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+                                  {/* Toggle: Importar esta conta/cartão */}
+                                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={conta.sincronizar}
+                                      disabled={isSaving}
+                                      onChange={(e) =>
+                                        handleUpdateConta(conexao.id, conta.id, {
+                                          sincronizar: e.target.checked,
+                                        })
+                                      }
+                                      className="h-4 w-4 rounded border-gray-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+                                    />
+                                    <span className="text-xs font-semibold text-[var(--color-text)]">
+                                      {isCartao ? 'Importar Compras do Cartão' : 'Importar Extrato em Débito'}
+                                    </span>
+                                  </label>
+
+                                  {/* Seletor do Cartão/Conta cadastrado no sistema */}
+                                  {conta.sincronizar && (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[11px] text-[var(--color-muted)] whitespace-nowrap">
+                                        Destinar para:
+                                      </span>
+                                      <select
+                                        value={conta.forma_pagamento_id || ''}
+                                        disabled={isSaving}
+                                        onChange={(e) =>
+                                          handleUpdateConta(conexao.id, conta.id, {
+                                            forma_pagamento_id: e.target.value ? Number(e.target.value) : null,
+                                          })
+                                        }
+                                        className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text)] focus:border-[var(--color-primary)] focus:outline-hidden"
+                                      >
+                                        <option value="">(Selecione a forma de pagamento)</option>
+                                        {/* Agrupa ou destaca cartões de crédito se a conta for cartão */}
+                                        {isCartao ? (
+                                          <optgroup label="Cartões de Crédito Cadastrados">
+                                            {formas
+                                              .filter((f) => f.cartao_credito && f.ativo)
+                                              .map((f) => (
+                                                <option key={f.id} value={f.id}>
+                                                  💳 {f.nome} (Fecha dia {f.dia_fechamento || '?'})
+                                                </option>
+                                              ))}
+                                          </optgroup>
+                                        ) : (
+                                          <optgroup label="Contas / Meios de Pagamento">
+                                            {formas
+                                              .filter((f) => !f.cartao_credito && f.ativo)
+                                              .map((f) => (
+                                                <option key={f.id} value={f.id}>
+                                                  🏦 {f.nome} ({f.tipo})
+                                                </option>
+                                              ))}
+                                          </optgroup>
+                                        )}
+                                        {/* Permite selecionar qualquer outra forma se o usuário preferir */}
+                                        <optgroup label="Outras Formas de Pagamento">
+                                          {formas
+                                            .filter((f) => (isCartao ? !f.cartao_credito : f.cartao_credito) && f.ativo)
+                                            .map((f) => (
+                                              <option key={f.id} value={f.id}>
+                                                {f.nome} {f.cartao_credito ? '(Cartão)' : `(${f.tipo})`}
+                                              </option>
+                                            ))}
+                                        </optgroup>
+                                      </select>
+                                    </div>
+                                  )}
+
+                                  {isSaving && (
+                                    <span className="text-[10px] text-[var(--color-muted)] animate-pulse">
+                                      Salvando...
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                            <span className="text-[10px] text-[var(--color-muted)] font-mono ml-2 shrink-0">
-                              {conta.forma_pagamento_nome || 'Vinculado'}
-                            </span>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
                     </div>
                   )}

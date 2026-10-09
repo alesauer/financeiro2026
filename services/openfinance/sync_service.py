@@ -168,7 +168,12 @@ class OpenFinanceSyncService:
                 db.session.flush()
 
             contas_mapeadas += 1
+            if not getattr(conta_map, "sincronizar", True):
+                continue
+
             forma_pagamento = conta_map.forma_pagamento or FormaPagamento.query.get(conta_map.forma_pagamento_id)
+            if not forma_pagamento:
+                continue
 
             # 2. Busca transações dos últimos 60 dias
             data_inicio = (date.today() - timedelta(days=60)).isoformat()

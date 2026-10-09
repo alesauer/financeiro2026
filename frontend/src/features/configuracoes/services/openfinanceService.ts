@@ -1,5 +1,6 @@
 import { httpClient } from '@/shared/api/httpClient'
 import type {
+  OpenFinanceConta,
   OpenFinanceConexao,
   OpenFinanceStatus,
   ConnectTokenResponse,
@@ -35,5 +36,13 @@ export const openfinanceService = {
 
   disconnectConexao(token: string, conexaoId: number) {
     return httpClient.del<{ message: string }>(`${BASE}/conexoes/${conexaoId}`, token)
+  },
+
+  updateConta(token: string, contaId: number, payload: { sincronizar?: boolean; forma_pagamento_id?: number | null }) {
+    return httpClient.put<{ message: string; conta: Partial<OpenFinanceConta> }>(
+      `${BASE}/contas/${contaId}`,
+      payload,
+      token
+    )
   },
 }
