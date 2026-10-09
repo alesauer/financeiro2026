@@ -362,67 +362,113 @@ def status_periodo():
 # Parcelamentos com parcelas futuras (compromissos já assumidos)
 @bp_relatorios.route("/parcelamentos_futuros", methods=["GET"])
 def parcelamentos_futuros():
-    hoje = datetime.now().date()
+    import re
+    from dateutil.relativedelta import relativedelta
 
-    futuras = (
-        db.session.query(Transacao, FormaPagamento.nome)
-        .join(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+    hoje = datetime.now().date()
+    mes_atual = date(hoje.year, hoje.month, 1)
+
+    txs = (
+        Transacao.query.join(FormaPagamento)
         .filter(
             Transacao.parcelado.is_(True),
             Transacao.tipo == "Despesa",
-            Transacao.data_transacao > hoje,
         )
-        .order_by(Transacao.data_transacao.asc())
+        .order_by(Transacao.data_transacao.asc(), Transacao.id.asc())
         .all()
     )
 
-    grupos = {}
-    mensal = {}
-    total_restante = 0.0
-
-    for t, forma in futuras:
-        valor = float(t.valor)
-        total_restante += valor
-
-        chave_mes = t.data_transacao.strftime("%Y-%m")
-        item_mes = mensal.setdefault(chave_mes, {"mes": chave_mes, "qtd": 0, "total": 0.0})
-        item_mes["qtd"] += 1
-        item_mes["total"] = round(item_mes["total"] + valor, 2)
-
+    grupos_dict = {}
+    for t in txs:
         chave = t.parcelamento_id or f"{t.descricao}|{t.forma_pagamento_id}"
-        grupo = grupos.setdefault(chave, {
-            "descricao": t.descricao,
-            "forma_pagamento": forma,
-            "total_parcelas": t.total_parcelas,
-            "parcelas_restantes": 0,
-            "proxima_parcela": t.parcela_atual or 1,
-            "parcela_atual": max(1, (t.parcela_atual or 1) - 1),
-            "valor_parcela": float(t.valor_parcela or t.valor),
-            "valor_restante": 0.0,
-            "proxima_data": t.data_transacao.isoformat(),
-            "ultima_data": t.data_transacao.isoformat(),
-        })
-        grupo["parcelas_restantes"] += 1
-        grupo["valor_restante"] = round(grupo["valor_restante"] + valor, 2)
-        if t.parcela_atual and t.parcela_atual < grupo["proxima_parcela"]:
-            grupo["proxima_parcela"] = t.parcela_atual
-            grupo["parcela_atual"] = max(1, t.parcela_atual - 1)
-        data_iso = t.data_transacao.isoformat()
-        if data_iso < grupo["proxima_data"]:
-            grupo["proxima_data"] = data_iso
-            grupo["descricao"] = t.descricao
-        if data_iso > grupo["ultima_data"]:
-            grupo["ultima_data"] = data_iso
+        grupos_dict.setdefault(chave, []).append(t)
 
-    grupos_lista = sorted(grupos.values(), key=lambda g: g["valor_restante"], reverse=True)
-    mensal_lista = sorted(mensal.values(), key=lambda m: m["mes"])
+    resultado_grupos = []
+    mensal_map = {}
+    total_restante = 0.0
+    qtd_parcelas_total = 0
+
+    for chave, lista_tx in grupos_dict.items():
+        # Transação mais recente / com maior parcela_atual registrada
+        tx_mais_recente = max(lista_tx, key=lambda x: (x.parcela_atual or 1, x.data_transacao or date.min))
+        p_atual = tx_mais_recente.parcela_atual or 1
+        p_total = tx_mais_recente.total_parcelas or p_atual
+        forma_nome = tx_mais_recente.forma_pagamento.nome if tx_mais_recente.forma_pagamento else "Cartão"
+        valor_parc = float(tx_mais_recente.valor_parcela or tx_mais_recente.valor or 0.0)
+
+        # Checa se já existem transações explícitas no banco para parcelas futuras
+        txs_futuras_db = [t for t in lista_tx if (t.parcela_atual and t.parcela_atual > p_atual) or (t.data_transacao and t.data_transacao > hoje)]
+        txs_futuras_por_num = {t.parcela_atual: t for t in txs_futuras_db if t.parcela_atual}
+
+        # Base para projeção de competência/data
+        if tx_mais_recente.competencia_fatura:
+            base_mes = date(tx_mais_recente.competencia_fatura.year, tx_mais_recente.competencia_fatura.month, 1)
+        elif tx_mais_recente.data_transacao:
+            base_mes = date(tx_mais_recente.data_transacao.year, tx_mais_recente.data_transacao.month, 1)
+        else:
+            base_mes = mes_atual
+
+        dia_venc = getattr(tx_mais_recente.forma_pagamento, "dia_vencimento", None) or 5
+
+        parcelas_futuras_info = []
+        for i in range(p_atual + 1, p_total + 1):
+            if i in txs_futuras_por_num:
+                t_fut = txs_futuras_por_num[i]
+                d_parc = t_fut.data_transacao
+                v_parc = float(t_fut.valor_parcela or t_fut.valor or valor_parc)
+            else:
+                offset = i - p_atual
+                mes_fut = base_mes + relativedelta(months=offset)
+                d_parc = date(mes_fut.year, mes_fut.month, min(dia_venc, 28))
+                v_parc = valor_parc
+
+            parcelas_futuras_info.append({
+                "num": i,
+                "data": d_parc,
+                "valor": v_parc,
+            })
+
+        if not parcelas_futuras_info:
+            continue
+
+        valor_restante_grupo = sum(p["valor"] for p in parcelas_futuras_info)
+        total_restante += valor_restante_grupo
+        qtd_parcelas_total += len(parcelas_futuras_info)
+
+        proxima_data = parcelas_futuras_info[0]["data"].isoformat()
+        ultima_data = parcelas_futuras_info[-1]["data"].isoformat()
+
+        # Limpar descrição para remover sufixos de parcela na exibição da tabela
+        desc_limpa = re.sub(r"\s*\b\d{1,2}\s*[\/\-]\s*\d{1,2}\b", "", tx_mais_recente.descricao).strip() or tx_mais_recente.descricao
+
+        resultado_grupos.append({
+            "descricao": desc_limpa,
+            "forma_pagamento": forma_nome,
+            "total_parcelas": p_total,
+            "parcela_atual": p_atual,
+            "proxima_parcela": p_atual + 1,
+            "parcelas_restantes": len(parcelas_futuras_info),
+            "valor_parcela": round(valor_parc, 2),
+            "valor_restante": round(valor_restante_grupo, 2),
+            "proxima_data": proxima_data,
+            "ultima_data": ultima_data,
+        })
+
+        for pf in parcelas_futuras_info:
+            mes_chave = pf["data"].strftime("%Y-%m")
+            item_m = mensal_map.setdefault(mes_chave, {"mes": mes_chave, "qtd": 0, "total": 0.0})
+            item_m["qtd"] += 1
+            item_m["total"] = round(item_m["total"] + pf["valor"], 2)
+
+    resultado_grupos.sort(key=lambda g: g["valor_restante"], reverse=True)
+    mensal_lista = sorted(mensal_map.values(), key=lambda m: m["mes"])
 
     return jsonify({
-        "grupos": grupos_lista,
+        "grupos": resultado_grupos,
         "mensal": mensal_lista,
         "total_restante": round(total_restante, 2),
-        "qtd_parcelas": len(futuras),
-        "qtd_grupos": len(grupos_lista),
+        "qtd_parcelas": qtd_parcelas_total,
+        "qtd_grupos": len(resultado_grupos),
     }), 200
 
 
