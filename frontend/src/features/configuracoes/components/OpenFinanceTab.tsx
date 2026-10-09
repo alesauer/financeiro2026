@@ -142,19 +142,19 @@ export function OpenFinanceTab({ token }: Props) {
           if (itemId) {
             setFeedback({
               tipo: 'sucesso',
-              texto: 'Conexão autorizada! Sincronizando contas e compras no cartão...',
+              texto: 'Conexão autorizada! Buscando contas e cartões para configuração...',
             })
             try {
               await openfinanceService.registerConexao(token, itemId)
               await carregarDados()
               setFeedback({
                 tipo: 'sucesso',
-                texto: 'Instituição conectada com sucesso! As transações de cartão e extrato foram adicionadas.',
+                texto: 'Instituição conectada com sucesso! Configure quais contas/cartões deseja importar e clique em "Sincronizar" quando desejar.',
               })
             } catch (err: any) {
               setFeedback({
                 tipo: 'erro',
-                texto: `Erro ao sincronizar banco: ${err.message || 'Falha no sync inicial.'}`,
+                texto: `Erro ao conectar banco: ${err.message || 'Falha ao vincular instituição.'}`,
               })
             }
           }

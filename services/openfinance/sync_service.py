@@ -79,35 +79,15 @@ class OpenFinanceSyncService:
 
         db.session.commit()
 
-        # Sincroniza contas e transações
-        cls.sync_connection(conexao.id, usuario_id)
+        # Apenas descobre e cadastra as contas/cartões para configuração do usuário (NÃO importa transações automaticamente)
+        cls.discover_and_map_accounts(conexao)
         return conexao
 
     @classmethod
-    def sync_connection(cls, conexao_id: int, usuario_id: int) -> Dict[str, Any]:
-        """Sincroniza todas as contas, cartões e transações de uma conexão Open Finance."""
-        conexao = OpenFinanceConexao.query.get(conexao_id)
-        if not conexao or int(conexao.usuario_id) != int(usuario_id):
-            raise ValueError("Conexão não encontrada ou não pertence ao usuário.")
-
-        # Atualiza status
-        item_data = PluggyClient.get_item(conexao.item_id)
-        conexao.status = item_data.get("status", conexao.status)
-        conexao.erro_mensagem = item_data.get("error", {}).get("message") if item_data.get("error") else None
-
-        # 1. Busca contas na Pluggy
+    def discover_and_map_accounts(cls, conexao: OpenFinanceConexao) -> List[OpenFinanceContaMap]:
+        """Busca contas e cartões da instituição e cadastra no mapa sem importar transações."""
         pluggy_accounts = PluggyClient.get_accounts(conexao.item_id)
-
-        novas_transacoes = 0
-        duplicadas_ignoradas = 0
-        pagamentos_fatura_ignorados = 0
-        contas_mapeadas = 0
-
-        # Categoria padrão de fallback
-        cat_outros = Categoria.query.filter_by(nome="Outros").first()
-        if not cat_outros:
-            cat_outros = Categoria.query.first()
-        fallback_cat_id = cat_outros.id if cat_outros else 1
+        contas_mapeadas = []
 
         for acc in pluggy_accounts:
             acc_id = acc.get("id")
@@ -115,10 +95,8 @@ class OpenFinanceSyncService:
             acc_name = acc.get("name") or acc.get("marketingName") or conexao.connector_name or "Conta Bancária"
             acc_number = acc.get("number") or ""
 
-            # Vincula ou cria FormaPagamento
             conta_map = OpenFinanceContaMap.query.filter_by(pluggy_account_id=acc_id).first()
             if not conta_map:
-                # Procura se já existe FormaPagamento com nome parecido
                 is_credit = (acc_type == "CREDIT")
                 tipo_forma = "Cartão de Crédito" if is_credit else "Conta Corrente"
 
@@ -127,22 +105,21 @@ class OpenFinanceSyncService:
                 ).first()
 
                 if not forma_existente:
-                    # Extrai dias de fechamento/vencimento se for cartão
-                    credit_data = acc.get("creditData") or {}
                     dia_fechamento = None
                     dia_vencimento = None
-                    
-                    # Tenta ler faturas para descobrir dia de fechamento/vencimento
                     if is_credit:
-                        bills = PluggyClient.get_bills(acc_id)
-                        if bills:
-                            latest_bill = bills[0]
-                            due_date_str = latest_bill.get("dueDate")
-                            close_date_str = latest_bill.get("closingDate")
-                            if due_date_str:
-                                dia_vencimento = int(due_date_str[:10].split("-")[2])
-                            if close_date_str:
-                                dia_fechamento = int(close_date_str[:10].split("-")[2])
+                        try:
+                            bills = PluggyClient.get_bills(acc_id)
+                            if bills:
+                                latest_bill = bills[0]
+                                due_date_str = latest_bill.get("dueDate")
+                                close_date_str = latest_bill.get("closingDate")
+                                if due_date_str:
+                                    dia_vencimento = int(due_date_str[:10].split("-")[2])
+                                if close_date_str:
+                                    dia_fechamento = int(close_date_str[:10].split("-")[2])
+                        except Exception:
+                            pass
 
                     forma_existente = FormaPagamento(
                         nome=f"{conexao.connector_name} - {acc_name}" if conexao.connector_name not in acc_name else acc_name,
@@ -163,11 +140,46 @@ class OpenFinanceSyncService:
                     nome=acc_name,
                     numero=acc_number,
                     forma_pagamento_id=forma_existente.id,
+                    sincronizar=True,
                 )
                 db.session.add(conta_map)
                 db.session.flush()
 
-            contas_mapeadas += 1
+            contas_mapeadas.append(conta_map)
+
+        db.session.commit()
+        return contas_mapeadas
+
+    @classmethod
+    def sync_connection(cls, conexao_id: int, usuario_id: int) -> Dict[str, Any]:
+        """Sincroniza todas as contas, cartões e transações de uma conexão Open Finance sob demanda."""
+        conexao = OpenFinanceConexao.query.get(conexao_id)
+        if not conexao or int(conexao.usuario_id) != int(usuario_id):
+            raise ValueError("Conexão não encontrada ou não pertence ao usuário.")
+
+        # Atualiza status
+        item_data = PluggyClient.get_item(conexao.item_id)
+        conexao.status = item_data.get("status", conexao.status)
+        conexao.erro_mensagem = item_data.get("error", {}).get("message") if item_data.get("error") else None
+
+        # 1. Garante que todas as contas estão descobertas e mapeadas
+        contas_mapeadas_lista = cls.discover_and_map_accounts(conexao)
+
+        novas_transacoes = 0
+        duplicadas_ignoradas = 0
+        pagamentos_fatura_ignorados = 0
+        contas_mapeadas = len(contas_mapeadas_lista)
+
+        # Categoria padrão de fallback
+        cat_outros = Categoria.query.filter_by(nome="Outros").first()
+        if not cat_outros:
+            cat_outros = Categoria.query.first()
+        fallback_cat_id = cat_outros.id if cat_outros else 1
+
+        for conta_map in contas_mapeadas_lista:
+            acc_id = conta_map.pluggy_account_id
+            acc_type = conta_map.tipo_pluggy
+
             if not getattr(conta_map, "sincronizar", True):
                 continue
 
