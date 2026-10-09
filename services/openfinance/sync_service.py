@@ -206,26 +206,75 @@ class OpenFinanceSyncService:
                 for tx in transactions:
                     tx_id = str(tx.get("id"))
                     desc_raw = tx.get("description") or tx.get("descriptionRaw") or "Transação Open Finance"
-                    amount = abs(float(tx.get("amount", 0)))
+                    raw_amount = float(tx.get("amount", 0))
+                    amount = abs(raw_amount)
                     tx_date_str = tx.get("date", "")[:10]
 
                     if not tx_date_str or amount == 0:
                         continue
 
                     data_tx = date.fromisoformat(tx_date_str)
+                    credit_meta = tx.get("creditCardMetadata") or {}
 
-                    # Descartar pagamentos de fatura recebidos (para não duplicar créditos/débitos)
-                    if acc_type == "CREDIT" and eh_pagamento_fatura(desc_raw):
-                        pagamentos_fatura_ignorados += 1
-                        continue
+                    # 1. Tratamento específico para Cartão de Crédito
+                    competencia_fatura_calculada = None
+                    if acc_type == "CREDIT":
+                        # Descartar pagamentos de fatura (ex.: "Pagamento recebido")
+                        if eh_pagamento_fatura(desc_raw) or (raw_amount < 0 and "pagamento" in desc_raw.lower()):
+                            pagamentos_fatura_ignorados += 1
+                            continue
 
-                    # 1. Deduplicação por identificador_externo
+                        # Se a Pluggy fornece o mês oficial da fatura (ex: "2026-11", "2026-12")
+                        bill_forecast = credit_meta.get("billForecastDate")
+                        if bill_forecast and len(bill_forecast) == 7 and bill_forecast[4] == "-":
+                            try:
+                                b_ano, b_mes = int(bill_forecast[:4]), int(bill_forecast[5:7])
+                                competencia_fatura_calculada = date(b_ano, b_mes, 1)
+
+                                # Filtro de Horizonte: Não importar parcelas de faturas muito futuras (> 3 meses à frente)
+                                # Exemplo: compras de 2027 parceladas que ainda não são fatura corrente
+                                hoje_comp = date(date.today().year, date.today().month, 1)
+                                limite_futuro = (date.today() + timedelta(days=95))
+                                if competencia_fatura_calculada > limite_futuro:
+                                    continue
+                            except Exception:
+                                pass
+
+                        # Se veio purchaseDate na Pluggy, usa a data original em que a compra aconteceu
+                        purchase_dt_str = credit_meta.get("purchaseDate") or credit_meta.get("transactionDateTime")
+                        if purchase_dt_str and len(purchase_dt_str) >= 10:
+                            try:
+                                data_tx = date.fromisoformat(purchase_dt_str[:10])
+                            except Exception:
+                                pass
+
+                    # 2. Determinar tipo de transação (Despesa / Receita / Estorno)
+                    pluggy_type = tx.get("type", "DEBIT")
+                    if acc_type == "CREDIT":
+                        # No cartão: compras são Despesas; estornos/créditos de volta (valor negativo, CREDIT ou termos de estorno/iof) são Receitas
+                        eh_estorno = (
+                            raw_amount < 0
+                            or pluggy_type == "CREDIT"
+                            or any(term in desc_raw.lower() for term in ["estorno", "iof de volta", "devolucao", "devolução", "reembolso"])
+                        )
+                        tipo_transacao = "Receita" if eh_estorno else "Despesa"
+                    else:
+                        tipo_transacao = "Receita" if pluggy_type == "CREDIT" else "Despesa"
+
+                    # 3. Deduplicação por identificador_externo
                     tx_existente = Transacao.query.filter_by(identificador_externo=tx_id).first()
                     if tx_existente:
+                        # Se já existia, garante que a competência, tipo e valor estejam atualizados
+                        if competencia_fatura_calculada and tx_existente.competencia_fatura != competencia_fatura_calculada:
+                            tx_existente.competencia_fatura = competencia_fatura_calculada
+                        if tx_existente.tipo != tipo_transacao:
+                            tx_existente.tipo = tipo_transacao
+                        if tx_existente.valor != amount:
+                            tx_existente.valor = amount
                         duplicadas_ignoradas += 1
                         continue
 
-                    # 2. Deduplicação por correspondência idêntica (data + valor + forma_pagamento + descrição normalizada)
+                    # 4. Deduplicação por correspondência idêntica (data + valor + forma_pagamento + descrição normalizada)
                     desc_norm = normalizar_texto(desc_raw)
                     candidatos = Transacao.query.filter_by(
                         forma_pagamento_id=forma_pagamento.id,
@@ -237,35 +286,27 @@ class OpenFinanceSyncService:
                         if cand.valor is not None and abs(float(cand.valor) - amount) < 0.005:
                             if normalizar_texto(cand.descricao) == desc_norm:
                                 ja_existe = True
-                                # Vincula o identificador_externo para buscas futuras rápidas
                                 cand.identificador_externo = tx_id
+                                if competencia_fatura_calculada:
+                                    cand.competencia_fatura = competencia_fatura_calculada
+                                if cand.tipo != tipo_transacao:
+                                    cand.tipo = tipo_transacao
                                 break
 
                     if ja_existe:
                         duplicadas_ignoradas += 1
                         continue
 
-                    # Determinar tipo de transação (Despesa / Receita)
-                    tipo_transacao = "Despesa"
-                    pluggy_type = tx.get("type", "DEBIT")
-                    if pluggy_type == "CREDIT" and acc_type != "CREDIT":
-                        tipo_transacao = "Receita"
-                    elif acc_type == "CREDIT":
-                        # No cartão, amount positivo é despesa; se amount vier negativo ou tipo CREDIT, pode ser estorno/crédito
-                        raw_amount = float(tx.get("amount", 0))
-                        tipo_transacao = "Receita" if raw_amount < 0 else "Despesa"
-
-                    # Classificação inteligente de categoria
+                    # 5. Classificação inteligente de categoria
                     cat_result = categorizar_transacao(desc_raw)
                     categoria_id = cat_result.categoria_id or fallback_cat_id
 
-                    # Informações de parcelamento (se fornecidas pela Pluggy)
+                    # 6. Informações de parcelamento (creditCardMetadata ou paymentData)
                     payment_data = tx.get("paymentData") or {}
-                    total_parcelas = payment_data.get("totalInstallments")
-                    parcela_atual = payment_data.get("installmentNumber") or 1
+                    total_parcelas = credit_meta.get("totalInstallments") or payment_data.get("totalInstallments")
+                    parcela_atual = credit_meta.get("installmentNumber") or payment_data.get("installmentNumber") or 1
                     is_parcelado = bool(total_parcelas and total_parcelas > 1)
 
-                    # Se a descrição contiver "1/3", extrai se paymentData não veio
                     if not is_parcelado:
                         match_parc = re.search(r"(\d{1,2})\s*[\/\-]\s*(\d{1,2})", desc_raw)
                         if match_parc:
@@ -291,9 +332,12 @@ class OpenFinanceSyncService:
                         observacoes=f"Sincronizado via Open Finance ({conexao.connector_name})",
                     )
 
-                    # Aplica competência da fatura do cartão
+                    # Aplica competência da fatura oficial da Pluggy ou calcula via regra da forma
                     if forma_pagamento.cartao_credito:
-                        aplicar_competencia_transacao(nova_tx, forma_pagamento)
+                        if competencia_fatura_calculada:
+                            nova_tx.competencia_fatura = competencia_fatura_calculada
+                        else:
+                            aplicar_competencia_transacao(nova_tx, forma_pagamento)
 
                     db.session.add(nova_tx)
                     novas_transacoes += 1

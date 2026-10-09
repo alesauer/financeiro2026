@@ -420,7 +420,7 @@ def resumo_mes():
         Transacao.query.join(FormaPagamento)
         .filter(
             FormaPagamento.cartao_credito.is_(True),
-            Transacao.tipo.ilike("despesa"),
+            Transacao.tipo.in_(["Despesa", "Receita"]),
             db.or_(
                 Transacao.data_transacao.between(busca_inicio, busca_fim),
                 Transacao.competencia_fatura.between(busca_inicio, busca_fim),
@@ -443,14 +443,15 @@ def resumo_mes():
         data_venc = calcular_vencimento_fatura(comp, dia_fech, dia_venc)
         if not (inicio_dt <= data_venc <= fim_dt):
             continue
-        val = float(tx.valor)
+        raw_val = float(tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else (tx.valor or 0))
+        val = -abs(raw_val) if tx.tipo == "Receita" else raw_val
         cartao_credito_sum += val
         if tx.status == "Pago":
             cartao_credito_pago_sum += val
         else:
             cartao_credito_pendente_sum += val
 
-    cartao_val = float(cartao_credito_sum or 0)
+    cartao_val = round(float(cartao_credito_sum or 0), 2)
     despesas_conta_val = float(despesa_conta_sum or 0)
     despesas_val = despesas_conta_val + cartao_val
     receitas_val = float(receita_sum or 0)
@@ -709,7 +710,7 @@ def listar_cartao_credito():
         Transacao.query.join(FormaPagamento)
         .filter(
             FormaPagamento.cartao_credito.is_(True),
-            Transacao.tipo.ilike("despesa"),
+            Transacao.tipo.in_(["Despesa", "Receita"]),
             db.or_(
                 Transacao.data_transacao.between(busca_inicio, busca_fim),
                 Transacao.competencia_fatura.between(busca_inicio, busca_fim),
@@ -791,7 +792,13 @@ def listar_cartao_credito():
             }
 
         fatura = faturas_map[fatura_key]
-        valor_efetivo = float(tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else (tx.valor or 0))
+        raw_valor = float(tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else (tx.valor or 0))
+        # No cartão, transações do tipo Receita ou valores negativos representam estornos/créditos de fatura
+        if tx.tipo == "Receita":
+            valor_efetivo = -abs(raw_valor)
+        else:
+            valor_efetivo = raw_valor
+
         status_lower = (tx.status or "").lower()
         is_pago = status_lower == "pago"
         is_estorno = valor_efetivo < 0
@@ -799,7 +806,7 @@ def listar_cartao_credito():
         fatura["qtd_transacoes"] += 1
         if is_estorno:
             fatura["qtd_estornos"] += 1
-            fatura["soma_estornos"] += valor_efetivo
+            fatura["soma_estornos"] += abs(valor_efetivo)
         else:
             fatura["qtd_compras"] += 1
 

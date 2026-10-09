@@ -190,6 +190,7 @@ def _garantir_schema_banco():
                 db.session.commit()
 
             # 5. Auto-healing: corrigir transações de cartão de crédito indevidamente gravadas como Receita
+            # (preservando estornos, iof de volta e reembolsos legítimos)
             try:
                 trans_corrigir = (
                     Transacao.query.join(FormaPagamento)
@@ -197,10 +198,12 @@ def _garantir_schema_banco():
                     .all()
                 )
                 for t in trans_corrigir:
-                    t.tipo = "Despesa"
-                    # Se estava na categoria Serviços (Receita), migra para Cuidados Pessoais
-                    if t.categoria and t.categoria.tipo == "Receita":
-                        t.categoria_id = cat_cuidados.id
+                    desc_low = (t.descricao or "").lower()
+                    if not any(w in desc_low for w in ["estorno", "iof de volta", "devolu", "reembolso", "cancelamento"]):
+                        t.tipo = "Despesa"
+                        # Se estava na categoria Serviços (Receita), migra para Cuidados Pessoais
+                        if t.categoria and t.categoria.tipo == "Receita":
+                            t.categoria_id = cat_cuidados.id
                 if trans_corrigir:
                     db.session.commit()
             except Exception:
