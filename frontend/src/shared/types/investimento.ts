@@ -110,11 +110,36 @@ export type InvestmentQuote = {
   updated_at: string
 }
 
+export type InvestmentDashboardAsset = {
+  asset_id: number
+  codigo: string
+  nome: string
+  tipo: string
+  classe_macro?: 'Renda Fixa' | 'Renda Variável'
+  setor?: string | null
+  bolsa?: string | null
+  quantidade: number
+  preco_medio?: number
+  preco_atual: number
+  valor_atual: number
+  valor_investido: number
+  p_l: number
+  rentabilidade_percentual?: number
+  variacao_dia?: number | null
+  peso_carteira?: number
+}
+
 export type InvestmentDashboard = {
   patrimonio_total: number
   valor_investido: number
   lucro_prejuizo: number
   rentabilidade_percentual: number
+  patrimonio_renda_fixa?: number
+  patrimonio_renda_variavel?: number
+  investido_renda_fixa?: number
+  investido_renda_variavel?: number
+  lucro_renda_variavel?: number
+  rentabilidade_renda_variavel?: number
   dividendos_mes: number
   aporte_mes: number
   alocacao_por_tipo: Array<{
@@ -122,17 +147,7 @@ export type InvestmentDashboard = {
     valor: number
     percentual: number
   }>
-  ativos: Array<{
-    asset_id: number
-    codigo: string
-    nome: string
-    tipo: string
-    quantidade: number
-    preco_atual: number
-    valor_atual: number
-    valor_investido: number
-    p_l: number
-  }>
+  ativos: InvestmentDashboardAsset[]
 }
 
 export type MarketSnapshotItem = {

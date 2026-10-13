@@ -389,12 +389,18 @@ def dashboard_investimentos():
     assets = assets_query.all()
     if not assets:
         return jsonify({
-            "patrimonio_total": 0,
-            "valor_investido": 0,
-            "lucro_prejuizo": 0,
-            "rentabilidade_percentual": 0,
-            "dividendos_mes": 0,
-            "aporte_mes": 0,
+            "patrimonio_total": 0.0,
+            "valor_investido": 0.0,
+            "lucro_prejuizo": 0.0,
+            "rentabilidade_percentual": 0.0,
+            "patrimonio_renda_fixa": 0.0,
+            "patrimonio_renda_variavel": 0.0,
+            "investido_renda_fixa": 0.0,
+            "investido_renda_variavel": 0.0,
+            "lucro_renda_variavel": 0.0,
+            "rentabilidade_renda_variavel": 0.0,
+            "dividendos_mes": 0.0,
+            "aporte_mes": 0.0,
             "alocacao_por_tipo": [],
             "ativos": [],
         }), 200
@@ -439,8 +445,14 @@ def dashboard_investimentos():
             if tx.data_movimentacao and tx.data_movimentacao.month == mes_atual and tx.data_movimentacao.year == ano_atual:
                 aporte_mes += total
 
+    RENDA_FIXA_TYPES = {"Tesouro Direto", "CDB", "LCI", "LCA", "Debêntures", "Previdência"}
+
     patrimonio_total = Decimal("0")
     valor_investido = Decimal("0")
+    patrimonio_renda_fixa = Decimal("0")
+    patrimonio_renda_variavel = Decimal("0")
+    investido_renda_fixa = Decimal("0")
+    investido_renda_variavel = Decimal("0")
     alocacao_map = {}
     detalhes = []
 
@@ -455,28 +467,69 @@ def dashboard_investimentos():
             .first()
         )
         preco = _to_decimal(quote.preco if quote else None, "0")
-        atual = qty * preco
         custo = custo_por_ativo.get(asset.id, Decimal("0"))
+
+        # Para renda fixa ou ativos sem cotação online, assume custo como valor atual inicial se preco não estiver cotado
+        eh_renda_fixa = asset.tipo in RENDA_FIXA_TYPES
+        if preco <= 0 and custo > 0:
+            preco = (custo / qty) if qty > 0 else Decimal("1")
+            atual = custo
+        else:
+            atual = qty * preco
 
         patrimonio_total += atual
         valor_investido += custo
         alocacao_map.setdefault(asset.tipo, Decimal("0"))
         alocacao_map[asset.tipo] += atual
 
+        classe_macro = "Renda Fixa" if eh_renda_fixa else "Renda Variável"
+        if eh_renda_fixa:
+            patrimonio_renda_fixa += atual
+            investido_renda_fixa += custo
+        else:
+            patrimonio_renda_variavel += atual
+            investido_renda_variavel += custo
+
+        pm = float(custo / qty) if (qty > 0 and custo > 0) else float(preco)
+        pl = float(atual - custo)
+        rent_pct = float(((atual - custo) / custo * 100)) if custo > 0 else 0.0
+
+        var_dia = None
+        if quote and quote.variacao_percentual is not None:
+            try:
+                var_dia = float(quote.variacao_percentual)
+            except Exception:
+                pass
+
         detalhes.append({
             "asset_id": asset.id,
             "codigo": asset.codigo,
             "nome": asset.nome,
             "tipo": asset.tipo,
+            "classe_macro": classe_macro,
+            "setor": asset.setor,
+            "bolsa": asset.bolsa,
             "quantidade": float(qty),
+            "preco_medio": pm,
             "preco_atual": float(preco),
             "valor_atual": float(atual),
             "valor_investido": float(custo),
-            "p_l": float(atual - custo),
+            "p_l": pl,
+            "rentabilidade_percentual": rent_pct,
+            "variacao_dia": var_dia,
+            "peso_carteira": 0.0,
         })
+
+    # Calcula percentual de peso na carteira consolidada
+    for item in detalhes:
+        if patrimonio_total > 0:
+            item["peso_carteira"] = round((item["valor_atual"] / float(patrimonio_total)) * 100, 2)
 
     lucro_prejuizo = patrimonio_total - valor_investido
     rentabilidade = (lucro_prejuizo / valor_investido * 100) if valor_investido > 0 else Decimal("0")
+
+    lucro_rv = patrimonio_renda_variavel - investido_renda_variavel
+    rent_rv = (lucro_rv / investido_renda_variavel * 100) if investido_renda_variavel > 0 else Decimal("0")
 
     alocacao = [
         {
@@ -492,6 +545,12 @@ def dashboard_investimentos():
         "valor_investido": float(valor_investido),
         "lucro_prejuizo": float(lucro_prejuizo),
         "rentabilidade_percentual": float(rentabilidade),
+        "patrimonio_renda_fixa": float(patrimonio_renda_fixa),
+        "patrimonio_renda_variavel": float(patrimonio_renda_variavel),
+        "investido_renda_fixa": float(investido_renda_fixa),
+        "investido_renda_variavel": float(investido_renda_variavel),
+        "lucro_renda_variavel": float(lucro_rv),
+        "rentabilidade_renda_variavel": float(rent_rv),
         "dividendos_mes": float(dividendos_mes),
         "aporte_mes": float(aporte_mes),
         "alocacao_por_tipo": alocacao,
