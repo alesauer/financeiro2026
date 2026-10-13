@@ -13,7 +13,7 @@ from app.models import (
 from app.utils.texto import normalizar_texto
 from services.openfinance.pluggy_client import PluggyClient
 from services.fatura_service import aplicar_competencia_transacao
-from services.categorization import categorizar_transacao
+from services.categorization import categorizar_transacao, get_engine
 
 
 def eh_pagamento_fatura(descricao: str | None) -> bool:
@@ -170,6 +170,12 @@ class OpenFinanceSyncService:
         duplicadas_ignoradas = 0
         pagamentos_fatura_ignorados = 0
         contas_mapeadas = len(contas_mapeadas_lista)
+
+        # Carrega/atualiza o aprendizado de categorias e histórico do usuário
+        try:
+            get_engine().carregar_contexto(force=True)
+        except Exception as e:
+            logger.warning(f"Falha ao recarregar contexto do motor de categorização: {e}")
 
         # Categoria padrão de fallback
         cat_outros = Categoria.query.filter_by(nome="Outros").first()
@@ -542,6 +548,12 @@ class OpenFinanceSyncService:
                 alvo_comp = date(y, m, 1)
             except Exception:
                 pass
+
+        # Carrega/atualiza o aprendizado de categorias e histórico do usuário
+        try:
+            get_engine().carregar_contexto(force=True)
+        except Exception as e:
+            logger.warning(f"Falha ao recarregar contexto do motor de categorização: {e}")
 
         # Categoria padrão de fallback
         cat_outros = Categoria.query.filter_by(nome="Outros").first()

@@ -8,7 +8,7 @@ services:
       DATABASE_URL: sqlite:////data/financas.db
       SECRET_KEY: docker-secret-key
       JWT_SECRET_KEY: docker-jwt-secret-key
-      OPENAI_API_KEY: ""
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       BRAPI_API_TOKEN: ${BRAPI_API_TOKEN:-}
       PLUGGY_CLIENT_ID: ${PLUGGY_CLIENT_ID:-}
       PLUGGY_CLIENT_SECRET: ${PLUGGY_CLIENT_SECRET:-}
@@ -18,10 +18,10 @@ services:
       MAILGUN_FROM: ""
       HTTP_PROXY: http://proxy.almg.uucp:3128
       HTTPS_PROXY: http://proxy.almg.uucp:3128
-      NO_PROXY: localhost,127.0.0.1,backend,frontend
+      NO_PROXY: localhost,127.0.0.1,backend,frontend,api.openai.com
       http_proxy: http://proxy.almg.uucp:3128
       https_proxy: http://proxy.almg.uucp:3128
-      no_proxy: localhost,127.0.0.1,backend,frontend
+      no_proxy: localhost,127.0.0.1,backend,frontend,api.openai.com
     ports:
       - "5001:5000"
     volumes:
