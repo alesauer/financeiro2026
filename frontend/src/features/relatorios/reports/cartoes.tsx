@@ -144,6 +144,7 @@ export function ParcelamentosFuturosReport() {
   const [dados, setDados] = useState<RelatorioParcelamentosFuturos | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [mesSelecionado, setMesSelecionado] = useState<string | null>(null)
 
   useEffect(() => {
     let ativo = true
@@ -157,6 +158,10 @@ export function ParcelamentosFuturosReport() {
     }
   }, [])
 
+  const mesAtivoObj = mesSelecionado && dados
+    ? dados.mensal.find((m) => m.mes === mesSelecionado)
+    : null
+
   return (
     <ReportShell
       titulo="Parcelamentos futuros"
@@ -165,21 +170,34 @@ export function ParcelamentosFuturosReport() {
       error={error}
       exportData={() =>
         dados
-          ? {
-              titulo: 'Parcelamentos futuros',
-              subtitulo: `Gerado em ${formatDateBr(new Date().toISOString().slice(0, 10))}`,
-              colunas: ['Descrição', 'Cartão/Forma', 'Parcela Atual', 'Parcelas Restantes', 'Valor parcela', 'Valor restante', 'Próxima', 'Última'],
-              linhas: dados.grupos.map((g) => [
-                g.descricao,
-                g.forma_pagamento,
-                g.parcela_atual && g.total_parcelas ? `${g.parcela_atual}/${g.total_parcelas}` : String(g.total_parcelas ?? '-'),
-                String(g.parcelas_restantes),
-                g.valor_parcela,
-                g.valor_restante,
-                formatDateBr(g.proxima_data),
-                formatDateBr(g.ultima_data),
-              ]),
-            }
+          ? mesAtivoObj
+            ? {
+                titulo: `Parcelamentos futuros - ${rotuloMes(mesAtivoObj.mes)}`,
+                subtitulo: `Total de ${fmt(mesAtivoObj.total)} em ${mesAtivoObj.qtd} parcelas`,
+                colunas: ['Descrição', 'Cartão / Forma', 'Parcela', 'Vencimento Previsto', 'Valor'],
+                linhas: (mesAtivoObj.itens || []).map((item) => [
+                  item.descricao,
+                  item.forma_pagamento,
+                  `${item.numero_parcela}/${item.total_parcelas}`,
+                  formatDateBr(item.data_vencimento),
+                  item.valor,
+                ]),
+              }
+            : {
+                titulo: 'Parcelamentos futuros - Visão Geral',
+                subtitulo: `Gerado em ${formatDateBr(new Date().toISOString().slice(0, 10))}`,
+                colunas: ['Descrição', 'Cartão/Forma', 'Parcela Atual', 'Parcelas Restantes', 'Valor parcela', 'Valor restante', 'Próxima', 'Última'],
+                linhas: dados.grupos.map((g) => [
+                  g.descricao,
+                  g.forma_pagamento,
+                  g.parcela_atual && g.total_parcelas ? `${g.parcela_atual}/${g.total_parcelas}` : String(g.total_parcelas ?? '-'),
+                  String(g.parcelas_restantes),
+                  g.valor_parcela,
+                  g.valor_restante,
+                  formatDateBr(g.proxima_data),
+                  formatDateBr(g.ultima_data),
+                ]),
+              }
           : null
       }
     >
@@ -193,70 +211,234 @@ export function ParcelamentosFuturosReport() {
 
           {dados.mensal.length > 0 ? (
             <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-              <h3 className="mb-3 text-sm font-semibold text-[var(--color-text)]">Impacto mês a mês</h3>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-sm font-semibold text-[var(--color-text)]">Impacto mês a mês</h3>
+                  <p className="text-xs text-[var(--color-muted)]">
+                    Clique em uma barra para filtrar e ver os lançamentos daquele mês.
+                  </p>
+                </div>
+                {mesSelecionado && (
+                  <button
+                    type="button"
+                    onClick={() => setMesSelecionado(null)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                  >
+                    <span>Mês ativo: <strong>{rotuloMes(mesSelecionado)}</strong></span>
+                    <span className="font-bold">✕</span>
+                  </button>
+                )}
+              </div>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dados.mensal.map((m) => ({ ...m, rotulo: rotuloMes(m.mes) }))} margin={{ top: 8, right: 8, bottom: 0, left: 8 }}>
+                  <BarChart
+                    data={dados.mensal.map((m) => ({ ...m, rotulo: rotuloMes(m.mes) }))}
+                    margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
+                    onClick={(state: any) => {
+                      if (state && state.activePayload && state.activePayload.length > 0) {
+                        const mesClicado = state.activePayload[0].payload.mes as string
+                        setMesSelecionado((prev) => (prev === mesClicado ? null : mesClicado))
+                      }
+                    }}
+                  >
                     <CartesianGrid stroke={CHART_COLORS.grid} vertical={false} />
                     <XAxis dataKey="rotulo" {...eixoProps} />
                     <YAxis {...eixoProps} tickFormatter={formatarEixo} width={56} />
                     <Tooltip formatter={tooltipMoeda} />
-                    <Bar dataKey="total" name="Parcelas do mês" fill={CHART_COLORS.cartoes} radius={[3, 3, 0, 0]} />
+                    <Bar
+                      dataKey="total"
+                      name="Parcelas do mês"
+                      radius={[3, 3, 0, 0]}
+                      className="cursor-pointer"
+                    >
+                      {dados.mensal.map((entry) => (
+                        <Cell
+                          key={`cell-${entry.mes}`}
+                          onClick={() => setMesSelecionado((prev) => (prev === entry.mes ? null : entry.mes))}
+                          className="cursor-pointer"
+                          fill={
+                            mesSelecionado === entry.mes
+                              ? '#2563eb'
+                              : mesSelecionado
+                              ? '#94a3b8'
+                              : CHART_COLORS.cartoes
+                          }
+                          opacity={mesSelecionado && mesSelecionado !== entry.mes ? 0.45 : 1}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </article>
           ) : null}
 
-          <TabelaCard titulo="Compras parceladas em aberto" subtitulo="Ordenadas pelo valor restante">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-[var(--color-border)]">
-                  <th className={thCls}>Descrição</th>
-                  <th className={thCls}>Cartão/Forma</th>
-                  <th className={thNumCls}>Parcela Atual</th>
-                  <th className={thNumCls}>Restantes</th>
-                  <th className={thNumCls}>Valor parcela</th>
-                  <th className={thNumCls}>Valor restante</th>
-                  <th className={thCls}>Próxima</th>
-                  <th className={thCls}>Última</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dados.grupos.map((grupo, i) => (
-                  <tr key={`${grupo.descricao}-${i}`} className="border-b border-[var(--color-border)]/60">
-                    <td className={tdCls}>{grupo.descricao}</td>
-                    <td className={tdCls}>{grupo.forma_pagamento}</td>
+          {/* Abas horizontais de navegação por mês */}
+          {dados.mensal.length > 0 ? (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-1 scrollbar-thin">
+              <button
+                type="button"
+                onClick={() => setMesSelecionado(null)}
+                className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
+                  mesSelecionado === null
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-blue-300 hover:text-[var(--color-text)]'
+                }`}
+              >
+                <span>Visão Geral</span>
+                <span
+                  className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                    mesSelecionado === null
+                      ? 'bg-blue-700/90 text-white'
+                      : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+                  }`}
+                >
+                  {dados.qtd_grupos} compras
+                </span>
+              </button>
+
+              {dados.mensal.map((m) => {
+                const ativo = mesSelecionado === m.mes
+                return (
+                  <button
+                    key={m.mes}
+                    type="button"
+                    onClick={() => setMesSelecionado(ativo ? null : m.mes)}
+                    className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3.5 py-2 text-xs font-semibold transition-all ${
+                      ativo
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-blue-300 hover:text-[var(--color-text)]'
+                    }`}
+                  >
+                    <span>{rotuloMes(m.mes)}</span>
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                        ativo
+                          ? 'bg-blue-700/90 text-white'
+                          : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300'
+                      }`}
+                    >
+                      {m.qtd}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          ) : null}
+
+          {/* Tabela detalhada do mês selecionado */}
+          {mesAtivoObj ? (
+            <TabelaCard
+              titulo={`Parcelas previstas para ${rotuloMes(mesAtivoObj.mes)}`}
+              subtitulo={`Total de ${fmt(mesAtivoObj.total)} em ${mesAtivoObj.qtd} ${mesAtivoObj.qtd === 1 ? 'parcela' : 'parcelas'}`}
+            >
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[var(--color-border)]">
+                    <th className={thCls}>Descrição</th>
+                    <th className={thCls}>Cartão / Forma</th>
+                    <th className={thNumCls}>Parcela</th>
+                    <th className={thCls}>Vencimento Previsto</th>
+                    <th className={thNumCls}>Valor da Parcela</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(mesAtivoObj.itens || []).map((item, idx) => (
+                    <tr
+                      key={`${item.descricao}-${item.numero_parcela}-${idx}`}
+                      className="border-b border-[var(--color-border)]/60"
+                    >
+                      <td className={tdCls}>{item.descricao}</td>
+                      <td className={tdCls}>{item.forma_pagamento}</td>
+                      <td className={tdNumCls}>
+                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                          {item.numero_parcela} de {item.total_parcelas}
+                        </span>
+                      </td>
+                      <td className={tdCls}>{formatDateBr(item.data_vencimento)}</td>
+                      <td className={`${tdNumCls} font-semibold text-[var(--color-text)]`}>
+                        {fmt(item.valor)}
+                      </td>
+                    </tr>
+                  ))}
+                  {(!mesAtivoObj.itens || mesAtivoObj.itens.length === 0) ? (
+                    <tr>
+                      <td colSpan={5} className={`${tdCls} text-center text-[var(--color-muted)]`}>
+                        Nenhum lançamento previsto para este mês.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-[var(--color-border)] bg-[var(--color-surface)]/60 font-semibold">
+                    <td className={tdCls} colSpan={2}>
+                      Total previsto para {rotuloMes(mesAtivoObj.mes)}
+                    </td>
                     <td className={tdNumCls}>
-                      <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                        {grupo.parcela_atual != null && grupo.parcela_atual > 0
-                          ? `${grupo.parcela_atual} de ${grupo.total_parcelas}`
-                          : grupo.total_parcelas
-                          ? `${grupo.total_parcelas}x (a iniciar)`
-                          : '-'}
+                      <span className="text-xs text-[var(--color-muted)]">
+                        {mesAtivoObj.qtd} {mesAtivoObj.qtd === 1 ? 'parcela' : 'parcelas'}
                       </span>
                     </td>
-                    <td className={tdNumCls}>
-                      <span className="font-semibold text-purple-900">
-                        {grupo.parcelas_restantes} {grupo.parcelas_restantes === 1 ? 'parcela' : 'parcelas'}
-                      </span>
-                    </td>
-                    <td className={tdNumCls}>{fmt(grupo.valor_parcela)}</td>
-                    <td className={`${tdNumCls} font-medium`}>{fmt(grupo.valor_restante)}</td>
-                    <td className={tdCls}>{formatDateBr(grupo.proxima_data)}</td>
-                    <td className={tdCls}>{formatDateBr(grupo.ultima_data)}</td>
-                  </tr>
-                ))}
-                {dados.grupos.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className={`${tdCls} text-center text-[var(--color-muted)]`}>
-                      Nenhum parcelamento com parcelas futuras.
+                    <td className={tdCls}>-</td>
+                    <td className={`${tdNumCls} font-bold text-blue-600`}>
+                      {fmt(mesAtivoObj.total)}
                     </td>
                   </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </TabelaCard>
+                </tfoot>
+              </table>
+            </TabelaCard>
+          ) : (
+            /* Tabela da visão geral de todas as compras */
+            <TabelaCard titulo="Compras parceladas em aberto" subtitulo="Ordenadas pelo valor restante">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-[var(--color-border)]">
+                    <th className={thCls}>Descrição</th>
+                    <th className={thCls}>Cartão/Forma</th>
+                    <th className={thNumCls}>Parcela Atual</th>
+                    <th className={thNumCls}>Restantes</th>
+                    <th className={thNumCls}>Valor parcela</th>
+                    <th className={thNumCls}>Valor restante</th>
+                    <th className={thCls}>Próxima</th>
+                    <th className={thCls}>Última</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dados.grupos.map((grupo, i) => (
+                    <tr key={`${grupo.descricao}-${i}`} className="border-b border-[var(--color-border)]/60">
+                      <td className={tdCls}>{grupo.descricao}</td>
+                      <td className={tdCls}>{grupo.forma_pagamento}</td>
+                      <td className={tdNumCls}>
+                        <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
+                          {grupo.parcela_atual != null && grupo.parcela_atual > 0
+                            ? `${grupo.parcela_atual} de ${grupo.total_parcelas}`
+                            : grupo.total_parcelas
+                            ? `${grupo.total_parcelas}x (a iniciar)`
+                            : '-'}
+                        </span>
+                      </td>
+                      <td className={tdNumCls}>
+                        <span className="font-semibold text-purple-900">
+                          {grupo.parcelas_restantes} {grupo.parcelas_restantes === 1 ? 'parcela' : 'parcelas'}
+                        </span>
+                      </td>
+                      <td className={tdNumCls}>{fmt(grupo.valor_parcela)}</td>
+                      <td className={`${tdNumCls} font-medium`}>{fmt(grupo.valor_restante)}</td>
+                      <td className={tdCls}>{formatDateBr(grupo.proxima_data)}</td>
+                      <td className={tdCls}>{formatDateBr(grupo.ultima_data)}</td>
+                    </tr>
+                  ))}
+                  {dados.grupos.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className={`${tdCls} text-center text-[var(--color-muted)]`}>
+                        Nenhum parcelamento com parcelas futuras.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </TabelaCard>
+          )}
         </>
       ) : null}
     </ReportShell>

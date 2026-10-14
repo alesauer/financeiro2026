@@ -70,10 +70,20 @@ export type RelatorioParcelamentoGrupo = {
   ultima_data: string
 }
 
+export type RelatorioParcelamentoItemMensal = {
+  descricao: string
+  forma_pagamento: string
+  numero_parcela: number
+  total_parcelas: number
+  valor: number
+  data_vencimento: string
+}
+
 export type RelatorioParcelamentoMensal = {
   mes: string
   qtd: number
   total: number
+  itens?: RelatorioParcelamentoItemMensal[]
 }
 
 export type RelatorioParcelamentosFuturos = {

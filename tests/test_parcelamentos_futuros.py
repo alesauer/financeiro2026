@@ -43,5 +43,19 @@ class TestParcelamentosFuturos(unittest.TestCase):
             soma_mensal = sum(m["total"] for m in data["mensal"])
             self.assertAlmostEqual(soma_mensal, data["total_restante"], places=1)
 
+            # Valida detalhamento de cada mês
+            for m in data["mensal"]:
+                self.assertIn("itens", m)
+                self.assertEqual(len(m["itens"]), m["qtd"])
+                soma_itens = sum(item["valor"] for item in m["itens"])
+                self.assertAlmostEqual(soma_itens, m["total"], places=1)
+                for item in m["itens"]:
+                    self.assertIn("descricao", item)
+                    self.assertIn("forma_pagamento", item)
+                    self.assertIn("numero_parcela", item)
+                    self.assertIn("total_parcelas", item)
+                    self.assertIn("valor", item)
+                    self.assertIn("data_vencimento", item)
+
 if __name__ == "__main__":
     unittest.main()

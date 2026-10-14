@@ -517,12 +517,24 @@ def parcelamentos_futuros():
 
         for pf in parcelas_futuras_info:
             mes_chave = pf["data"].strftime("%Y-%m")
-            item_m = mensal_map.setdefault(mes_chave, {"mes": mes_chave, "qtd": 0, "total": 0.0})
+            item_m = mensal_map.setdefault(
+                mes_chave, {"mes": mes_chave, "qtd": 0, "total": 0.0, "itens": []}
+            )
             item_m["qtd"] += 1
             item_m["total"] = round(item_m["total"] + pf["valor"], 2)
+            item_m["itens"].append({
+                "descricao": desc_limpa,
+                "forma_pagamento": forma_nome,
+                "numero_parcela": pf["num"],
+                "total_parcelas": p_total,
+                "valor": round(pf["valor"], 2),
+                "data_vencimento": pf["data"].isoformat(),
+            })
 
     resultado_grupos.sort(key=lambda g: g["valor_restante"], reverse=True)
     mensal_lista = sorted(mensal_map.values(), key=lambda m: m["mes"])
+    for m in mensal_lista:
+        m["itens"].sort(key=lambda x: (x["data_vencimento"], -x["valor"]))
 
     return jsonify({
         "grupos": resultado_grupos,
