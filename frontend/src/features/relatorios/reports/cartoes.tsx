@@ -229,7 +229,11 @@ export function ParcelamentosFuturosReport() {
                     <td className={tdCls}>{grupo.forma_pagamento}</td>
                     <td className={tdNumCls}>
                       <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700">
-                        {grupo.parcela_atual ? `${grupo.parcela_atual} de ${grupo.total_parcelas}` : `${grupo.total_parcelas}x`}
+                        {grupo.parcela_atual != null && grupo.parcela_atual > 0
+                          ? `${grupo.parcela_atual} de ${grupo.total_parcelas}`
+                          : grupo.total_parcelas
+                          ? `${grupo.total_parcelas}x (a iniciar)`
+                          : '-'}
                       </span>
                     </td>
                     <td className={tdNumCls}>
@@ -245,7 +249,7 @@ export function ParcelamentosFuturosReport() {
                 ))}
                 {dados.grupos.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className={`${tdCls} text-center text-[var(--color-muted)]`}>
+                    <td colSpan={8} className={`${tdCls} text-center text-[var(--color-muted)]`}>
                       Nenhum parcelamento com parcelas futuras.
                     </td>
                   </tr>

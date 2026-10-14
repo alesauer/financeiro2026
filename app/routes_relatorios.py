@@ -380,7 +380,14 @@ def parcelamentos_futuros():
 
     grupos_dict = {}
     for t in txs:
-        chave = t.parcelamento_id or f"{t.descricao}|{t.forma_pagamento_id}"
+        desc_limpa_chave = (
+            re.sub(r"\s*[\(\[]?\s*\b\d{1,2}\s*[\/\-]\s*\d{1,2}\b\s*[\)\]]?", "", t.descricao or "")
+            .strip()
+            .rstrip("-")
+            .strip()
+            .lower()
+        )
+        chave = t.parcelamento_id or f"{desc_limpa_chave}|{t.forma_pagamento_id}"
         grupos_dict.setdefault(chave, []).append(t)
 
     resultado_grupos = []
@@ -389,38 +396,86 @@ def parcelamentos_futuros():
     qtd_parcelas_total = 0
 
     for chave, lista_tx in grupos_dict.items():
-        # Transação mais recente / com maior parcela_atual registrada
-        tx_mais_recente = max(lista_tx, key=lambda x: (x.parcela_atual or 1, x.data_transacao or date.min))
-        p_atual = tx_mais_recente.parcela_atual or 1
-        p_total = tx_mais_recente.total_parcelas or p_atual
-        forma_nome = tx_mais_recente.forma_pagamento.nome if tx_mais_recente.forma_pagamento else "Cartão"
-        valor_parc = float(tx_mais_recente.valor_parcela or tx_mais_recente.valor or 0.0)
+        fp = lista_tx[0].forma_pagamento
+        eh_cartao = bool(fp and fp.cartao_credito)
+        dia_fech = getattr(fp, "dia_fechamento", 28) or 28
+        dia_venc = getattr(fp, "dia_vencimento", 5) or 5
+        forma_nome = fp.nome if fp else "Cartão"
 
-        # Checa se já existem transações explícitas no banco para parcelas futuras
-        txs_futuras_db = [t for t in lista_tx if (t.parcela_atual and t.parcela_atual > p_atual) or (t.data_transacao and t.data_transacao > hoje)]
-        txs_futuras_por_num = {t.parcela_atual: t for t in txs_futuras_db if t.parcela_atual}
+        # Classifica transações entre passadas/atuais (fatura atual ou anterior) e futuras (faturas posteriores)
+        txs_passadas_ou_atuais = []
+        txs_futuras_db = []
+        txs_futuras_por_num = {}
 
-        # Base para projeção de competência/data
-        if tx_mais_recente.competencia_fatura:
-            base_mes = date(tx_mais_recente.competencia_fatura.year, tx_mais_recente.competencia_fatura.month, 1)
-        elif tx_mais_recente.data_transacao:
-            base_mes = date(tx_mais_recente.data_transacao.year, tx_mais_recente.data_transacao.month, 1)
+        for t in lista_tx:
+            if eh_cartao:
+                comp = (
+                    t.competencia_fatura
+                    or calcular_competencia_fatura(t.data_transacao, dia_fech, dia_venc)
+                    or (t.data_transacao.replace(day=1) if t.data_transacao else mes_atual)
+                )
+                if comp <= mes_atual:
+                    txs_passadas_ou_atuais.append((t, comp))
+                else:
+                    txs_futuras_db.append((t, comp))
+                    if t.parcela_atual:
+                        txs_futuras_por_num[t.parcela_atual] = (t, comp)
+            else:
+                d = t.data_transacao or hoje
+                ref_mes = date(d.year, d.month, 1)
+                if ref_mes <= mes_atual:
+                    txs_passadas_ou_atuais.append((t, d))
+                else:
+                    txs_futuras_db.append((t, d))
+                    if t.parcela_atual:
+                        txs_futuras_por_num[t.parcela_atual] = (t, d)
+
+        p_total = max([t.total_parcelas for t in lista_tx if t.total_parcelas] or [1])
+
+        # Determina a parcela atual e base para projeção
+        if txs_passadas_ou_atuais:
+            tx_atual, ref_atual = max(
+                txs_passadas_ou_atuais,
+                key=lambda x: (x[0].parcela_atual or 1, x[0].data_transacao or date.min),
+            )
+            p_atual = tx_atual.parcela_atual or 1
+            base_tx = tx_atual
+            base_comp = ref_atual if eh_cartao else date(ref_atual.year, ref_atual.month, 1)
+            base_data = tx_atual.data_transacao or hoje
+        elif txs_futuras_db:
+            tx_primeira, ref_primeira = min(
+                txs_futuras_db,
+                key=lambda x: (x[0].parcela_atual or 1, x[0].data_transacao or date.max),
+            )
+            p_atual = max(0, (tx_primeira.parcela_atual or 1) - 1)
+            base_tx = tx_primeira
+            base_comp = mes_atual
+            base_data = hoje
         else:
-            base_mes = mes_atual
+            continue
 
-        dia_venc = getattr(tx_mais_recente.forma_pagamento, "dia_vencimento", None) or 5
+        valor_parc = float(base_tx.valor_parcela or base_tx.valor or 0.0)
 
+        # Coleta ou projeta as parcelas futuras: de p_atual + 1 até p_total
         parcelas_futuras_info = []
         for i in range(p_atual + 1, p_total + 1):
             if i in txs_futuras_por_num:
-                t_fut = txs_futuras_por_num[i]
-                d_parc = t_fut.data_transacao
+                t_fut, comp_fut = txs_futuras_por_num[i]
                 v_parc = float(t_fut.valor_parcela or t_fut.valor or valor_parc)
+                if eh_cartao:
+                    d_parc = calcular_vencimento_fatura(comp_fut, dia_fech, dia_venc) or t_fut.data_transacao
+                else:
+                    d_parc = t_fut.data_transacao or (comp_fut if isinstance(comp_fut, date) else hoje)
             else:
                 offset = i - p_atual
-                mes_fut = base_mes + relativedelta(months=offset)
-                d_parc = date(mes_fut.year, mes_fut.month, min(dia_venc, 28))
                 v_parc = valor_parc
+                if eh_cartao:
+                    mes_fut = base_comp + relativedelta(months=offset)
+                    d_parc = calcular_vencimento_fatura(mes_fut, dia_fech, dia_venc) or date(
+                        mes_fut.year, mes_fut.month, min(dia_venc, 28)
+                    )
+                else:
+                    d_parc = base_data + relativedelta(months=offset)
 
             parcelas_futuras_info.append({
                 "num": i,
@@ -439,7 +494,13 @@ def parcelamentos_futuros():
         ultima_data = parcelas_futuras_info[-1]["data"].isoformat()
 
         # Limpar descrição para remover sufixos de parcela na exibição da tabela
-        desc_limpa = re.sub(r"\s*\b\d{1,2}\s*[\/\-]\s*\d{1,2}\b", "", tx_mais_recente.descricao).strip() or tx_mais_recente.descricao
+        desc_limpa = (
+            re.sub(r"\s*[\(\[]?\s*\b\d{1,2}\s*[\/\-]\s*\d{1,2}\b\s*[\)\]]?", "", base_tx.descricao or "")
+            .strip()
+            .rstrip("-")
+            .strip()
+            or base_tx.descricao
+        )
 
         resultado_grupos.append({
             "descricao": desc_limpa,
