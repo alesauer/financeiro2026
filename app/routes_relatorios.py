@@ -13,6 +13,11 @@ from services.fatura_service import (
 
 bp_relatorios = Blueprint("relatorios", __name__)
 
+MESES_PT = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+]
+
 
 def _data_referencia_transacao(transacao, eh_cartao=False, dia_fechamento=None, dia_vencimento=None, usar_competencia=False):
     """Calcula a data de referência de uma transação para relatórios e matriz.
@@ -122,9 +127,103 @@ def resumo_mensal():
 
     return jsonify({
         "dias": dias,
+        "receita": receitas_dia,
+        "despesa": despesas_dia,
         "saldo": saldo,
         "acum_invest": acum_invest,
     })
+
+
+@bp_relatorios.route("/evolucao_diaria", methods=["GET"])
+@jwt_required()
+def evolucao_diaria():
+    """Retorna a evolução diária (receitas, despesas, saldo) de um mês específico."""
+    hoje = date.today()
+    ano = request.args.get("ano", type=int) or hoje.year
+    mes = request.args.get("mes", type=int) or hoje.month
+    base = (request.args.get("base") or "transacao").lower()
+
+    if mes < 1 or mes > 12:
+        return jsonify({"error": "Mês inválido (1-12)"}), 400
+
+    num_dias = monthrange(ano, mes)[1]
+    ini_mes = date(ano, mes, 1)
+    fim_mes = date(ano, mes, num_dias)
+
+    if base == "caixa":
+        itens = _obter_transacoes_periodo(ini_mes, fim_mes, base="data")
+        transacoes_com_data = [(tx, ref) for tx, _, _, ref in itens]
+    elif base == "competencia":
+        itens = _obter_transacoes_periodo(ini_mes, fim_mes, base="competencia")
+        transacoes_com_data = [(tx, ref) for tx, _, _, ref in itens]
+    else:
+        # Padrão: base "transacao" (dia exato da compra / movimentação financeira)
+        query = (
+            db.session.query(Transacao)
+            .filter(Transacao.data_transacao.between(ini_mes, fim_mes))
+        )
+        transacoes_com_data = [(tx, tx.data_transacao) for tx in query.all()]
+
+    receitas_dia = [0.0] * num_dias
+    despesas_dia = [0.0] * num_dias
+    investimentos_dia = [0.0] * num_dias
+    qtd_transacoes_dia = [0] * num_dias
+
+    for tx, ref_date in transacoes_com_data:
+        if not ref_date or not (ini_mes <= ref_date <= fim_mes):
+            continue
+        dia_idx = ref_date.day - 1
+        raw_val = float(tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else (tx.valor or 0))
+
+        if tx.tipo == "Receita":
+            receitas_dia[dia_idx] += raw_val
+        elif tx.tipo == "Despesa":
+            despesas_dia[dia_idx] += raw_val
+        elif tx.tipo == "Investimento":
+            investimentos_dia[dia_idx] += raw_val
+        qtd_transacoes_dia[dia_idx] += 1
+
+    dias_dados = []
+    total_receitas = 0.0
+    total_despesas = 0.0
+    total_investimentos = 0.0
+    saldo_acumulado = 0.0
+
+    for d in range(num_dias):
+        dia_num = d + 1
+        r = round(receitas_dia[d], 2)
+        desp = round(despesas_dia[d], 2)
+        inv = round(investimentos_dia[d], 2)
+        s = round(r - desp, 2)
+        saldo_acumulado = round(saldo_acumulado + s, 2)
+
+        total_receitas += r
+        total_despesas += desp
+        total_investimentos += inv
+
+        dias_dados.append({
+            "dia": dia_num,
+            "label": str(dia_num).zfill(2),
+            "data": f"{ano}-{str(mes).zfill(2)}-{str(dia_num).zfill(2)}",
+            "Receita": r,
+            "Despesa": desp,
+            "Saldo": s,
+            "Investimento": inv,
+            "SaldoAcumulado": saldo_acumulado,
+            "qtd_transacoes": qtd_transacoes_dia[d],
+        })
+
+    return jsonify({
+        "ano": ano,
+        "mes": mes,
+        "mes_nome": MESES_PT[mes - 1],
+        "base": base,
+        "dias": dias_dados,
+        "total_receita": round(total_receitas, 2),
+        "total_despesa": round(total_despesas, 2),
+        "total_investimento": round(total_investimentos, 2),
+        "total_saldo": round(total_receitas - total_despesas, 2),
+    }), 200
 
 
 # Totais por tipo em um período

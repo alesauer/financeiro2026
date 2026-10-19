@@ -25,6 +25,30 @@ export type RelatorioResumoMensal = {
   acum_invest: number[]
 }
 
+export type DiaEvolucaoItem = {
+  dia: number
+  label: string
+  data: string
+  Receita: number
+  Despesa: number
+  Saldo: number
+  Investimento: number
+  SaldoAcumulado: number
+  qtd_transacoes: number
+}
+
+export type EvolucaoDiariaResponse = {
+  ano: number
+  mes: number
+  mes_nome: string
+  base: string
+  dias: DiaEvolucaoItem[]
+  total_receita: number
+  total_despesa: number
+  total_investimento: number
+  total_saldo: number
+}
+
 export type RelatorioTopDespesaItem = {
   id: number
   descricao: string

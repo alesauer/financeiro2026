@@ -255,6 +255,7 @@ export function DashboardPage() {
             dados={dados}
             onVerTudo={() => setAba('graficos')}
             onDrillDown={irParaTransacoes}
+            onDiaClick={(dataIso) => navigate(`/transacoes?inicio=${dataIso}&fim=${dataIso}`)}
           />
         </div>
       ) : aba === 'graficos' ? (
@@ -279,6 +280,7 @@ function ResumoVisaoGeral({
   dados,
   onVerTudo,
   onDrillDown,
+  onDiaClick,
 }: {
   dados: import('@/shared/types/relatorio').MatrizAnual
   onVerTudo: () => void
@@ -288,6 +290,7 @@ function ResumoVisaoGeral({
     linha?: MatrizLinha | null
     apenasCartao?: boolean
   }) => void
+  onDiaClick?: (dataIso: string) => void
 }) {
   const topDespesas = useMemo(() => {
     const linhas = [...(dados.secoes.Despesa ?? []), ...(dados.secoes.Cartoes ?? [])]
@@ -298,11 +301,12 @@ function ResumoVisaoGeral({
 
   return (
     <div className="space-y-4">
-      {/* Linha 1: Gráfico de Evolução Mensal (Esquerda) + Maiores Despesas (Direita) */}
+      {/* Linha 1: Gráfico de Evolução Mensal/Diária (Esquerda) + Maiores Despesas (Direita) */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <EvolucaoLinhasChart
           dados={dados}
           onMesClick={(mes, tipo) => onDrillDown?.({ mes, tipo })}
+          onDiaClick={onDiaClick}
         />
 
         <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-xs flex flex-col justify-between">
