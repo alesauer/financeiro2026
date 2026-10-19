@@ -12,7 +12,12 @@ from app.models import (
 )
 from app.utils.texto import normalizar_texto
 from services.openfinance.pluggy_client import PluggyClient
-from services.fatura_service import aplicar_competencia_transacao
+from services.fatura_service import (
+    aplicar_competencia_transacao,
+    calcular_competencia_fatura,
+    add_meses_competencia,
+    calcular_fatura_aberta_atual,
+)
 from services.categorization import categorizar_transacao, get_engine
 
 
@@ -30,6 +35,82 @@ def eh_pagamento_fatura(descricao: str | None) -> bool:
         "pagamento antecipado",
     ]
     return any(t in texto_norm for t in termos)
+
+
+def extrair_dados_parcelamento(desc_raw: str, credit_meta: dict, payment_data: dict) -> tuple[bool, Optional[int], int]:
+    """Extrai (is_parcelado, total_parcelas, parcela_atual) de metadados ou regex da descrição."""
+    total_parcelas = credit_meta.get("totalInstallments") or payment_data.get("totalInstallments")
+    parcela_atual = credit_meta.get("installmentNumber") or payment_data.get("installmentNumber") or 1
+    is_parcelado = bool(total_parcelas and total_parcelas > 1)
+
+    if not is_parcelado and desc_raw:
+        match_parc = re.search(r"(\d{1,2})\s*[\/\-]\s*(\d{1,2})", desc_raw)
+        if match_parc:
+            p_atual, p_total = int(match_parc.group(1)), int(match_parc.group(2))
+            if 1 <= p_atual <= p_total <= 48:
+                is_parcelado = True
+                parcela_atual = p_atual
+                total_parcelas = p_total
+
+    return is_parcelado, (int(total_parcelas) if is_parcelado and total_parcelas else None), (int(parcela_atual) if is_parcelado else 1)
+
+
+def resolver_competencia_parcelada(
+    forma_pagamento_id: int,
+    desc_raw: str,
+    total_parcelas: Optional[int],
+    parcela_atual: int,
+    amount: float,
+    fallback_comp: Optional[date],
+    series_cache: Optional[Dict[Any, Any]] = None,
+    tx_id_ignorar: Optional[int] = None,
+) -> Optional[date]:
+    """Garante que parcelas consecutivas de uma mesma compra parcelada nunca colidam no mesmo mês de fatura.
+
+    Se houver outra parcela da mesma série (mesma descrição base, mesmo valor e total de parcelas),
+    alinha estritamente o mês de vencimento:
+      comp_p = comp_irma + (parcela_atual - irma_parcela_atual) meses
+    """
+    if not total_parcelas or total_parcelas <= 1 or not fallback_comp:
+        return fallback_comp
+
+    def _clean_desc(d: str) -> str:
+        return re.sub(r"\s*\d{1,2}\s*[\/\-]\s*\d{1,2}.*$", "", d or "").strip().lower()
+
+    base_desc = _clean_desc(desc_raw)
+    val_key = round(amount, 1)
+    cache_key = (forma_pagamento_id, base_desc, val_key, total_parcelas)
+
+    # 1. Verifica cache em memória da sessão de sincronização
+    if series_cache is not None and cache_key in series_cache:
+        anc_parc, anc_comp = series_cache[cache_key]
+        diff = parcela_atual - anc_parc
+        return add_meses_competencia(anc_comp, diff)
+
+    # 2. Busca parcela irmã no banco de dados
+    candidatos = Transacao.query.filter(
+        Transacao.forma_pagamento_id == forma_pagamento_id,
+        Transacao.parcelado == True,
+        Transacao.total_parcelas == total_parcelas,
+        Transacao.competencia_fatura.isnot(None),
+    )
+    if tx_id_ignorar:
+        candidatos = candidatos.filter(Transacao.id != tx_id_ignorar)
+
+    for cand in candidatos.all():
+        if _clean_desc(cand.descricao) == base_desc and abs(float(cand.valor or 0) - amount) < 0.05:
+            cand_parc = cand.parcela_atual or 1
+            cand_comp = cand.competencia_fatura
+            diff = parcela_atual - cand_parc
+            resolved_comp = add_meses_competencia(cand_comp, diff)
+            if series_cache is not None:
+                series_cache[cache_key] = (cand_parc, cand_comp)
+            return resolved_comp
+
+    # 3. Se nenhuma irmã foi encontrada, adota fallback_comp como âncora
+    if series_cache is not None:
+        series_cache[cache_key] = (parcela_atual, fallback_comp)
+    return fallback_comp
 
 
 class OpenFinanceSyncService:
@@ -183,6 +264,9 @@ class OpenFinanceSyncService:
             cat_outros = Categoria.query.first()
         fallback_cat_id = cat_outros.id if cat_outros else 1
 
+        # Cache para desempate de séries de parcelas na mesma sessão
+        series_cache: Dict[Any, Any] = {}
+
         for conta_map in contas_mapeadas_lista:
             acc_id = conta_map.pluggy_account_id
             acc_type = conta_map.tipo_pluggy
@@ -222,30 +306,17 @@ class OpenFinanceSyncService:
 
                     data_tx = date.fromisoformat(tx_date_str)
                     credit_meta = tx.get("creditCardMetadata") or {}
+                    payment_data = tx.get("paymentData") or {}
 
                     # 1. Tratamento específico para Cartão de Crédito
                     competencia_fatura_calculada = None
+                    is_parcelado, total_parcelas, parcela_atual = extrair_dados_parcelamento(desc_raw, credit_meta, payment_data)
+
                     if acc_type == "CREDIT":
                         # Descartar pagamentos de fatura (ex.: "Pagamento recebido")
                         if eh_pagamento_fatura(desc_raw) or (raw_amount < 0 and "pagamento" in desc_raw.lower()):
                             pagamentos_fatura_ignorados += 1
                             continue
-
-                        # Se a Pluggy fornece o mês oficial da fatura (ex: "2026-11", "2026-12")
-                        bill_forecast = credit_meta.get("billForecastDate")
-                        if bill_forecast and len(bill_forecast) == 7 and bill_forecast[4] == "-":
-                            try:
-                                b_ano, b_mes = int(bill_forecast[:4]), int(bill_forecast[5:7])
-                                competencia_fatura_calculada = date(b_ano, b_mes, 1)
-
-                                # Filtro de Horizonte: Não importar parcelas de faturas muito futuras (> 3 meses à frente)
-                                # Exemplo: compras de 2027 parceladas que ainda não são fatura corrente
-                                hoje_comp = date(date.today().year, date.today().month, 1)
-                                limite_futuro = (date.today() + timedelta(days=95))
-                                if competencia_fatura_calculada > limite_futuro:
-                                    continue
-                            except Exception:
-                                pass
 
                         # Se veio purchaseDate na Pluggy, usa a data original em que a compra aconteceu
                         purchase_dt_str = credit_meta.get("purchaseDate") or credit_meta.get("transactionDateTime")
@@ -254,6 +325,38 @@ class OpenFinanceSyncService:
                                 data_tx = date.fromisoformat(purchase_dt_str[:10])
                             except Exception:
                                 pass
+
+                        # Se a Pluggy fornece o mês oficial da fatura (ex: "2026-11", "2026-12")
+                        bill_forecast = credit_meta.get("billForecastDate")
+                        if bill_forecast and len(bill_forecast) == 7 and bill_forecast[4] == "-":
+                            try:
+                                b_ano, b_mes = int(bill_forecast[:4]), int(bill_forecast[5:7])
+                                competencia_fatura_calculada = date(b_ano, b_mes, 1)
+                            except Exception:
+                                pass
+
+                        if not competencia_fatura_calculada:
+                            dia_fech = getattr(forma_pagamento, "dia_fechamento", None)
+                            dia_venc = getattr(forma_pagamento, "dia_vencimento", None)
+                            competencia_fatura_calculada = calcular_competencia_fatura(data_tx, dia_fech, dia_venc)
+
+                        # Alinha parcelas da mesma série para nunca colidirem no mesmo mês de fatura
+                        if is_parcelado and competencia_fatura_calculada:
+                            competencia_fatura_calculada = resolver_competencia_parcelada(
+                                forma_pagamento_id=forma_pagamento.id,
+                                desc_raw=desc_raw,
+                                total_parcelas=total_parcelas,
+                                parcela_atual=parcela_atual,
+                                amount=amount,
+                                fallback_comp=competencia_fatura_calculada,
+                                series_cache=series_cache,
+                            )
+
+                        # Filtro de Horizonte: Não importar parcelas de faturas muito futuras (> 4 meses à frente)
+                        if competencia_fatura_calculada:
+                            limite_futuro = (date.today() + timedelta(days=125))
+                            if competencia_fatura_calculada > limite_futuro:
+                                continue
 
                     # 2. Determinar tipo de transação (Despesa / Receita / Estorno)
                     pluggy_type = tx.get("type", "DEBIT")
@@ -308,21 +411,6 @@ class OpenFinanceSyncService:
                     cat_result = categorizar_transacao(desc_raw)
                     categoria_id = cat_result.categoria_id or fallback_cat_id
 
-                    # 6. Informações de parcelamento (creditCardMetadata ou paymentData)
-                    payment_data = tx.get("paymentData") or {}
-                    total_parcelas = credit_meta.get("totalInstallments") or payment_data.get("totalInstallments")
-                    parcela_atual = credit_meta.get("installmentNumber") or payment_data.get("installmentNumber") or 1
-                    is_parcelado = bool(total_parcelas and total_parcelas > 1)
-
-                    if not is_parcelado:
-                        match_parc = re.search(r"(\d{1,2})\s*[\/\-]\s*(\d{1,2})", desc_raw)
-                        if match_parc:
-                            p_atual, p_total = int(match_parc.group(1)), int(match_parc.group(2))
-                            if 1 <= p_atual <= p_total <= 48:
-                                is_parcelado = True
-                                parcela_atual = p_atual
-                                total_parcelas = p_total
-
                     nova_tx = Transacao(
                         tipo=tipo_transacao,
                         categoria_id=categoria_id,
@@ -336,18 +424,13 @@ class OpenFinanceSyncService:
                         parcela_atual=parcela_atual if is_parcelado else 1,
                         valor_parcela=amount if is_parcelado else None,
                         identificador_externo=tx_id,
+                        competencia_fatura=competencia_fatura_calculada,
                         observacoes=f"Sincronizado via Open Finance ({conexao.connector_name})",
                     )
 
-                    # Aplica competência da fatura oficial da Pluggy ou calcula via regra da forma
-                    if forma_pagamento.cartao_credito:
-                        if competencia_fatura_calculada:
-                            nova_tx.competencia_fatura = competencia_fatura_calculada
-                        else:
-                            aplicar_competencia_transacao(nova_tx, forma_pagamento)
-
                     db.session.add(nova_tx)
                     novas_transacoes += 1
+
 
                 # Paginação
                 total_pages = tx_resp.get("totalPages", 1)
@@ -564,6 +647,18 @@ class OpenFinanceSyncService:
         pagamentos_fatura_ignorados = 0
         fora_do_mes_ignorados = 0
 
+        # Cache de séries de parcelas na sessão para evitar colisões
+        series_cache: Dict[Any, Any] = {}
+
+        # Busca informações do Item na Pluggy para status e data de coleta
+        collected_at = None
+        try:
+            item_data = PluggyClient.get_item(conexao.item_id)
+            conexao.status = item_data.get("status", conexao.status)
+            collected_at = item_data.get("resourcesCollectedAt") or item_data.get("lastUpdatedAt")
+        except Exception:
+            pass
+
         # Busca transações dos últimos 90 dias
         data_inicio = (date.today() - timedelta(days=90)).isoformat()
         tx_page = 1
@@ -592,11 +687,23 @@ class OpenFinanceSyncService:
 
                 data_tx = date.fromisoformat(tx_date_str)
                 credit_meta = tx.get("creditCardMetadata") or {}
+                payment_data = tx.get("paymentData") or {}
 
                 # Descartar pagamentos de fatura
                 if eh_pagamento_fatura(desc_raw) or (raw_amount < 0 and "pagamento" in desc_raw.lower()):
                     pagamentos_fatura_ignorados += 1
                     continue
+
+                # Extrai informações de parcelamento
+                is_parcelado, total_parcelas, parcela_atual = extrair_dados_parcelamento(desc_raw, credit_meta, payment_data)
+
+                # Se veio purchaseDate na Pluggy, usa a data original da compra
+                purchase_dt_str = credit_meta.get("purchaseDate") or credit_meta.get("transactionDateTime")
+                if purchase_dt_str and len(purchase_dt_str) >= 10:
+                    try:
+                        data_tx = date.fromisoformat(purchase_dt_str[:10])
+                    except Exception:
+                        pass
 
                 # Previsão da fatura (mês de vencimento oficial)
                 bill_forecast = credit_meta.get("billForecastDate")
@@ -608,20 +715,24 @@ class OpenFinanceSyncService:
                     except Exception:
                         pass
 
-                # Se veio purchaseDate na Pluggy, usa a data original da compra
-                purchase_dt_str = credit_meta.get("purchaseDate") or credit_meta.get("transactionDateTime")
-                if purchase_dt_str and len(purchase_dt_str) >= 10:
-                    try:
-                        data_tx = date.fromisoformat(purchase_dt_str[:10])
-                    except Exception:
-                        pass
-
                 if not competencia_fatura_calculada:
                     dia_fech = getattr(forma_pagamento, "dia_fechamento", None)
                     dia_venc = getattr(forma_pagamento, "dia_vencimento", None)
                     competencia_fatura_calculada = calcular_competencia_fatura(data_tx, dia_fech, dia_venc)
 
-                # FILTRO DE MÊS SE ESPECIFICADO PELO USUÁRIO
+                # Alinha parcelas da mesma série para nunca colidirem no mesmo mês de fatura
+                if is_parcelado and competencia_fatura_calculada:
+                    competencia_fatura_calculada = resolver_competencia_parcelada(
+                        forma_pagamento_id=forma_pagamento.id,
+                        desc_raw=desc_raw,
+                        total_parcelas=total_parcelas,
+                        parcela_atual=parcela_atual,
+                        amount=amount,
+                        fallback_comp=competencia_fatura_calculada,
+                        series_cache=series_cache,
+                    )
+
+                # FILTRO DE MÊS SE ESPECIFICADO PELO USUÁRIO (avalia contra a competência alinhada)
                 if alvo_comp and competencia_fatura_calculada != alvo_comp:
                     fora_do_mes_ignorados += 1
                     continue
@@ -674,21 +785,6 @@ class OpenFinanceSyncService:
                 cat_result = categorizar_transacao(desc_raw)
                 categoria_id = cat_result.categoria_id or fallback_cat_id
 
-                # Parcelamento
-                payment_data = tx.get("paymentData") or {}
-                total_parcelas = credit_meta.get("totalInstallments") or payment_data.get("totalInstallments")
-                parcela_atual = credit_meta.get("installmentNumber") or payment_data.get("installmentNumber") or 1
-                is_parcelado = bool(total_parcelas and total_parcelas > 1)
-
-                if not is_parcelado:
-                    match_parc = re.search(r"(\d{1,2})\s*[\/\-]\s*(\d{1,2})", desc_raw)
-                    if match_parc:
-                        p_atual, p_total = int(match_parc.group(1)), int(match_parc.group(2))
-                        if 1 <= p_atual <= p_total <= 48:
-                            is_parcelado = True
-                            parcela_atual = p_atual
-                            total_parcelas = p_total
-
                 nova_tx = Transacao(
                     tipo=tipo_transacao,
                     categoria_id=categoria_id,
@@ -733,4 +829,6 @@ class OpenFinanceSyncService:
             "pagamentos_fatura_ignorados": pagamentos_fatura_ignorados,
             "fora_do_mes_ignorados": fora_do_mes_ignorados,
             "last_sync_at": conexao.last_sync_at.isoformat(),
+            "resources_collected_at": collected_at,
+            "connector_name": conexao.connector_name,
         }

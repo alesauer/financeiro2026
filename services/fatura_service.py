@@ -64,6 +64,27 @@ def calcular_competencia_fatura(
     return date(ano_venc, mes_venc, 1)
 
 
+def add_meses_competencia(competencia: date, meses: int) -> date:
+    """Adiciona ou subtrai N meses de uma competência (sempre primeiro dia do mês)."""
+    if not isinstance(competencia, date):
+        raise ValueError("competencia deve ser uma instância de date")
+    ano = competencia.year + (competencia.month + meses - 1) // 12
+    mes = (competencia.month + meses - 1) % 12 + 1
+    return date(ano, mes, 1)
+
+
+def calcular_fatura_aberta_atual(
+    hoje: Optional[date] = None,
+    dia_fechamento: Optional[int] = None,
+    dia_vencimento: Optional[int] = None,
+) -> Optional[date]:
+    """Retorna a competência (primeiro dia do mês de vencimento) da fatura de cartão de crédito atualmente aberta."""
+    if hoje is None:
+        hoje = date.today()
+    return calcular_competencia_fatura(hoje, dia_fechamento, dia_vencimento)
+
+
+
 def calcular_vencimento_fatura(
     competencia: Optional[date],
     dia_fechamento: Optional[int],

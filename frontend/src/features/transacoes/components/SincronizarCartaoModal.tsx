@@ -36,6 +36,66 @@ const MESES_NOMES = [
   'Dezembro',
 ]
 
+function getFaturaCompetencia(
+  hoje: Date,
+  diaFechamento?: number | null,
+  diaVencimento?: number | null
+): { iso: string; label: string } {
+  const diaFech = diaFechamento && diaFechamento >= 1 && diaFechamento <= 31 ? diaFechamento : 26
+  const diaVenc = diaVencimento && diaVencimento >= 1 && diaVencimento <= 31 ? diaVencimento : 5
+
+  let anoFech = hoje.getFullYear()
+  let mesFech = hoje.getMonth() + 1
+  if (hoje.getDate() > diaFech) {
+    mesFech += 1
+    if (mesFech > 12) {
+      mesFech = 1
+      anoFech += 1
+    }
+  }
+
+  let anoVenc = anoFech
+  let mesVenc = mesFech
+  if (diaVenc <= diaFech) {
+    mesVenc += 1
+    if (mesVenc > 12) {
+      mesVenc = 1
+      anoVenc += 1
+    }
+  }
+
+  const iso = `${anoVenc}-${String(mesVenc).padStart(2, '0')}`
+  const label = `${MESES_NOMES[mesVenc - 1]} / ${anoVenc}`
+  return { iso, label }
+}
+
+function addMonthsToIso(iso: string, months: number): { iso: string; label: string } {
+  const y = Number(iso.slice(0, 4))
+  const m = Number(iso.slice(5, 7))
+  const totalM = m + months
+  const newY = y + Math.floor((totalM - 1) / 12)
+  const newM = (((totalM - 1) % 12) + 12) % 12 + 1
+  const newIso = `${newY}-${String(newM).padStart(2, '0')}`
+  const label = `${MESES_NOMES[newM - 1]} / ${newY}`
+  return { iso: newIso, label }
+}
+
+function formatarDataHora(isoString?: string | null): string {
+  if (!isoString) return ''
+  try {
+    const d = new Date(isoString)
+    if (isNaN(d.getTime())) return isoString
+    return d.toLocaleString('pt-BR', {
+      day: '2-digit',
+      month: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return isoString
+  }
+}
+
 export function SincronizarCartaoModal({
   isOpen,
   onClose,
@@ -47,21 +107,24 @@ export function SincronizarCartaoModal({
   const [cartoes, setCartoes] = useState<CartaoOpenFinance[]>([])
   const [loadingCartoes, setLoadingCartoes] = useState(false)
   const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState<number | null>(null)
-  const [modoPeriodo, setModoPeriodo] = useState<'mes_corrente' | 'mes_tela' | 'todos'>('mes_corrente')
+  const [modoPeriodo, setModoPeriodo] = useState<'fatura_aberta' | 'proxima_fatura' | 'mes_tela' | 'todos'>('fatura_aberta')
   const [loadingSync, setLoadingSync] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   const [resultado, setResultado] = useState<SyncCartaoResponse['resumo'] | null>(null)
 
-  // Data atual (mês corrente)
-  const hoje = new Date()
-  const anoCorrente = hoje.getFullYear()
-  const mesCorrenteNum = hoje.getMonth() + 1
-  const mesCorrenteIso = `${anoCorrente}-${String(mesCorrenteNum).padStart(2, '0')}`
-  const mesCorrenteLabel = `${MESES_NOMES[mesCorrenteNum - 1]} / ${anoCorrente}`
+  const cartaoSelecionado = cartoes.find((c) => c.forma_pagamento_id === cartaoSelecionadoId)
+
+  // Competência da fatura aberta atual e da próxima fatura com base no fechamento/vencimento
+  const faturaAberta = getFaturaCompetencia(
+    new Date(),
+    cartaoSelecionado?.dia_fechamento,
+    cartaoSelecionado?.dia_vencimento
+  )
+  const proximaFatura = addMonthsToIso(faturaAberta.iso, 1)
 
   // Mês selecionado no filtro da tela
-  let mesTelaIso = mesCorrenteIso
-  let mesTelaLabel = mesCorrenteLabel
+  let mesTelaIso = faturaAberta.iso
+  let mesTelaLabel = faturaAberta.label
   if (mesFiltroIso && mesFiltroIso.length >= 7) {
     const pAno = Number(mesFiltroIso.slice(0, 4))
     const pMes = Number(mesFiltroIso.slice(5, 7))
@@ -71,7 +134,7 @@ export function SincronizarCartaoModal({
     }
   }
 
-  const ehMesesDiferentes = mesTelaIso !== mesCorrenteIso
+  const ehMesTelaDiferente = mesTelaIso !== faturaAberta.iso && mesTelaIso !== proximaFatura.iso
 
   useEffect(() => {
     if (!isOpen) {
@@ -113,8 +176,10 @@ export function SincronizarCartaoModal({
     setResultado(null)
 
     let mesFatura: string | undefined = undefined
-    if (modoPeriodo === 'mes_corrente') {
-      mesFatura = mesCorrenteIso
+    if (modoPeriodo === 'fatura_aberta') {
+      mesFatura = faturaAberta.iso
+    } else if (modoPeriodo === 'proxima_fatura') {
+      mesFatura = proximaFatura.iso
     } else if (modoPeriodo === 'mes_tela') {
       mesFatura = mesTelaIso
     }
@@ -138,6 +203,7 @@ export function SincronizarCartaoModal({
   const handleConcluir = () => {
     onClose()
   }
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
@@ -204,6 +270,19 @@ export function SincronizarCartaoModal({
                   <span className="text-sm font-semibold text-sky-700">{resultado.mes_fatura}</span>
                 </div>
               </div>
+
+              {resultado.resources_collected_at ? (
+                <div className="rounded-lg border border-sky-200 bg-sky-50/70 p-3 text-xs text-sky-800 space-y-1">
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    <span>📡 Última Coleta pelo Open Finance</span>
+                  </div>
+                  <p className="text-[11px] text-sky-700">
+                    Última sincronização do banco pelo provedor ({resultado.connector_name || 'Open Finance'}):{' '}
+                    <strong>{formatarDataHora(resultado.resources_collected_at)}</strong>.
+                    Compras realizadas após este horário estarão disponíveis na próxima coleta automática do provedor.
+                  </p>
+                </div>
+              ) : null}
 
               <div className="flex justify-end pt-2">
                 <button
@@ -305,7 +384,7 @@ export function SincronizarCartaoModal({
                 <div className="space-y-2">
                   <label
                     className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
-                      modoPeriodo === 'mes_corrente'
+                      modoPeriodo === 'fatura_aberta'
                         ? 'border-sky-500 bg-sky-50/50'
                         : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)]/40'
                     }`}
@@ -313,22 +392,57 @@ export function SincronizarCartaoModal({
                     <input
                       type="radio"
                       name="modo_periodo"
-                      value="mes_corrente"
-                      checked={modoPeriodo === 'mes_corrente'}
-                      onChange={() => setModoPeriodo('mes_corrente')}
+                      value="fatura_aberta"
+                      checked={modoPeriodo === 'fatura_aberta'}
+                      onChange={() => setModoPeriodo('fatura_aberta')}
                       className="mt-0.5 h-4 w-4 text-sky-600 focus:ring-sky-500"
                     />
                     <div className="text-xs">
-                      <span className="font-semibold text-[var(--color-text)] block">
-                        Fatura do mês corrente ({mesCorrenteLabel})
-                      </span>
-                      <span className="text-[var(--color-muted)]">
-                        Sincroniza apenas as compras que compõem a fatura atual com vencimento neste mês.
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-[var(--color-text)]">
+                          Fatura Aberta Atual ({faturaAberta.label})
+                        </span>
+                        <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded font-medium text-[10px]">
+                          Em andamento
+                        </span>
+                      </div>
+                      <span className="text-[var(--color-muted)] block mt-0.5">
+                        Compras do ciclo atual (fechamento por volta do dia {cartaoSelecionado?.dia_fechamento || 28}).
                       </span>
                     </div>
                   </label>
 
-                  {ehMesesDiferentes ? (
+                  <label
+                    className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
+                      modoPeriodo === 'proxima_fatura'
+                        ? 'border-sky-500 bg-sky-50/50'
+                        : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-bg)]/40'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="modo_periodo"
+                      value="proxima_fatura"
+                      checked={modoPeriodo === 'proxima_fatura'}
+                      onChange={() => setModoPeriodo('proxima_fatura')}
+                      className="mt-0.5 h-4 w-4 text-sky-600 focus:ring-sky-500"
+                    />
+                    <div className="text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-[var(--color-text)]">
+                          Próxima Fatura ({proximaFatura.label})
+                        </span>
+                        <span className="px-1.5 py-0.5 bg-sky-100 text-sky-800 rounded font-medium text-[10px]">
+                          Futura
+                        </span>
+                      </div>
+                      <span className="text-[var(--color-muted)] block mt-0.5">
+                        Parcelas e lançamentos programados para o próximo mês de vencimento.
+                      </span>
+                    </div>
+                  </label>
+
+                  {ehMesTelaDiferente ? (
                     <label
                       className={`flex items-start gap-3 p-2.5 rounded-lg border cursor-pointer transition-all ${
                         modoPeriodo === 'mes_tela'
@@ -349,7 +463,7 @@ export function SincronizarCartaoModal({
                           Fatura do mês filtrado na tela ({mesTelaLabel})
                         </span>
                         <span className="text-[var(--color-muted)]">
-                          Sincroniza as compras da fatura do mês selecionado no filtro de transações.
+                          Sincroniza as compras da fatura com vencimento em {mesTelaLabel}.
                         </span>
                       </div>
                     </label>
@@ -375,12 +489,13 @@ export function SincronizarCartaoModal({
                         Todas as faturas recentes (últimos 90 dias)
                       </span>
                       <span className="text-[var(--color-muted)]">
-                        Atualiza compras recentes e parcelas de faturas passadas e futuras.
+                        Atualiza compras recentes e parcelas de faturas passadas e futuras sem filtro de mês.
                       </span>
                     </div>
                   </label>
                 </div>
               </div>
+
 
               {/* Footer */}
               <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[var(--color-border)]">

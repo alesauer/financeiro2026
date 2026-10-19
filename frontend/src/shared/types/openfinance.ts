@@ -80,5 +80,8 @@ export type SyncCartaoResponse = {
     pagamentos_fatura_ignorados: number
     fora_do_mes_ignorados: number
     last_sync_at: string
+    resources_collected_at?: string | null
+    connector_name?: string | null
   }
 }
+
