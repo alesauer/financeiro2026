@@ -1063,6 +1063,23 @@ def quitar_fatura():
     for tx in transacoes:
         tx.status = novo_status
 
+    # Sincroniza também a fatura oficial se existir
+    fatura_oficial = (
+        OpenFinanceFatura.query.join(OpenFinanceContaMap)
+        .filter(
+            OpenFinanceContaMap.forma_pagamento_id == forma_pagamento_id,
+            OpenFinanceFatura.competencia == competencia_dt,
+        )
+        .first()
+    )
+    if fatura_oficial:
+        if novo_status == "Pago":
+            fatura_oficial.status = "PAGO"
+            fatura_oficial.valor_pago = fatura_oficial.valor_total
+        else:
+            fatura_oficial.status = "ABERTO"
+            fatura_oficial.valor_pago = 0.0
+
     db.session.commit()
     return jsonify({
         "message": f"Fatura atualizada para {novo_status} com sucesso!",

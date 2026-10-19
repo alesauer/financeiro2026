@@ -113,6 +113,42 @@ def resolver_competencia_parcelada(
     return fallback_comp
 
 
+def determinar_status_transacao_sync(
+    forma_pagamento,
+    conta_map: Optional[OpenFinanceContaMap],
+    competencia_fatura: Optional[date]
+) -> str:
+    """Determina o status inicial ('Pago' ou 'Pendente') de uma transação sincronizada.
+
+    - Contas correntes / investimentos: sempre 'Pago' (débito/crédito na conta já efetuado).
+    - Cartão de crédito:
+        * 'Pago' se houver fatura oficial registrada para aquela competência com status PAGO.
+        * 'Pendente' para faturas abertas, parciais, futuras ou sem registro oficial de quitação.
+    """
+    eh_cartao = bool(
+        getattr(forma_pagamento, "cartao_credito", False)
+        or (conta_map and getattr(conta_map, "tipo_pluggy", None) == "CREDIT")
+    )
+    if not eh_cartao:
+        return "Pago"
+
+    if not conta_map or not competencia_fatura:
+        return "Pendente"
+
+    fatura_oficial = OpenFinanceFatura.query.filter_by(
+        conta_map_id=conta_map.id,
+        competencia=competencia_fatura,
+    ).first()
+
+    if fatura_oficial and (
+        fatura_oficial.status == "PAGO"
+        or (fatura_oficial.valor_pago or 0) >= (fatura_oficial.valor_total - 0.05)
+    ):
+        return "Pago"
+
+    return "Pendente"
+
+
 class OpenFinanceSyncService:
 
     @classmethod
@@ -411,6 +447,12 @@ class OpenFinanceSyncService:
                     cat_result = categorizar_transacao(desc_raw)
                     categoria_id = cat_result.categoria_id or fallback_cat_id
 
+                    status_tx = determinar_status_transacao_sync(
+                        forma_pagamento=forma_pagamento,
+                        conta_map=conta_map,
+                        competencia_fatura=competencia_fatura_calculada,
+                    )
+
                     nova_tx = Transacao(
                         tipo=tipo_transacao,
                         categoria_id=categoria_id,
@@ -418,7 +460,7 @@ class OpenFinanceSyncService:
                         valor=amount,
                         data_transacao=data_tx,
                         forma_pagamento_id=forma_pagamento.id,
-                        status="Pago",
+                        status=status_tx,
                         parcelado=is_parcelado,
                         total_parcelas=total_parcelas if is_parcelado else None,
                         parcela_atual=parcela_atual if is_parcelado else 1,
@@ -529,6 +571,13 @@ class OpenFinanceSyncService:
                     fatura_obj.status = status_fatura
 
                 faturas_sincronizadas.append(fatura_obj)
+
+                # Se a fatura oficial consta como PAGO no banco, garante que as transações fiquem com status Pago
+                if status_fatura == "PAGO":
+                    Transacao.query.filter(
+                        Transacao.forma_pagamento_id == forma_pagamento.id,
+                        Transacao.competencia_fatura == competencia,
+                    ).update({"status": "Pago"}, synchronize_session=False)
 
             db.session.commit()
             return faturas_sincronizadas
@@ -785,6 +834,12 @@ class OpenFinanceSyncService:
                 cat_result = categorizar_transacao(desc_raw)
                 categoria_id = cat_result.categoria_id or fallback_cat_id
 
+                status_tx = determinar_status_transacao_sync(
+                    forma_pagamento=forma_pagamento,
+                    conta_map=conta_map,
+                    competencia_fatura=competencia_fatura_calculada,
+                )
+
                 nova_tx = Transacao(
                     tipo=tipo_transacao,
                     categoria_id=categoria_id,
@@ -792,7 +847,7 @@ class OpenFinanceSyncService:
                     valor=amount,
                     data_transacao=data_tx,
                     forma_pagamento_id=forma_pagamento.id,
-                    status="Pago",
+                    status=status_tx,
                     parcelado=is_parcelado,
                     total_parcelas=total_parcelas if is_parcelado else None,
                     parcela_atual=parcela_atual if is_parcelado else 1,

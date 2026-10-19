@@ -333,7 +333,7 @@ export function FaturaDrawer({
               <div className="space-y-1.5">
                 {itensFiltrados.map((item) => {
                   const valor = parseFloat(item.valor_parcela || item.valor || '0')
-                  const isEstorno = valor < 0
+                  const isEstorno = valor < 0 || item.tipo === 'Receita'
                   const isSelected = selectedIds.includes(item.id)
 
                   return (
@@ -376,7 +376,13 @@ export function FaturaDrawer({
                               {item.categoria_nome || 'Sem Categoria'}
                             </span>
                             <span>·</span>
-                            <span className={item.status === 'Pago' ? 'text-emerald-700 font-medium' : 'text-amber-700 font-medium'}>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                                item.status === 'Pago'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
                               {item.status}
                             </span>
                           </div>
@@ -386,7 +392,7 @@ export function FaturaDrawer({
                       <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right">
                           <p className={`text-sm font-bold ${isEstorno ? 'text-emerald-700' : 'text-[var(--color-text)]'}`}>
-                            {formatCurrency(valor)}
+                            {isEstorno ? `- ${formatCurrency(Math.abs(valor))}` : formatCurrency(valor)}
                           </p>
                         </div>
 
@@ -430,8 +436,35 @@ export function FaturaDrawer({
           {/* Footer da Gaveta */}
           <div className="px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-bg)]/40 flex items-center justify-between">
             <div>
-              <span className="text-xs text-[var(--color-muted)]">Valor Total a Pagar da Fatura</span>
-              <p className="text-xl font-bold text-[var(--color-text)]">{formatCurrency(fatura.total_pendentes)}</p>
+              {isQuitada ? (
+                <>
+                  <span className="text-xs text-emerald-700 font-semibold flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Total da Fatura (Quitada)
+                  </span>
+                  <p className="text-xl font-bold text-[var(--color-text)]">{formatCurrency(fatura.total)}</p>
+                  <span className="text-[11px] text-[var(--color-muted)]">
+                    Total pago: {formatCurrency(fatura.total_pagas > 0 ? fatura.total_pagas : fatura.total)} · Sem pendências
+                  </span>
+                </>
+              ) : isParcial ? (
+                <>
+                  <span className="text-xs text-amber-700 font-semibold">Saldo Restante a Pagar</span>
+                  <p className="text-xl font-bold text-amber-800">{formatCurrency(fatura.total_pendentes)}</p>
+                  <span className="text-[11px] text-[var(--color-muted)]">
+                    Total da fatura: {formatCurrency(fatura.total)} (Já pago: {formatCurrency(fatura.total_pagas)})
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs text-[var(--color-muted)] font-medium">Valor Total a Pagar da Fatura</span>
+                  <p className="text-xl font-bold text-[var(--color-text)]">
+                    {formatCurrency(fatura.total_pendentes > 0 ? fatura.total_pendentes : fatura.total)}
+                  </p>
+                  <span className="text-[11px] text-[var(--color-muted)]">
+                    Vencimento do Boleto: {fatura.data_vencimento_label}
+                  </span>
+                </>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
