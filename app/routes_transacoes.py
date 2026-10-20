@@ -488,12 +488,15 @@ def resumo_mes():
     )
 
     if faturas_oficiais:
+        cartoes_oficiais_formas = set()
         cartao_oficial_total = 0.0
         cartao_oficial_pago = 0.0
         cartao_oficial_pendente = 0.0
         for fo in faturas_oficiais:
             cartao_oficial_total += float(fo.valor_total)
-            is_pago = fo.status == "PAGO" or fo.valor_pago >= (fo.valor_total - 0.05)
+            if fo.conta_map and fo.conta_map.forma_pagamento_id:
+                cartoes_oficiais_formas.add(fo.conta_map.forma_pagamento_id)
+            is_pago = fo.status == "PAGO" or (fo.valor_pago and fo.valor_pago >= (fo.valor_total - 0.05))
             if is_pago:
                 cartao_oficial_pago += float(fo.valor_total)
             else:
@@ -501,9 +504,33 @@ def resumo_mes():
                 cartao_oficial_pago += pago_parcial
                 cartao_oficial_pendente += max(0.0, float(fo.valor_total) - pago_parcial)
 
-        cartao_credito_sum = cartao_oficial_total
-        cartao_credito_pago_sum = cartao_oficial_pago
-        cartao_credito_pendente_sum = cartao_oficial_pendente
+        # Soma os outros cartões que NÃO possuem fatura oficial do Open Finance (ex.: C6 Bank)
+        outros_cartoes_total = 0.0
+        outros_cartoes_pago = 0.0
+        outros_cartoes_pendente = 0.0
+        for tx in card_txs:
+            if tx.forma_pagamento_id in cartoes_oficiais_formas:
+                continue
+            forma = tx.forma_pagamento
+            dia_fech = forma.dia_fechamento or 28
+            dia_venc = forma.dia_vencimento or 5
+            comp = tx.competencia_fatura or calcular_competencia_fatura(tx.data_transacao, dia_fech, dia_venc)
+            if not comp:
+                continue
+            data_venc = calcular_vencimento_fatura(comp, dia_fech, dia_venc)
+            if not (inicio_dt <= data_venc <= fim_dt):
+                continue
+            raw_val = float(tx.valor_parcela if (tx.parcelado and tx.valor_parcela is not None) else (tx.valor or 0))
+            val = -abs(raw_val) if tx.tipo == "Receita" else raw_val
+            outros_cartoes_total += val
+            if tx.status == "Pago":
+                outros_cartoes_pago += val
+            else:
+                outros_cartoes_pendente += val
+
+        cartao_credito_sum = cartao_oficial_total + outros_cartoes_total
+        cartao_credito_pago_sum = cartao_oficial_pago + outros_cartoes_pago
+        cartao_credito_pendente_sum = cartao_oficial_pendente + outros_cartoes_pendente
 
     cartao_val = round(float(cartao_credito_sum or 0), 2)
     despesas_conta_val = float(despesa_conta_sum or 0)
