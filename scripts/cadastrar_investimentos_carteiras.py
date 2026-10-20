@@ -1,20 +1,10 @@
 """Cadastra as carteiras e ativos de investimento com base nos prints do Nubank, C6 Bank e XP.
 
-Dados extraídos dos prints:
-1. XP Investimentos:
-   - Patrimônio Nacional Total: R$ 105.216,65
-   - Detalhamento Renda Fixa:
-     * Pós-Fixado: R$ 34.031,43 (48%)
-     * Inflação:   R$ 25.020,27 (35%)
-     * Prefixado:  R$ 10.009,83 (14%)
-     * Outros Investimentos / Saldo: R$ 36.155,12
-2. Nubank:
-   - Total Investido / Saldo Bruto: R$ 20.940,98 (+ R$ 1.320,86 em 12m)
-     * Caixinhas (6): Saldo R$ 20.097,72 (Investido R$ 18.889,07 | Rendimento + R$ 1.208,65)
-     * Minha Carteira: Saldo R$ 843,26 (Investido R$ 731,05 | Rendimento + R$ 112,21)
-3. C6 Bank (C6 Invest):
-   - Total Renda Fixa: R$ 14.726,13 (Rendeu R$ 222,94 no mês)
-     * Investido: R$ 14.503,19 | Saldo R$ 14.726,13
+Esclarecimento:
+- O valor de R$ 105.216,65 na tela inicial da XP era o total consolidado do Open Finance da XP,
+  que já estava puxando os saldos do Nubank (R$ 20.940,98) e C6 (R$ 14.726,13) somados com a XP (R$ 69.061,53).
+- Portanto, o valor real investido na XP é de R$ 69.061,53 (100% Renda Fixa).
+- Todos os investimentos das 3 instituições são Renda Fixa (CDBs, Tesouro IPCA e Pré).
 """
 
 import sys
@@ -37,18 +27,20 @@ def main():
         hoje = date(2026, 10, 20)
         agora = datetime(2026, 10, 20, 10, 0, 0)
 
-        # Limpar carteira dummy 'Sauer' se não tiver movimentações reais
-        dummy = InvestmentWallet.query.filter_by(nome="Sauer").first()
-        if dummy and len(dummy.movimentacoes) == 0:
-            db.session.delete(dummy)
+        # 1. Remover ativo XP-OUTROS se existir (era a duplicação do OpenFinance)
+        xp_outros = InvestmentAsset.query.filter_by(codigo="XP-OUTROS").first()
+        if xp_outros:
+            InvestmentTransaction.query.filter_by(asset_id=xp_outros.id).delete()
+            InvestmentQuote.query.filter_by(asset_id=xp_outros.id).delete()
+            db.session.delete(xp_outros)
             db.session.commit()
-            print("Carteira teste anterior removida.")
+            print("Ativo duplicado 'XP-OUTROS' removido com sucesso.")
 
         carteiras_dados = [
             {
                 "nome": "XP Investimentos",
                 "cor": "#f59e0b",
-                "observacoes": "Conta XP - Alexandre Sauer (Patrimônio Nacional R$ 105.216,65)",
+                "observacoes": "Conta XP - Alexandre Sauer (Total investido R$ 69.061,53)",
                 "ativos": [
                     {
                         "codigo": "XP-POS-FIXADO",
@@ -74,14 +66,6 @@ def main():
                         "saldo_atual": Decimal("10009.83"),
                         "variacao": Decimal("0.00"),
                     },
-                    {
-                        "codigo": "XP-OUTROS",
-                        "nome": "XP - Outros Investimentos / Saldo",
-                        "tipo": "Fundos",
-                        "custo": Decimal("36155.12"),
-                        "saldo_atual": Decimal("36155.12"),
-                        "variacao": Decimal("0.00"),
-                    },
                 ]
             },
             {
@@ -99,8 +83,8 @@ def main():
                     },
                     {
                         "codigo": "NU-CARTEIRA",
-                        "nome": "Nubank - Minha Carteira",
-                        "tipo": "Fundos",
+                        "nome": "Nubank - Minha Carteira (Renda Fixa)",
+                        "tipo": "CDB",
                         "custo": Decimal("731.05"),
                         "saldo_atual": Decimal("843.26"),
                         "variacao": Decimal("15.35"),
@@ -150,7 +134,7 @@ def main():
                         codigo=at["codigo"],
                         nome=at["nome"],
                         tipo=at["tipo"],
-                        setor="Renda Fixa / Fundos",
+                        setor="Renda Fixa",
                         bolsa=cart["nome"],
                         moeda="BRL",
                         ativo=True
@@ -162,7 +146,7 @@ def main():
                     asset.nome = at["nome"]
                     asset.tipo = at["tipo"]
 
-                # Registrar movimentação de Compra / Aporte (se ainda não tiver)
+                # Registrar movimentação de Compra / Aporte
                 tx = InvestmentTransaction.query.filter_by(wallet_id=wallet.id, asset_id=asset.id).first()
                 if not tx:
                     tx = InvestmentTransaction(
@@ -200,7 +184,7 @@ def main():
                     quote.cotado_em = agora
 
         db.session.commit()
-        print("\nTodas as carteiras, ativos, movimentações e cotações foram gravadas com sucesso!")
+        print("\nInvestimentos atualizados com sucesso (100% Renda Fixa)!")
 
 if __name__ == "__main__":
     main()
