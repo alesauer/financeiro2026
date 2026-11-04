@@ -101,7 +101,7 @@ export function LoginPage() {
               <TrendingUp className="h-5 w-5 text-teal-200" />
             </div>
             <span className="text-xl sm:text-2xl font-serif tracking-wide text-white/95 uppercase">
-              Finanças 2026
+              Maluki Organiza
             </span>
           </div>
 
@@ -131,7 +131,7 @@ export function LoginPage() {
               Mais de 2.000 lançamentos sincronizados em 2026, com categorização inteligente, Open Finance e visão patrimonial completa.
             </p>
             <p className="mt-2.5 text-[11px] sm:text-xs text-white/65">
-              Gestão Financeira Pessoal — Controle de Contas, Cartões & Investimentos
+              Maluki Organiza — Controle de Contas, Cartões & Investimentos
             </p>
           </div>
         </div>

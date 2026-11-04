@@ -60,7 +60,7 @@ export function PrivateLayout() {
               isSidebarCollapsed ? 'inline lg:hidden' : 'inline'
             }`}
           >
-            Finanças
+            Maluki Organiza
           </span>
           <button
             type="button"
@@ -209,7 +209,7 @@ export function PrivateLayout() {
               >
                 <Menu className="h-4 w-4" />
               </button>
-              <h1 className="text-lg font-semibold text-[var(--color-text)]">Finanças</h1>
+              <h1 className="text-lg font-semibold text-[var(--color-text)]">Maluki Organiza</h1>
             </div>
             
             <div className="flex items-center gap-2 lg:hidden">
