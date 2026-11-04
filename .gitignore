@@ -45,9 +45,8 @@ Thumbs.db
 # Builds do frontend e dependências
 node_modules/
 build/
-dist/
+!frontend/dist/
 
 # Diretórios de migração (se necessário, ignore apenas cache)
 migrations/__pycache__/
 migrations/versions/__pycache__/
-

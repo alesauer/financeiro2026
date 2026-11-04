@@ -5,18 +5,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential default-libmysqlclient-dev pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY requirements.txt ./
 RUN grep -vi '^mysqlclient' requirements.txt > requirements.docker.txt \
     && pip install --no-cache-dir --default-timeout=120 -r requirements.docker.txt
 
 COPY . .
 
-RUN mkdir -p /data
-RUN sed -i 's/\r$//' /app/docker_entrypoint.sh && chmod +x /app/docker_entrypoint.sh
+RUN mkdir -p /data \
+    && sed -i 's/\r$//' /app/docker_entrypoint.sh \
+    && chmod +x /app/docker_entrypoint.sh
 
 EXPOSE 5000
 
