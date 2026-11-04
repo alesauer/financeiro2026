@@ -2,6 +2,7 @@ import {
   BarChart3,
   Bell,
   Bot,
+  ChevronDown,
   CreditCard,
   FileText,
   Home,
@@ -15,15 +16,22 @@ import {
   Wallet,
 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/app/providers/AuthProvider'
+
+const CONFIG_PATHS = ['/formas-pagamento', '/categorias', '/usuarios', '/configuracoes']
 
 export function PrivateLayout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const isConfigRouteActive = CONFIG_PATHS.some((path) => location.pathname.startsWith(path))
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
+  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(true)
+
   const displayName = user?.nome ?? user?.email ?? 'Usuário'
   const userInitial = displayName.trim().charAt(0).toUpperCase() || 'U'
 
@@ -51,8 +59,7 @@ export function PrivateLayout() {
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex h-screen flex-col border-r border-[var(--color-border)] bg-[var(--color-surface)] transition-all duration-200 lg:sticky lg:top-0 ${
           isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        } ${isSidebarCollapsed ? 'w-72 lg:w-20' : 'w-72'}
-        }`}
+        } ${isSidebarCollapsed ? 'w-72 lg:w-20' : 'w-72'}`}
       >
         <div className="flex h-16 items-center justify-between border-b border-[var(--color-border)] px-4">
           <span
@@ -72,7 +79,7 @@ export function PrivateLayout() {
           </button>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+        <nav aria-label="Menu principal" className="flex-1 space-y-1 overflow-y-auto p-3">
           <NavItem to="/" icon={<Home className="h-4 w-4" />} collapsed={isSidebarCollapsed} onClick={handleNavigate}>
             DashBoard
           </NavItem>
@@ -123,16 +130,37 @@ export function PrivateLayout() {
           </NavItem>
 
           <div className="pt-2">
-            <div
-              className={`mb-1 flex items-center gap-2 px-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-muted)] ${
+            <button
+              type="button"
+              onClick={() => setIsConfigOpen((prev) => !prev)}
+              aria-expanded={isConfigOpen}
+              aria-controls="sidebar-config-submenu"
+              className={`mb-1 flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-2 text-xs font-semibold uppercase tracking-wide transition cursor-pointer ${
                 isSidebarCollapsed ? 'justify-start lg:justify-center' : ''
+              } ${
+                isConfigRouteActive && !isConfigOpen
+                  ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
+                  : 'text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-text)]'
               }`}
+              title="Configurações"
             >
-              <Settings className="h-4 w-4" />
-              <span className={isSidebarCollapsed ? 'inline lg:hidden' : 'inline'}>Configuração</span>
-            </div>
+              <span className="flex items-center gap-2">
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className={isSidebarCollapsed ? 'inline lg:hidden' : 'inline'}>Configurações</span>
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+                  isSidebarCollapsed ? 'inline lg:hidden' : 'inline'
+                } ${isConfigOpen ? 'rotate-0' : '-rotate-90'}`}
+              />
+            </button>
 
-            <div className="space-y-1">
+            <div
+              id="sidebar-config-submenu"
+              hidden={!isConfigOpen}
+              className="space-y-1"
+            >
               <NavItem
                 to="/formas-pagamento"
                 icon={<CreditCard className="h-4 w-4" />}
@@ -236,7 +264,7 @@ export function PrivateLayout() {
       </button>
 
       {/* Bottom Navigation Bar for Mobile */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 border-t border-[var(--color-border)] bg-[var(--color-surface)] lg:hidden shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+      <nav aria-label="Menu móvel" className="fixed bottom-0 left-0 right-0 z-40 flex h-16 border-t border-[var(--color-border)] bg-[var(--color-surface)] lg:hidden shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
         <BottomTabItem to="/" icon={<Home className="h-5 w-5" />} label="Início" />
         <BottomTabItem to="/transacoes" icon={<Wallet className="h-5 w-5" />} label="Transações" />
         <BottomTabItem to="/ia" icon={<Bot className="h-5 w-5" />} label="IA" />
