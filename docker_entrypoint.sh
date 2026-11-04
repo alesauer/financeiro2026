@@ -2,9 +2,16 @@
 set -e
 
 if [ -f "/app/backups/financas_seed.db" ]; then
-    if [ ! -f "/data/financas.db" ]; then
-        cp /app/backups/financas_seed.db /data/financas.db
-        echo "[docker] Banco inicializado a partir de /app/backups/financas_seed.db"
+    SEED_HASH=$(sha256sum /app/backups/financas_seed.db | awk '{print $1}')
+    CURRENT_HASH=""
+    if [ -f "/data/.seed_sha256" ]; then
+        CURRENT_HASH=$(cat /data/.seed_sha256 || true)
+    fi
+
+    if [ ! -f "/data/financas.db" ] || [ "$SEED_HASH" != "$CURRENT_HASH" ]; then
+        cp -f /app/backups/financas_seed.db /data/financas.db
+        echo "$SEED_HASH" > /data/.seed_sha256
+        echo "[docker] Banco /data/financas.db atualizado com a versao mais recente de /app/backups/financas_seed.db ($SEED_HASH)"
     else
         python - <<'PY_SEED'
 import shutil, sqlite3
