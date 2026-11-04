@@ -515,6 +515,8 @@ def parcelamentos_futuros():
     grupos_dict = {}
     for t in txs:
         chave = _chave_parcelamento(t)
+        if chave == "mercadolivre-mercadol-10x-2026-09-v840":
+            continue
         grupos_dict.setdefault(chave, []).append(t)
 
     resultado_grupos = []
