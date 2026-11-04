@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import {
   ChevronLeft,
   ChevronRight,
   Calendar,
   CalendarRange,
+  CalendarClock,
   RotateCcw,
   ChevronDown,
 } from 'lucide-react'
@@ -232,6 +234,16 @@ export function MonthNavigator({
           {isCustomRange ? 'Período Personalizado' : 'Datas Exatas'}
         </span>
       </button>
+
+      {/* Link para Relatório de Parcelamentos Futuros */}
+      <Link
+        to="/relatorios/parcelamentos-futuros"
+        title="Ver relatório de parcelamentos futuros"
+        className="inline-flex h-9 items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-muted)] shadow-sm transition hover:border-[var(--color-primary)]/50 hover:bg-[var(--color-primary)]/5 hover:text-[var(--color-primary)]"
+      >
+        <CalendarClock className="h-3.5 w-3.5 text-[var(--color-primary)]" />
+        <span>Parcelamentos Futuros</span>
+      </Link>
 
       {/* Painel Expansível de Datas Personalizadas */}
       {customRangeOpen ? (
