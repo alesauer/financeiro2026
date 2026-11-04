@@ -555,3 +555,32 @@ class OpenFinanceFatura(db.Model):
     def __repr__(self):
         return f"<OpenFinanceFatura bill={self.pluggy_bill_id} comp={self.competencia} total={self.valor_total} pago={self.valor_pago}>"
 
+
+
+# =======================
+# Metas e Orcamento Mensal
+# =======================
+
+class MetaOrcamento(db.Model):
+    __tablename__ = "metas_orcamento"
+
+    id = db.Column(db.Integer, primary_key=True)
+    # escopo: 'global_despesa' | 'global_investimento' | 'categoria' | 'cartao'
+    escopo = db.Column(db.String(30), nullable=False, index=True)
+    categoria_id = db.Column(db.Integer, db.ForeignKey("categorias.id", ondelete="CASCADE"), nullable=True, index=True)
+    forma_pagamento_id = db.Column(db.Integer, db.ForeignKey("formas_pagamento.id", ondelete="CASCADE"), nullable=True, index=True)
+    valor_limite = db.Column(db.Numeric(12, 2), nullable=False)
+    # Quando mes e ano sao NULL, vale como meta recorrente padrao para todos os meses.
+    # Quando preenchidos, sobrescrevem (override) apenas aquele mes/ano especifico.
+    mes = db.Column(db.Integer, nullable=True, index=True)
+    ano = db.Column(db.Integer, nullable=True, index=True)
+    ativo = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    categoria = db.relationship("Categoria", lazy=True)
+    forma_pagamento = db.relationship("FormaPagamento", lazy=True)
+
+    def __repr__(self):
+        periodo = f"{self.mes:02d}/{self.ano}" if (self.mes and self.ano) else "Padrao"
+        return f"<MetaOrcamento {self.escopo} cat={self.categoria_id} fp={self.forma_pagamento_id} R${self.valor_limite} [{periodo}]>"

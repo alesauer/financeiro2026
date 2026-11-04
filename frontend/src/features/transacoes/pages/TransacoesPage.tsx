@@ -9,6 +9,7 @@ import { FaturaCard } from '@/features/transacoes/components/FaturaCard'
 import { FaturaDrawer } from '@/features/transacoes/components/FaturaDrawer'
 import { SincronizarCartaoModal } from '@/features/transacoes/components/SincronizarCartaoModal'
 import { CopiarMesModal } from '@/features/transacoes/components/CopiarMesModal'
+import { MetasMiniBanner } from '@/features/metas/components/MetasMiniBanner'
 import { categoriasService } from '@/features/categorias/services/categoriasService'
 import { formasPagamentoService } from '@/features/formasPagamento/services/formasPagamentoService'
 import { transacoesService } from '@/features/transacoes/services/transacoesService'
@@ -543,6 +544,8 @@ export function TransacoesPage() {
           />
         </div>
       ) : null}
+
+      <MetasMiniBanner token={token} mesIso={mesFiltro} refreshTrigger={resumo} />
 
       <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="mb-4 flex items-center justify-between gap-2">

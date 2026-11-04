@@ -1,10 +1,12 @@
-import { Suspense, lazy, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Target } from 'lucide-react'
 
 import { PlanilhaAnual } from '@/features/dashboard/components/PlanilhaAnual'
 import type { CelulaClickPayload } from '@/features/dashboard/components/PlanilhaAnual'
 import { EvolucaoLinhasChart } from '@/features/dashboard/charts/EvolucaoLinhasChart'
 import { DestaquesSection } from '@/features/dashboard/components/DestaquesSection'
+import { MetasOrcamentoTab } from '@/features/metas/components/MetasOrcamentoTab'
 import { useMatrizAnual } from '@/features/dashboard/hooks/useMatrizAnual'
 import { exportarMatrizAnual } from '@/features/dashboard/utils/exportarPlanilha'
 import type {
@@ -21,10 +23,11 @@ const GraficosTab = lazy(() =>
   import('@/features/dashboard/components/GraficosTab').then((mod) => ({ default: mod.GraficosTab })),
 )
 
-type Aba = 'visao' | 'graficos' | 'planilha'
+type Aba = 'visao' | 'metas' | 'graficos' | 'planilha'
 
 const ABAS: { id: Aba; rotulo: string }[] = [
   { id: 'visao', rotulo: 'Visão geral' },
+  { id: 'metas', rotulo: 'Metas & Orçamento' },
   { id: 'graficos', rotulo: 'Gráficos' },
   { id: 'planilha', rotulo: 'Planilha' },
 ]
@@ -35,8 +38,15 @@ function ultimoDiaDoMes(ano: number, mes: number) {
 
 export function DashboardPage() {
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const [aba, setAba] = useState<Aba>('visao')
+  const [aba, setAba] = useState<Aba>(() => {
+    const paramAba = searchParams.get('aba')
+    if (paramAba === 'metas' || paramAba === 'graficos' || paramAba === 'planilha') {
+      return paramAba
+    }
+    return 'visao'
+  })
   const [ano, setAno] = useState(() => new Date().getFullYear())
   const [agrupar, setAgrupar] = useState<MatrizAgrupamento>('categoria')
   const [base, setBase] = useState<MatrizBase>('data')
@@ -44,6 +54,24 @@ export function DashboardPage() {
 
   const [exportando, setExportando] = useState(false)
   const [erroLocal, setErroLocal] = useState<string | null>(null)
+
+  useEffect(() => {
+    const paramAba = searchParams.get('aba')
+    if (paramAba === 'metas' || paramAba === 'graficos' || paramAba === 'planilha' || paramAba === 'visao') {
+      setAba(paramAba)
+    }
+  }, [searchParams])
+
+  const selecionarAba = (novaAba: Aba) => {
+    setAba(novaAba)
+    const next = new URLSearchParams(searchParams)
+    if (novaAba === 'visao') {
+      next.delete('aba')
+    } else {
+      next.set('aba', novaAba)
+    }
+    setSearchParams(next, { replace: true })
+  }
 
   const { dados, loading, error } = useMatrizAnual({ ano, agrupar, base, cartoes, comparar: true })
 
@@ -87,11 +115,13 @@ export function DashboardPage() {
     tipo,
     linha,
     apenasCartao,
+    categoriaIdDireto,
   }: {
     mes: number | null
     tipo: 'Receita' | 'Despesa' | 'Investimento'
     linha?: MatrizLinha | null
     apenasCartao?: boolean
+    categoriaIdDireto?: number
   }) => {
     const params = new URLSearchParams({ tipo })
 
@@ -102,10 +132,13 @@ export function DashboardPage() {
       const mesFormatado = String(mes + 1).padStart(2, '0')
       params.set('inicio', `${ano}-${mesFormatado}-01`)
       params.set('fim', `${ano}-${mesFormatado}-${String(ultimoDiaDoMes(ano, mes)).padStart(2, '0')}`)
+      params.set('mes', `${ano}-${mesFormatado}`)
     }
 
     if (apenasCartao) {
       params.set('cartao_credito', 'true')
+    } else if (categoriaIdDireto) {
+      params.set('categoria_id', String(categoriaIdDireto))
     } else if (linha?.categoria_id) {
       params.set('categoria_id', String(linha.categoria_id))
     }
@@ -130,6 +163,17 @@ export function DashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {aba !== 'metas' ? (
+            <button
+              type="button"
+              onClick={() => selecionarAba('metas')}
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-teal-200 bg-teal-50 px-3.5 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-100 transition-colors cursor-pointer"
+            >
+              <Target className="h-4 w-4 text-teal-600" />
+              Metas & Orçamento
+            </button>
+          ) : null}
+
           <div className="flex items-center rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
             <button
               type="button"
@@ -209,8 +253,8 @@ export function DashboardPage() {
           <button
             key={item.id}
             type="button"
-            onClick={() => setAba(item.id)}
-            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors ${
+            onClick={() => selecionarAba(item.id)}
+            className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium transition-colors cursor-pointer ${
               aba === item.id
                 ? 'border-sky-600 text-sky-700'
                 : 'border-transparent text-[var(--color-muted)] hover:text-[var(--color-text)]'
@@ -227,7 +271,17 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      {loading ? (
+      {aba === 'metas' ? (
+        <MetasOrcamentoTab
+          ano={ano}
+          onVerTransacoesCategoria={(mesIdx, catId) =>
+            irParaTransacoes({ mes: mesIdx, tipo: 'Despesa', categoriaIdDireto: catId })
+          }
+          onVerTransacoesCartao={(mesIdx) =>
+            irParaTransacoes({ mes: mesIdx, tipo: 'Despesa', apenasCartao: true })
+          }
+        />
+      ) : loading ? (
         <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-10 text-center text-sm text-[var(--color-muted)]">
           Carregando dados...
         </div>
@@ -253,7 +307,7 @@ export function DashboardPage() {
 
           <ResumoVisaoGeral
             dados={dados}
-            onVerTudo={() => setAba('graficos')}
+            onVerTudo={() => selecionarAba('graficos')}
             onDrillDown={irParaTransacoes}
             onDiaClick={(dataIso) => navigate(`/transacoes?inicio=${dataIso}&fim=${dataIso}`)}
           />

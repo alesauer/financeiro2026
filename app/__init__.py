@@ -63,6 +63,7 @@ def create_app():
     from .routes_viagens import bp_viagens
     from .routes_investimentos import bp_investimentos
     from .routes_openfinance import bp_openfinance
+    from .routes_metas import bp_metas
 
     app.register_blueprint(bp_categorias, url_prefix="/api/categorias")
     app.register_blueprint(bp_transacoes, url_prefix="/api/transacoes")
@@ -78,6 +79,7 @@ def create_app():
     app.register_blueprint(bp_viagens, url_prefix="/api/viagens")
     app.register_blueprint(bp_investimentos, url_prefix="/api/investimentos")
     app.register_blueprint(bp_openfinance)
+    app.register_blueprint(bp_metas, url_prefix="/api/metas")
 
     # Garantir integridade de schema e auto-healing para SQLite e MySQL
     with app.app_context():
