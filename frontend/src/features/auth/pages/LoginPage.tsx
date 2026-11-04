@@ -1,21 +1,7 @@
 import { useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/app/providers/AuthProvider'
-import {
-  Wallet,
-  TrendingUp,
-  Award,
-  Sparkles,
-  ShieldCheck,
-  Mail,
-  Lock,
-  Eye,
-  EyeOff,
-  ArrowRight,
-  Loader2,
-  CheckCircle2,
-  LockKeyhole,
-} from 'lucide-react'
+import { Eye, EyeOff, Loader2, TrendingUp } from 'lucide-react'
 
 type LocationState = {
   from?: {
@@ -30,10 +16,10 @@ export function LoginPage() {
 
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
-  const [lembrar, setLembrar] = useState(true)
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [infoMessage, setInfoMessage] = useState<string | null>(null)
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -43,6 +29,7 @@ export function LoginPage() {
     }
 
     setError(null)
+    setInfoMessage(null)
     setIsSubmitting(true)
 
     try {
@@ -57,244 +44,233 @@ export function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen w-full flex flex-col lg:flex-row overflow-hidden bg-[#070B14] text-slate-100 font-sans">
-      {/* Background Glowing Ambient Orbs */}
-      <div className="pointer-events-none absolute -top-40 -left-40 h-[600px] w-[600px] rounded-full bg-teal-600/15 blur-[140px]" />
-      <div className="pointer-events-none absolute top-1/2 -right-40 h-[550px] w-[550px] rounded-full bg-emerald-600/10 blur-[150px]" />
-      <div className="pointer-events-none absolute -bottom-20 left-1/3 h-[500px] w-[500px] rounded-full bg-indigo-600/10 blur-[140px]" />
-
-      {/* Grid Pattern Overlay */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.03]"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.4) 1px, transparent 0)',
-          backgroundSize: '24px 24px',
-        }}
-      />
-
+    <div className="min-h-screen w-full grid grid-cols-1 lg:grid-cols-2 font-sans">
       {/* ========================================================= */}
-      {/* LEFT SIDE: SHOWCASE HERO & BRAND EXPERIENCE (Desktop) */}
+      {/* LADO ESQUERDO: PAINEL INSTITUCIONAL COM MARCA D'ÁGUA       */}
       {/* ========================================================= */}
-      <div className="relative z-10 flex flex-1 flex-col justify-between p-8 sm:p-12 lg:p-16 xl:p-20">
-        {/* Brand Header */}
-        <div>
-          <div className="inline-flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-tr from-teal-500 via-emerald-400 to-teal-200 p-0.5 shadow-lg shadow-teal-500/25">
-              <div className="flex h-full w-full items-center justify-center rounded-[14px] bg-slate-950">
-                <Wallet className="h-6 w-6 text-teal-400" />
-              </div>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">
-                  Finanças<span className="text-teal-400">2026</span>
-                </h1>
-                <span className="rounded-full border border-teal-500/30 bg-teal-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-teal-300">
-                  AI Edition
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 font-medium">
-                Gestão Patrimonial, Cartões & Inteligência Financeira
-              </p>
-            </div>
-          </div>
-        </div>
+      <div className="relative flex flex-col justify-center overflow-hidden bg-[#1e3a34] px-8 py-14 sm:px-16 lg:px-20 xl:px-28 text-white">
+        {/* Marca d'água circular grande ao fundo (estilo emblema) */}
+        <svg
+          viewBox="0 0 600 600"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          aria-hidden="true"
+          className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-[115%] w-[115%] max-w-none text-white opacity-[0.06] select-none"
+        >
+          <circle cx="300" cy="300" r="270" stroke="currentColor" strokeWidth="14" />
+          <circle cx="300" cy="300" r="235" stroke="currentColor" strokeWidth="4" />
+          {/*Barras ascendentes e folha/gráfico estilizado ao centro*/}
+          <path
+            d="M170 390 L170 290 C170 280 178 272 188 272 L222 272 C232 272 240 280 240 290 L240 390 Z"
+            stroke="currentColor"
+            strokeWidth="12"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M265 390 L265 230 C265 220 273 212 283 212 L317 212 C327 212 335 220 335 230 L335 390 Z"
+            stroke="currentColor"
+            strokeWidth="12"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M360 390 L360 170 C360 160 368 152 378 152 L412 152 C422 152 430 160 430 170 L430 390 Z"
+            stroke="currentColor"
+            strokeWidth="12"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M145 425 L455 425"
+            stroke="currentColor"
+            strokeWidth="14"
+            strokeLinecap="round"
+          />
+          <path
+            d="M165 235 Q260 155 415 115 M415 115 L375 112 M415 115 L408 154"
+            stroke="currentColor"
+            strokeWidth="14"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
 
-        {/* Hero Headline & Value Props */}
-        <div className="my-10 max-w-xl space-y-6">
-          <div className="inline-flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/80 px-3 py-1 text-xs font-medium text-slate-300 backdrop-blur-md shadow-xs">
-            <Sparkles className="h-3.5 w-3.5 text-amber-400 animate-pulse" />
-            <span>Categorização automática por IA & Gestão de Milhas</span>
-          </div>
-
-          <h2 className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl lg:text-5xl leading-[1.15]">
-            A clareza definitiva para o seu{' '}
-            <span className="bg-gradient-to-r from-teal-300 via-emerald-400 to-cyan-300 bg-clip-text text-transparent">
-              patrimônio financeiro.
+        {/* Conteúdo centralizado na coluna esquerda */}
+        <div className="relative z-10 mx-auto w-full max-w-md space-y-6">
+          {/* Logo + Nome da Marca */}
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/60 bg-white/10">
+              <TrendingUp className="h-5 w-5 text-teal-200" />
+            </div>
+            <span className="text-xl sm:text-2xl font-serif tracking-wide text-white/95 uppercase">
+              Finanças 2026
             </span>
-          </h2>
+          </div>
 
-          <p className="text-sm sm:text-base leading-relaxed text-slate-300">
-            Controle receitas, despesas parceladas, vencimentos de faturas, cotações de milhas e carteiras de investimentos em uma única plataforma projetada para alta performance.
-          </p>
+          {/* Título Principal com destaque em caixa */}
+          <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-white leading-tight">
+            Que bom te ver{' '}
+            <span className="inline-block bg-[#cfe3d4] px-2.5 py-0.5 font-semibold text-[#18312b]">
+              de volta!
+            </span>
+          </h1>
 
-          {/* Floating Showcase Cards */}
-          <div className="grid grid-cols-1 gap-3.5 pt-4 sm:grid-cols-2">
-            {/* Card 1: Patrimônio */}
-            <div className="group rounded-xl border border-slate-800/80 bg-slate-900/60 p-4 backdrop-blur-md transition hover:border-teal-500/40 hover:bg-slate-900/80 shadow-md">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400">Patrimônio Líquido</span>
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/15 text-emerald-400">
-                  <TrendingUp className="h-4 w-4" />
-                </div>
-              </div>
-              <p className="mt-2 text-xl font-bold tracking-tight text-white">
-                R$ 284.950,00
-              </p>
-              <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-400">
-                <CheckCircle2 className="h-3 w-3" />
-                <span>+18,4% rentabilidade anual</span>
-              </div>
+          {/* Pílulas de benefícios (stacked) */}
+          <div className="flex flex-col items-start gap-2.5 pt-1">
+            <div className="inline-flex items-center gap-2.5 rounded-full bg-white/12 px-4 py-1.5 text-xs sm:text-sm text-white/90 backdrop-blur-xs">
+              <span className="h-2 w-2 rounded-full bg-[#8ab89f]" />
+              <span>Controle rápido, inteligente e sem burocracia</span>
             </div>
-
-            {/* Card 2: Milhas & Benefícios */}
-            <div className="group rounded-xl border border-slate-800/80 bg-slate-900/60 p-4 backdrop-blur-md transition hover:border-amber-500/40 hover:bg-slate-900/80 shadow-md">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-slate-400">Milhas & Pontos</span>
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500/15 text-amber-400">
-                  <Award className="h-4 w-4" />
-                </div>
-              </div>
-              <p className="mt-2 text-xl font-bold tracking-tight text-white">
-                480.000 <span className="text-xs font-normal text-slate-400">pts</span>
-              </p>
-              <div className="mt-2 flex items-center gap-1.5 text-[11px] font-semibold text-amber-400">
-                <span>≈ R$ 9.600 economizados em viagens</span>
-              </div>
+            <div className="inline-flex items-center gap-2.5 rounded-full bg-white/12 px-4 py-1.5 text-xs sm:text-sm text-white/90 backdrop-blur-xs">
+              <span className="h-2 w-2 rounded-full bg-[#8ab89f]" />
+              <span>Faturas, contas e patrimônio no seu painel</span>
             </div>
           </div>
-        </div>
 
-        {/* Security / Trust Footer */}
-        <div className="flex flex-wrap items-center gap-6 border-t border-slate-800/80 pt-6 text-xs text-slate-400">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-teal-400" />
-            <span>Criptografia de Ponta a Ponta</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <LockKeyhole className="h-4 w-4 text-emerald-400" />
-            <span>Dados 100% Isolados e Privados</span>
+          {/* Card escuro informativo inferior */}
+          <div className="mt-4 rounded-2xl bg-black/35 p-5 sm:p-6 backdrop-blur-xs">
+            <p className="text-xs sm:text-sm font-medium leading-relaxed text-white/95">
+              Mais de 2.000 lançamentos sincronizados em 2026, com categorização inteligente, Open Finance e visão patrimonial completa.
+            </p>
+            <p className="mt-2.5 text-[11px] sm:text-xs text-white/65">
+              Gestão Financeira Pessoal — Controle de Contas, Cartões & Investimentos
+            </p>
           </div>
         </div>
       </div>
 
       {/* ========================================================= */}
-      {/* RIGHT SIDE: ULTRA-MODERN LOGIN CARD */}
+      {/* LADO DIREITO: FUNDO CLARO COM CARD BRANCO CENTRALIZADO     */}
       {/* ========================================================= */}
-      <div className="relative z-10 flex flex-1 items-center justify-center p-6 sm:p-10 lg:p-16">
-        <div className="w-full max-w-md">
-          <div className="relative rounded-2xl border border-slate-800/90 bg-slate-900/85 p-8 sm:p-10 shadow-2xl shadow-black/60 backdrop-blur-2xl">
-            {/* Subtle Gradient Border Accent */}
-            <div className="pointer-events-none absolute -top-px left-8 right-8 h-px bg-gradient-to-r from-transparent via-teal-400 to-transparent opacity-80" />
+      <div className="flex items-center justify-center bg-[#e8eae3] px-6 py-12 sm:px-12">
+        <div className="w-full max-w-[400px] rounded-2xl bg-white p-8 sm:p-10 shadow-[0_8px_30px_ rgba(0,0,0,0.06)]">
+          {/* Título do Card */}
+          <h2 className="mb-6 text-xl font-semibold text-slate-800">
+            Entrar
+          </h2>
 
-            {/* Form Header */}
-            <div className="mb-6 space-y-2 text-left">
-              <h3 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Acesse sua conta
-              </h3>
-              <p className="text-xs sm:text-sm text-slate-400">
-                Informe suas credenciais para entrar no seu painel.
-              </p>
+          {/* Alerta de Erro */}
+          {error && (
+            <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs font-medium text-rose-700">
+              {error}
             </div>
+          )}
 
-            {/* Error Alert */}
-            {error && (
-              <div className="mb-5 rounded-xl border border-rose-500/30 bg-rose-950/40 p-3.5 text-xs font-medium text-rose-300 backdrop-blur-md animate-in fade-in duration-200">
-                {error}
-              </div>
-            )}
+          {/* Mensagem Informativa */}
+          {infoMessage && (
+            <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50 p-3 text-xs font-medium text-teal-800">
+              {infoMessage}
+            </div>
+          )}
 
-            {/* Login Form */}
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {/* E-mail Field */}
-              <div className="space-y-1.5 text-left">
-                <label
-                  htmlFor="email"
-                  className="block text-xs font-semibold uppercase tracking-wider text-slate-300"
-                >
-                  E-mail
-                </label>
-                <div className="relative">
-                  <Mail className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                  <input
-                    id="email"
-                    type="email"
-                    required
-                    autoComplete="email"
-                    placeholder="seu.email@dominio.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 py-2.5 pl-10 pr-3.5 text-sm text-white placeholder:text-slate-500 transition focus:border-teal-400 focus:bg-slate-950 focus:outline-hidden focus:ring-2 focus:ring-teal-400/25"
-                  />
-                </div>
-              </div>
-
-              {/* Password Field */}
-              <div className="space-y-1.5 text-left">
-                <div className="flex items-center justify-between">
-                  <label
-                    htmlFor="senha"
-                    className="block text-xs font-semibold uppercase tracking-wider text-slate-300"
-                  >
-                    Senha
-                  </label>
-                </div>
-                <div className="relative">
-                  <Lock className="pointer-events-none absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
-                  <input
-                    id="senha"
-                    type={showPassword ? 'text' : 'password'}
-                    required
-                    autoComplete="current-password"
-                    placeholder="••••••••••••"
-                    value={senha}
-                    onChange={(e) => setSenha(e.target.value)}
-                    className="w-full rounded-xl border border-slate-700/80 bg-slate-950/70 py-2.5 pl-10 pr-10 text-sm text-white placeholder:text-slate-500 transition focus:border-teal-400 focus:bg-slate-950 focus:outline-hidden focus:ring-2 focus:ring-teal-400/25"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3.5 top-2.5 rounded p-0.5 text-slate-400 hover:text-slate-200 transition"
-                    aria-label={showPassword ? 'Ocultar senha' : 'Exibir senha'}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Remember Me Option */}
-              <div className="flex items-center justify-between pt-1">
-                <label className="flex items-center gap-2 text-xs font-medium text-slate-300 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={lembrar}
-                    onChange={(e) => setLembrar(e.target.checked)}
-                    className="h-4 w-4 rounded border-slate-700 bg-slate-950 text-teal-500 focus:ring-teal-500/30"
-                  />
-                  <span>Lembrar meu acesso</span>
-                </label>
-              </div>
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="group relative flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-teal-500/25 transition duration-200 hover:from-teal-400 hover:to-emerald-500 hover:shadow-teal-500/40 hover:scale-[1.01] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50 mt-2"
+          {/* Formulário */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Campo Email */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="email"
+                className="block text-xs font-medium text-slate-700"
               >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Autenticando...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>Entrar no Sistema</span>
-                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
-                  </>
-                )}
-              </button>
-            </form>
-
-            {/* Operational Status Pill */}
-            <div className="mt-8 flex items-center justify-center gap-2 border-t border-slate-800/80 pt-5 text-[11px] font-medium text-slate-400">
-              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Ambiente Seguro e Conectado</span>
+                Email
+              </label>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                required
+                spellCheck={false}
+                autoComplete="username"
+                placeholder="Digite seu email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full rounded-md border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 transition focus:border-[#2c5249] focus:outline-hidden focus:ring-2 focus:ring-[#2c5249]/20"
+              />
             </div>
+
+            {/* Campo Senha */}
+            <div className="space-y-1.5">
+              <label
+                htmlFor="senha"
+                className="block text-xs font-medium text-slate-700"
+              >
+                Senha
+              </label>
+              <div className="relative">
+                <input
+                  id="senha"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="current-password"
+                  placeholder="Digite sua senha"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 bg-white py-2.5 pl-3.5 pr-10 text-sm text-slate-800 placeholder:text-slate-400 transition focus:border-[#2c5249] focus:outline-hidden focus:ring-2 focus:ring-[#2c5249]/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:text-slate-700 transition"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Exibir senha'}
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Link Esqueceu sua senha? */}
+            <div className="flex justify-end pt-0.5">
+              <button
+                type="button"
+                onClick={() =>
+                  setInfoMessage('Para redefinir sua senha, solicite ao administrador do sistema.')
+                }
+                className="text-xs font-medium text-slate-700 underline underline-offset-2 hover:text-slate-900 transition cursor-pointer"
+              >
+                Esqueceu sua senha?
+              </button>
+            </div>
+
+            {/* Botão Entrar */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="mt-1 flex w-full items-center justify-center gap-2 rounded-md bg-[#5c7c67] px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-xs transition hover:bg-[#4b6855] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 cursor-pointer"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Entrando...</span>
+                </>
+              ) : (
+                <span>Entrar</span>
+              )}
+            </button>
+          </form>
+
+          {/* Não tem uma conta? Cadastre-se */}
+          <div className="mt-5 text-center">
+            <button
+              type="button"
+              onClick={() =>
+                setInfoMessage('O cadastro de novos usuários é realizado pelo painel de Configurações > Usuários.')
+              }
+              className="text-xs font-medium text-slate-700 hover:text-slate-900 transition cursor-pointer"
+            >
+              Não tem uma conta? <span className="font-semibold">Cadastre-se</span>
+            </button>
+          </div>
+
+          {/* Linha divisória + Rodapé de Suporte */}
+          <div className="mt-5 border-t border-slate-100 pt-4 text-center">
+            <p className="text-[11px] text-slate-700">
+              Precisa de ajuda?{' '}
+              <span className="text-slate-400">
+                Entre em contato com o suporte
+              </span>
+            </p>
           </div>
         </div>
       </div>
