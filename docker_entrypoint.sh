@@ -1,6 +1,28 @@
 #!/usr/bin/env bash
 set -e
 
+if [ -f "/app/backups/financas_seed.db" ]; then
+    if [ ! -f "/data/financas.db" ]; then
+        cp /app/backups/financas_seed.db /data/financas.db
+        echo "[docker] Banco inicializado a partir de /app/backups/financas_seed.db"
+    else
+        python - <<'PY_SEED'
+import shutil, sqlite3
+try:
+    conn = sqlite3.connect("/data/financas.db")
+    cur = conn.cursor()
+    cur.execute("SELECT count(*) FROM transacoes")
+    qtd = cur.fetchone()[0]
+    conn.close()
+    if qtd == 0:
+        shutil.copy2("/app/backups/financas_seed.db", "/data/financas.db")
+        print("[docker] Banco vazio detectado; populado automaticamente a partir de /app/backups/financas_seed.db")
+except Exception:
+    pass
+PY_SEED
+    fi
+fi
+
 flask --app run.py db upgrade heads || true
 
 python - <<'PY'
