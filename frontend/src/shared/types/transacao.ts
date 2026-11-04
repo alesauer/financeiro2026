@@ -134,3 +134,38 @@ export type CartaoCreditoResponse = {
   total_geral: number
   total_geral_pendentes: number
 }
+
+export type CopiarMesPreviewItem = {
+  id_origem: number
+  descricao: string
+  tipo: CategoriaTipo
+  valor: number
+  categoria_id: number
+  categoria_nome: string
+  forma_pagamento_id: number
+  forma_pagamento_nome: string
+  data_origem: string
+  nova_data: string
+  status_origem: TransacaoStatus
+  novo_status: TransacaoStatus
+  ja_existe: boolean
+}
+
+export type CopiarMesPreviewResponse = {
+  mes_origem: string
+  mes_destino: string
+  itens: CopiarMesPreviewItem[]
+}
+
+export type CopiarMesItemInput = {
+  id_origem: number
+  valor: number
+  data_transacao: string
+  status: TransacaoStatus
+}
+
+export type CopiarMesResponse = {
+  criadas: number
+  ignoradas: number
+  mes_destino: string
+}

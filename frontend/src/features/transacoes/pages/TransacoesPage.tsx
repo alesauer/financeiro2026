@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { RefreshCw } from 'lucide-react'
+import { CalendarPlus, RefreshCw } from 'lucide-react'
 
 import { useAuth } from '@/app/providers/AuthProvider'
 import { MonthNavigator } from '@/features/transacoes/components/MonthNavigator'
 import { FaturaCard } from '@/features/transacoes/components/FaturaCard'
 import { FaturaDrawer } from '@/features/transacoes/components/FaturaDrawer'
 import { SincronizarCartaoModal } from '@/features/transacoes/components/SincronizarCartaoModal'
+import { CopiarMesModal } from '@/features/transacoes/components/CopiarMesModal'
 import { categoriasService } from '@/features/categorias/services/categoriasService'
 import { formasPagamentoService } from '@/features/formasPagamento/services/formasPagamentoService'
 import { transacoesService } from '@/features/transacoes/services/transacoesService'
@@ -22,7 +23,7 @@ import type {
   TransacaoStatus,
   TransacaoSummary,
 } from '@/shared/types/transacao'
-import { formatCurrency, getCurrentMonthRange } from '@/shared/utils/date'
+import { formatCurrency, getCurrentMonthRange, getMonthRange } from '@/shared/utils/date'
 import { getErrorMessage } from '@/shared/utils/error'
 
 const TIPOS = ['Receita', 'Despesa', 'Investimento'] as const
@@ -68,6 +69,7 @@ export function TransacoesPage() {
   const [faturaDrawerOpen, setFaturaDrawerOpen] = useState(false)
   const [faturaSelecionada, setFaturaSelecionada] = useState<FaturaCartao | null>(null)
   const [syncCartaoModalOpen, setSyncCartaoModalOpen] = useState(false)
+  const [copiarMesModalOpen, setCopiarMesModalOpen] = useState(false)
   const [feedbackSync, setFeedbackSync] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(false)
@@ -545,7 +547,17 @@ export function TransacoesPage() {
       <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="mb-4 flex items-center justify-between gap-2">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Lançamentos</h3>
-          <div className="flex items-center gap-2" ref={acoesRef}>
+          <div className="flex flex-wrap items-center gap-2" ref={acoesRef}>
+            <button
+              type="button"
+              onClick={() => setCopiarMesModalOpen(true)}
+              className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-teal-300 bg-teal-50 px-3 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-100 transition-colors shadow-2xs cursor-pointer"
+              title="Copiar receitas e despesas de conta para o proximo mes"
+            >
+              <CalendarPlus className="h-4 w-4" />
+              <span>Copiar p/ Próximo Mês</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setSyncCartaoModalOpen(true)}
@@ -1232,6 +1244,29 @@ export function TransacoesPage() {
         token={token}
         mesFiltroIso={mesFiltro}
       />
+
+      {token ? (
+        <CopiarMesModal
+          isOpen={copiarMesModalOpen}
+          onClose={() => setCopiarMesModalOpen(false)}
+          token={token}
+          mesOrigemIso={mesFiltro}
+          onCopied={(mesDestIso, irParaDestino) => {
+            if (irParaDestino && mesDestIso) {
+              const [y, m] = mesDestIso.split('-').map(Number)
+              if (y && m) {
+                const range = getMonthRange(y, m)
+                setInicio(range.firstDay)
+                setFim(range.lastDay)
+                setMesFiltro(range.isoMonth)
+                setPage(1)
+              }
+            } else {
+              void carregarListagem(page)
+            }
+          }}
+        />
+      ) : null}
     </section>
   )
 }

@@ -1204,3 +1204,158 @@ def recalcular_competencia():
         "erros": erros,
         "dia_fechamento_utilizado": dia_fechamento_override or getattr(forma_pagamento, "dia_fechamento", None)
     }), 200
+
+
+@bp_transacoes.route("/copiar_mes/preview", methods=["GET"])
+@jwt_required()
+def preview_copiar_mes():
+    mes_origem_str = (request.args.get("mes_origem") or "").strip()[:7]
+    mes_destino_str = (request.args.get("mes_destino") or "").strip()[:7]
+
+    try:
+        if mes_origem_str:
+            ano_o, mes_o = map(int, mes_origem_str.split("-"))
+            dt_origem_ini = date(ano_o, mes_o, 1)
+        else:
+            hoje = date.today()
+            dt_origem_ini = date(hoje.year, hoje.month, 1)
+            mes_origem_str = dt_origem_ini.strftime("%Y-%m")
+    except Exception:
+        return jsonify({"erro": "mes_origem inv?lido (use YYYY-MM)"}), 400
+
+    dt_origem_fim = dt_origem_ini + relativedelta(months=1) - relativedelta(days=1)
+
+    try:
+        if mes_destino_str:
+            ano_d, mes_d = map(int, mes_destino_str.split("-"))
+            dt_destino_ini = date(ano_d, mes_d, 1)
+        else:
+            dt_destino_ini = dt_origem_ini + relativedelta(months=1)
+            mes_destino_str = dt_destino_ini.strftime("%Y-%m")
+    except Exception:
+        return jsonify({"erro": "mes_destino inv?lido (use YYYY-MM)"}), 400
+
+    dt_destino_fim = dt_destino_ini + relativedelta(months=1) - relativedelta(days=1)
+    diff_months = (dt_destino_ini.year - dt_origem_ini.year) * 12 + (dt_destino_ini.month - dt_origem_ini.month)
+
+    # Busca transa??es de conta (n?o-cart?o de cr?dito) do m?s de origem
+    txs_origem = (
+        Transacao.query.outerjoin(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+        .filter(
+            Transacao.data_transacao >= dt_origem_ini,
+            Transacao.data_transacao <= dt_origem_fim,
+            or_(FormaPagamento.cartao_credito.is_(False), FormaPagamento.cartao_credito.is_(None)),
+        )
+        .order_by(Transacao.data_transacao.asc(), Transacao.id.asc())
+        .all()
+    )
+
+    # Busca transa??es j? existentes no m?s de destino para sinalizar duplicatas
+    txs_destino = (
+        Transacao.query.outerjoin(FormaPagamento, Transacao.forma_pagamento_id == FormaPagamento.id)
+        .filter(
+            Transacao.data_transacao >= dt_destino_ini,
+            Transacao.data_transacao <= dt_destino_fim,
+            or_(FormaPagamento.cartao_credito.is_(False), FormaPagamento.cartao_credito.is_(None)),
+        )
+        .all()
+    )
+
+    chaves_destino = {
+        ((t.descricao or "").strip().lower(), t.tipo, t.categoria_id)
+        for t in txs_destino
+    }
+
+    itens = []
+    for t in txs_origem:
+        nova_dt = t.data_transacao + relativedelta(months=diff_months)
+        chave = ((t.descricao or "").strip().lower(), t.tipo, t.categoria_id)
+        ja_existe = chave in chaves_destino
+        itens.append({
+            "id_origem": t.id,
+            "descricao": t.descricao,
+            "tipo": t.tipo,
+            "valor": float(t.valor or 0),
+            "categoria_id": t.categoria_id,
+            "categoria_nome": t.categoria.nome if t.categoria else "-",
+            "forma_pagamento_id": t.forma_pagamento_id,
+            "forma_pagamento_nome": t.forma_pagamento.nome if t.forma_pagamento else "-",
+            "data_origem": t.data_transacao.isoformat() if t.data_transacao else None,
+            "nova_data": nova_dt.isoformat() if nova_dt else None,
+            "status_origem": t.status,
+            "novo_status": "Pendente",
+            "ja_existe": ja_existe,
+        })
+
+    return jsonify({
+        "mes_origem": mes_origem_str,
+        "mes_destino": mes_destino_str,
+        "itens": itens,
+    }), 200
+
+
+@bp_transacoes.route("/copiar_mes", methods=["POST"])
+@jwt_required()
+def executar_copiar_mes():
+    data = request.get_json() or {}
+    itens = data.get("itens") or []
+    mes_destino = (data.get("mes_destino") or "").strip()[:7]
+
+    if not itens:
+        return jsonify({"erro": "Nenhum item selecionado para c?pia."}), 400
+
+    novas = []
+    ignoradas = 0
+
+    for item in itens:
+        id_origem = item.get("id_origem")
+        if not id_origem:
+            ignoradas += 1
+            continue
+
+        tx_orig = db.session.get(Transacao, int(id_origem))
+        if not tx_orig:
+            ignoradas += 1
+            continue
+
+        try:
+            valor_novo = Decimal(str(item.get("valor", tx_orig.valor)))
+        except Exception:
+            valor_novo = tx_orig.valor
+
+        dt_str = item.get("data_transacao")
+        try:
+            nova_dt = datetime.strptime(dt_str[:10], "%Y-%m-%d").date() if dt_str else (tx_orig.data_transacao + relativedelta(months=1))
+        except Exception:
+            nova_dt = tx_orig.data_transacao + relativedelta(months=1)
+
+        novo_status = item.get("status") if item.get("status") in ("Pago", "Pendente") else "Pendente"
+
+        nova_tx = Transacao(
+            tipo=tx_orig.tipo,
+            categoria_id=tx_orig.categoria_id,
+            descricao=tx_orig.descricao,
+            valor=valor_novo,
+            data_transacao=nova_dt,
+            forma_pagamento_id=tx_orig.forma_pagamento_id,
+            status=novo_status,
+            recorrente=tx_orig.recorrente,
+            frequencia=tx_orig.frequencia,
+            recorrencia_tipo=tx_orig.recorrencia_tipo,
+            parcelado=False,
+            total_parcelas=None,
+            parcela_atual=1,
+            valor_parcela=None,
+            parcelamento_id=None,
+            observacoes=tx_orig.observacoes,
+        )
+        db.session.add(nova_tx)
+        novas.append(nova_tx)
+
+    db.session.commit()
+    return jsonify({
+        "criadas": len(novas),
+        "ignoradas": ignoradas,
+        "mes_destino": mes_destino,
+    }), 201
+

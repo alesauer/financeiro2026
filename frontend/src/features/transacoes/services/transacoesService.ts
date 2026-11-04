@@ -1,6 +1,9 @@
 import { httpClient } from '@/shared/api/httpClient'
 import type {
   CartaoCreditoResponse,
+  CopiarMesItemInput,
+  CopiarMesPreviewResponse,
+  CopiarMesResponse,
   PaginatedResponse,
   Transacao,
   TransacaoListFilters,
@@ -61,5 +64,17 @@ export const transacoesService = {
   },
   removeLote(token: string, ids: number[]) {
     return httpClient.del<{ message: string; quantidade: number }>(`${BASE}/lote`, token, undefined, { ids })
+  },
+  previewCopiarMes(token: string, mesOrigem: string, mesDestino?: string) {
+    const search = new URLSearchParams({ mes_origem: mesOrigem })
+    if (mesDestino) search.set('mes_destino', mesDestino)
+    return httpClient.get<CopiarMesPreviewResponse>(`${BASE}/copiar_mes/preview?${search.toString()}`, token)
+  },
+  executarCopiarMes(token: string, mesDestino: string, itens: CopiarMesItemInput[]) {
+    return httpClient.post<CopiarMesResponse>(
+      `${BASE}/copiar_mes`,
+      { mes_destino: mesDestino, itens },
+      token
+    )
   },
 }
