@@ -5,6 +5,9 @@ from app.utils.texto import normalizar_texto
 
 logger = logging.getLogger(__name__)
 
+# Cache em memória para evitar chamadas repetidas quando a chave da OpenAI for inválida (401)
+_invalid_api_key: str | None = None
+
 
 def classificar_com_ia(
     descricoes: list[str],
@@ -36,9 +39,10 @@ def classificar_com_ia(
         for _ in descricoes
     ]
 
+    global _invalid_api_key
     api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        logger.debug("OPENAI_API_KEY não configurada. Pulando etapa de IA.")
+    if not api_key or api_key == _invalid_api_key:
+        logger.debug("OPENAI_API_KEY não configurada ou inválida. Pulando etapa de IA.")
         return fallback_resultado
 
     try:
@@ -76,7 +80,7 @@ def classificar_com_ia(
         prompt_usuario = f"Itens para classificar:\n{json.dumps(payload, ensure_ascii=False)}"
 
         try:
-            client = openai.OpenAI(api_key=api_key)
+            client = openai.OpenAI(api_key=api_key, max_retries=0)
             response = client.chat.completions.create(
                 model=modelo_utilizado,
                 messages=[
@@ -119,12 +123,32 @@ def classificar_com_ia(
                     })
 
         except Exception as e:
-            logger.error(f"Erro na classificação via IA do lote: {e}")
+            err_str = str(e)
+            logger.error(f"Erro na classificação via IA do lote: {err_str}")
+            if any(
+                term in err_str
+                for term in (
+                    "401",
+                    "429",
+                    "Incorrect API key",
+                    "invalid_api_key",
+                    "no credits remaining",
+                    "insufficient_quota",
+                )
+            ):
+                _invalid_api_key = api_key
+                for _ in descricoes[len(resultados_finais):]:
+                    resultados_finais.append({
+                        "categoria": "Outros" if "Outros" in categorias_validas else "Indefinida",
+                        "confianca": 0.0,
+                        "motivo": "Chave OpenAI inválida"
+                    })
+                break
             for _ in chunk:
                 resultados_finais.append({
                     "categoria": "Outros" if "Outros" in categorias_validas else "Indefinida",
                     "confianca": 0.0,
-                    "motivo": f"Erro IA: {str(e)[:50]}"
+                    "motivo": f"Erro IA: {err_str[:50]}"
                 })
 
     return resultados_finais

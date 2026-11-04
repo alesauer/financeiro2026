@@ -205,7 +205,7 @@ def listar():
                 forma_pagamento_joined = True
 
             # No regime financeiro do app, compras no cartão vinculadas à fatura do mês (competência)
-            # ou lançamentos com data_transacao no período devem ser retornados.
+            # ou lançamentos sem competência / não-cartão com data_transacao no período devem ser retornados.
             query = query.filter(
                 db.or_(
                     db.and_(
@@ -213,10 +213,14 @@ def listar():
                         Transacao.competencia_fatura.between(inicio_dt, fim_dt),
                     ),
                     db.and_(
+                        FormaPagamento.cartao_credito.is_(True),
+                        Transacao.competencia_fatura.is_(None),
+                        Transacao.data_transacao.between(inicio_dt, fim_dt),
+                    ),
+                    db.and_(
                         db.or_(FormaPagamento.cartao_credito.is_(False), FormaPagamento.id.is_(None)),
                         Transacao.data_transacao.between(inicio_dt, fim_dt),
                     ),
-                    Transacao.data_transacao.between(inicio_dt, fim_dt),
                 )
             )
         except ValueError:

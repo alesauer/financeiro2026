@@ -35,33 +35,32 @@ def salvar_ou_atualizar_alias(
     if not desc_norm or not categoria_id:
         return None
 
-    alias = CategoriaAlias.query.filter_by(descricao_normalizada=desc_norm).first()
-    if alias:
-        alias.categoria_id = categoria_id
-        alias.descricao_exemplo = descricao_original[:255]
-        alias.ocorrencias = (alias.ocorrencias or 0) + 1
-        # Decisão manual do usuário sempre sobrepõe classificação de IA/regras
-        if origem == "usuario" or alias.origem != "usuario":
-            alias.origem = origem
-            alias.confianca = confianca
-    else:
-        alias = CategoriaAlias(
-            descricao_normalizada=desc_norm,
-            descricao_exemplo=descricao_original[:255],
-            categoria_id=categoria_id,
-            ocorrencias=1,
-            origem=origem,
-            confianca=confianca
-        )
-        db.session.add(alias)
-
-    if commit:
-        try:
+    try:
+        with db.session.begin_nested():
+            alias = CategoriaAlias.query.filter_by(descricao_normalizada=desc_norm).first()
+            if alias:
+                alias.categoria_id = categoria_id
+                alias.descricao_exemplo = descricao_original[:255]
+                alias.ocorrencias = (alias.ocorrencias or 0) + 1
+                # Decisão manual do usuário sempre sobrepõe classificação de IA/regras
+                if origem == "usuario" or alias.origem != "usuario":
+                    alias.origem = origem
+                    alias.confianca = confianca
+            else:
+                alias = CategoriaAlias(
+                    descricao_normalizada=desc_norm,
+                    descricao_exemplo=descricao_original[:255],
+                    categoria_id=categoria_id,
+                    ocorrencias=1,
+                    origem=origem,
+                    confianca=confianca
+                )
+                db.session.add(alias)
+        if commit:
             db.session.commit()
-        except Exception:
-            db.session.rollback()
-
-    return alias
+        return alias
+    except Exception:
+        return None
 
 
 def construir_indice_historico(limite: int = 5000) -> tuple[dict[str, Counter], dict[str, set[str]]]:

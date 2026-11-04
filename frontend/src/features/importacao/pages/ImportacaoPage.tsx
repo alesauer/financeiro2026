@@ -5,6 +5,7 @@ import { useAuth } from '@/app/providers/AuthProvider'
 import { categoriasService } from '@/features/categorias/services/categoriasService'
 import { formasPagamentoService } from '@/features/formasPagamento/services/formasPagamentoService'
 import { importacaoService } from '@/features/importacao/services/importacaoService'
+import { SincronizarCartaoModal } from '@/features/transacoes/components/SincronizarCartaoModal'
 import type { Categoria } from '@/shared/types/categoria'
 import type { FormaPagamento } from '@/shared/types/formaPagamento'
 import type { ImportacaoResultado, ImportacaoTransacaoItem } from '@/shared/types/importacao'
@@ -45,6 +46,7 @@ export function ImportacaoPage() {
   const [resultado, setResultado] = useState<ImportacaoResultado | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
+  const [syncModalOpen, setSyncModalOpen] = useState(false)
 
   const categoriasByNome = useMemo(() => {
     const map = new Map<string, Categoria>()
@@ -250,10 +252,32 @@ export function ImportacaoPage() {
 
   return (
     <section className="space-y-6">
-      <header className="space-y-2">
-        <h2 className="text-2xl font-semibold text-[var(--color-text)]">Importação de Cartão</h2>
-        <p className="text-sm text-[var(--color-muted)]">Importe a fatura por arquivo, revise categorias e confirme o envio.</p>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-semibold text-[var(--color-text)]">Importação de Cartão</h2>
+          <p className="text-sm text-[var(--color-muted)]">Importe a fatura por arquivo ou sincronize direto via Open Finance.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setSyncModalOpen(true)}
+          className="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-sky-200 bg-sky-50 px-3.5 py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100 transition-colors"
+        >
+          <span>💳</span>
+          <span>Sincronizar Cartão (Open Finance)</span>
+        </button>
       </header>
+
+      <SincronizarCartaoModal
+        isOpen={syncModalOpen}
+        onClose={() => setSyncModalOpen(false)}
+        onSuccess={(resumo: any) => {
+          const novas = resumo?.novas_transacoes ?? 0
+          const nome = resumo?.cartao_nome || 'Cartão'
+          const mes = resumo?.mes_fatura ? ` (${resumo.mes_fatura})` : ''
+          setAviso(`${nome}${mes}: sincronizado via Open Finance com sucesso! ${novas} novos lançamentos importados.`)
+        }}
+        token={token ?? ''}
+      />
 
       <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">

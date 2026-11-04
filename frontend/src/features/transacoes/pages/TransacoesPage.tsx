@@ -221,6 +221,18 @@ export function TransacoesPage() {
     const mes = resumo?.mes_fatura ? ` (${resumo.mes_fatura})` : ''
     setFeedbackSync(`${nome}${mes}: sincronizado com sucesso! ${novas} novos lançamentos importados.`)
     setTimeout(() => setFeedbackSync(null), 6000)
+
+    const mesIso: string | undefined = resumo?.mes_fatura_iso
+    if (mesIso && /^\d{4}-\d{2}$/.test(mesIso) && mesIso !== mesFiltro) {
+      const [y, m] = mesIso.split('-').map(Number)
+      const ultimoDia = new Date(y, m, 0).getDate()
+      setPage(1)
+      setInicio(`${mesIso}-01`)
+      setFim(`${mesIso}-${String(ultimoDia).padStart(2, '0')}`)
+      setMesFiltro(mesIso)
+      return
+    }
+
     await Promise.all([carregarListagem(), carregarCartaoCredito()])
   }
 
