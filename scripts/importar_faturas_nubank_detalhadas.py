@@ -148,7 +148,7 @@ def main():
             # Inserir compras válidas
             for idx_item, item in enumerate(validas, 1):
                 dt_compra = datetime.strptime(item["date"], "%Y-%m-%d").date()
-                parc_info = detectar_parcelamento(item["title"], item["amount"], item["date"])
+                parc_info = detectar_parcelamento(item["title"], item["amount"], comp.isoformat())
                 desc_limpa = parc_info["descricao_limpa"]
 
                 cat_id, cat_nome = obter_categoria(desc_limpa, cats_by_name)
