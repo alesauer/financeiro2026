@@ -87,32 +87,39 @@ def main():
 
         blocks = text.split("date,title,amount")
 
-        # Mapeamento dos 4 blocos de faturas correspondentes
-        faturas_info = [
-            (1, 5, date(2026, 5, 1), "planilha-2026-05-nubank-fatura-16736.00"),
-            (2, 6, date(2026, 6, 1), "planilha-2026-06-nubank-fatura-24000.00"),
-            (3, 7, date(2026, 7, 1), "planilha-2026-07-nubank-fatura-14868.24"),
-            (4, 8, date(2026, 8, 1), "planilha-2026-08-nubank-fatura-15332.75"),
-        ]
+        # Fontes de dados para cada mês (Jan..Ago 2026):
+        # - Jan..Abr: arquivos CSV em importacao/Nubank_2026-MM-03.csv
+        # - Mai..Ago: blocos 1..4 de uploads/nubank_extratos_recebidos.csv
+        faturas_fontes = []
+        for mes_arq in (1, 2, 3, 4):
+            arq_path = f"importacao/Nubank_2026-{mes_arq:02d}-03.csv"
+            with open(arq_path, encoding="utf-8-sig") as fh:
+                content = fh.read()
+                if "date,title,amount" in content:
+                    content = content.split("date,title,amount", 1)[1]
+                faturas_fontes.append((mes_arq, date(2026, mes_arq, 1), content))
 
-        print("="*75)
-        print("INICIANDO IMPORTAÇÃO DETALHADA DAS FATURAS DO CARTÃO NUBANK (MAI..AGO 2026)")
-        print("="*75)
+        for b_idx, mes_bloco in [(1, 5), (2, 6), (3, 7), (4, 8)]:
+            faturas_fontes.append((mes_bloco, date(2026, mes_bloco, 1), blocks[b_idx]))
+
+        print("=" * 75)
+        print("INICIANDO IMPORTAÇÃO DETALHADA DAS FATURAS DO CARTÃO NUBANK (JAN..AGO 2026)")
+        print("=" * 75)
 
         total_removidas = 0
         total_inseridas = 0
         resumo_faturas = {}
 
-        for b_idx, mes, comp, ext_id in faturas_info:
-            # 1. Remover fatura consolidada temporária
+        for mes, comp, raw_block in faturas_fontes:
+            # 1. Remover qualquer lançamento anterior daquela competência no cartão Nubank para garantir idempotência
             rem = Transacao.query.filter(
                 Transacao.forma_pagamento_id == fp_nubank.id,
                 Transacao.competencia_fatura == comp,
-                Transacao.identificador_externo == ext_id
-            ).delete()
+            ).delete(synchronize_session=False)
             total_removidas += rem
 
-            lines = [l.strip() for l in blocks[b_idx].strip().splitlines() if l.strip()]
+            lines = [l.strip() for l in raw_block.strip().splitlines() if l.strip()]
+            b_idx = mes
             raw_rows = []
             for r in csv.reader(lines):
                 if not r or len(r) < 3:

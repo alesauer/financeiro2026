@@ -789,8 +789,8 @@ class OpenFinanceSyncService:
         except Exception:
             pass
 
-        # Define janela de busca (mínimo 90 dias, ou cobrindo o ciclo de alvo_comp se for anterior)
-        data_inicio_dt = date.today() - timedelta(days=90)
+        # Define janela de busca (cobrindo desde o início do ciclo de Set/2026 ou ciclo de alvo_comp)
+        data_inicio_dt = max(date(2026, 7, 27), date.today() - timedelta(days=105))
         if alvo_comp:
             ciclo_alvo_inicio = alvo_comp - timedelta(days=65)
             if ciclo_alvo_inicio < data_inicio_dt:

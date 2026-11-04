@@ -426,9 +426,10 @@ def resumo_mes():
     except ValueError:
         return jsonify({"error": "Datas inválidas (use YYYY-MM-DD)"}), 400
 
-    # 1. Receitas do período (por data da transação)
-    receita_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).filter(
+    # 1. Receitas do período (por data da transação, exceto estornos de cartão de crédito que já abatem na fatura)
+    receita_sum = db.session.query(func.coalesce(func.sum(Transacao.valor), 0)).outerjoin(FormaPagamento).filter(
         Transacao.tipo.ilike('receita'),
+        or_(FormaPagamento.cartao_credito.is_(False), FormaPagamento.id.is_(None)),
         Transacao.data_transacao.between(inicio_dt, fim_dt)
     ).scalar() or 0
 
