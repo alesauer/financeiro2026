@@ -30,7 +30,7 @@ export function PrivateLayout() {
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
-  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(true)
+  const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false)
 
   const displayName = user?.nome ?? user?.email ?? 'Usuário'
   const userInitial = displayName.trim().charAt(0).toUpperCase() || 'U'
