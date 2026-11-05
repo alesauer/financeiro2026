@@ -274,50 +274,45 @@ def listar():
 @bp_transacoes.route("/<int:id>", methods=["GET"])
 @jwt_required()
 def obter(id):
-    # Propaga??o retroativa de categoria para o mesmo estabelecimento nos meses anteriores
-    alterar_meses_anteriores = bool(data.get("alterar_meses_anteriores", False))
-    qtd_anteriores_atualizadas = 0
-    if 'categoria_id' in validado and alterar_meses_anteriores and transacao.descricao and transacao.data_transacao:
-        from services.categorization.normalizer import normalizar_descricao
-        norm_alvo = normalizar_descricao(transacao.descricao)
-        todas_anteriores = Transacao.query.filter(
-            Transacao.id != transacao.id,
-            Transacao.data_transacao < transacao.data_transacao,
-            Transacao.tipo == transacao.tipo,
-        ).all()
-        for t_ant in todas_anteriores:
-            if normalizar_descricao(t_ant.descricao) == norm_alvo:
-                t_ant.categoria_id = transacao.categoria_id
-                qtd_anteriores_atualizadas += 1
+    transacao = Transacao.query.get_or_404(id)
+    return jsonify(schema.dump(transacao)), 200
 
-    db.session.commit()
-    res = schema.dump(transacao)
-    res["anteriores_atualizadas"] = qtd_anteriores_atualizadas
-    return jsonify(res), 200
+
+def _normalizar_estabelecimento(descricao: str | None) -> str:
+    if not descricao:
+        return ""
+    import re
+    from services.categorization.normalizer import normalizar_descricao
+    texto = normalizar_descricao(descricao)
+    # Remove prefixos comuns de adquirentes / meios de pagamento no inicio
+    texto = re.sub(r"^(?:MP|PAG|PICPAY|SUMUP|STONE|CIELO|REDE|MEI|MTA)\s+", "", texto)
+    # Remove marcadores de parcela residuais como '1 3', '2 DE 10', '02 12' no final
+    texto = re.sub(r"\b\d{1,2}\s*(?:DE|/|\s)\s*\d{1,2}\b$", " ", texto)
+    texto = re.sub(r"\b\d+\b$", " ", texto)
+    return re.sub(r"\s+", " ", texto).strip() or texto.strip()
 
 
 @bp_transacoes.route("/<int:id>/anteriores_estabelecimento", methods=["GET"])
 @jwt_required()
 def verificar_anteriores_estabelecimento(id):
-    """Retorna quantidade e exemplos de transa??es anteriores do mesmo estabelecimento com categoria diferente."""
+    """Retorna quantidade e exemplos de transações anteriores do mesmo estabelecimento com categoria diferente."""
     transacao = Transacao.query.get_or_404(id)
     nova_cat_id = request.args.get("nova_categoria_id", type=int)
     if not transacao.descricao or not transacao.data_transacao:
         return jsonify({"quantidade": 0, "estabelecimento": "", "itens": []}), 200
 
-    from services.categorization.normalizer import normalizar_descricao
-    norm_alvo = normalizar_descricao(transacao.descricao)
+    norm_alvo = _normalizar_estabelecimento(transacao.descricao)
 
     query = Transacao.query.filter(
         Transacao.id != transacao.id,
-        Transacao.data_transacao < transacao.data_transacao,
+        Transacao.data_transacao <= transacao.data_transacao,
         Transacao.tipo == transacao.tipo,
     )
     if nova_cat_id:
         query = query.filter(Transacao.categoria_id != nova_cat_id)
 
     todas_anteriores = query.order_by(Transacao.data_transacao.desc()).all()
-    compativeis = [t for t in todas_anteriores if normalizar_descricao(t.descricao) == norm_alvo]
+    compativeis = [t for t in todas_anteriores if _normalizar_estabelecimento(t.descricao) == norm_alvo]
 
     itens_amostra = []
     for t in compativeis[:5]:
@@ -347,6 +342,7 @@ def atualizar(id):
     except ValidationError as err:
         return jsonify(err.messages), 400
 
+    descricao_original = transacao.descricao
     for key, value in validado.items():
         setattr(transacao, key, value)
 
@@ -383,8 +379,28 @@ def atualizar(id):
             commit=False
         )
 
+    # Propagação retroativa de categoria para o mesmo estabelecimento nos meses anteriores
+    alterar_meses_anteriores = bool(data.get("alterar_meses_anteriores", False))
+    qtd_anteriores_atualizadas = 0
+    if 'categoria_id' in validado and alterar_meses_anteriores and transacao.data_transacao:
+        norm_alvo = _normalizar_estabelecimento(transacao.descricao)
+        norm_orig = _normalizar_estabelecimento(descricao_original)
+        todas_anteriores = Transacao.query.filter(
+            Transacao.id != transacao.id,
+            Transacao.data_transacao <= transacao.data_transacao,
+            Transacao.tipo == transacao.tipo,
+        ).all()
+        for t_ant in todas_anteriores:
+            if t_ant.categoria_id != transacao.categoria_id:
+                norm_ant = _normalizar_estabelecimento(t_ant.descricao)
+                if norm_ant and (norm_ant == norm_alvo or (norm_orig and norm_ant == norm_orig)):
+                    t_ant.categoria_id = transacao.categoria_id
+                    qtd_anteriores_atualizadas += 1
+
     db.session.commit()
-    return jsonify(schema.dump(transacao)), 200
+    res = schema.dump(transacao)
+    res["anteriores_atualizadas"] = qtd_anteriores_atualizadas
+    return jsonify(res), 200
 
 @bp_transacoes.route("/<int:id>", methods=["DELETE"])
 @jwt_required()

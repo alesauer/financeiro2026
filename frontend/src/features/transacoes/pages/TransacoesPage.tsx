@@ -110,6 +110,7 @@ export function TransacoesPage() {
   const [page, setPage] = useState(1)
   const [perPage] = useState(20)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [editingItem, setEditingItem] = useState<Transacao | null>(null)
   const [form, setForm] = useState<TransacaoPayload>(EMPTY_FORM)
   const [isFormOpen, setIsFormOpen] = useState(false)
   const [acoesOpen, setAcoesOpen] = useState(false)
@@ -319,6 +320,7 @@ export function TransacoesPage() {
 
   const resetForm = () => {
     setEditingId(null)
+    setEditingItem(null)
     setForm((prev) => ({
       ...EMPTY_FORM,
       categoria_id: categorias.find((item) => item.tipo === EMPTY_FORM.tipo)?.id ?? 0,
@@ -348,6 +350,7 @@ export function TransacoesPage() {
 
   const iniciarEdicao = (item: Transacao) => {
     setEditingId(item.id)
+    setEditingItem(item)
     setIsFormOpen(true)
     setForm({
       descricao: item.descricao,
@@ -441,8 +444,14 @@ export function TransacoesPage() {
 
     try {
       if (editingId) {
-        const itemOriginal = listagem?.items.find((x) => x.id === editingId)
-        const categoriaAlterada = itemOriginal && itemOriginal.categoria_id !== payload.categoria_id
+        const itemOriginal =
+          editingItem ||
+          listagem?.items.find((x) => x.id === editingId)
+        const categoriaAlterada = Boolean(
+          itemOriginal &&
+          payload.categoria_id &&
+          itemOriginal.categoria_id !== payload.categoria_id
+        )
 
         if (categoriaAlterada && payload.categoria_id) {
           try {
@@ -454,7 +463,7 @@ export function TransacoesPage() {
             if (verif.quantidade > 0) {
               const catNovaObj = categorias.find((c) => c.id === payload.categoria_id)
               setRetroativoDados({
-                estabelecimento: verif.estabelecimento || payload.descricao,
+                estabelecimento: verif.estabelecimento || payload.descricao || itemOriginal?.descricao || '',
                 categoriaNome: catNovaObj?.nome || 'Nova Categoria',
                 quantidade: verif.quantidade,
                 itens: verif.itens,
@@ -466,7 +475,7 @@ export function TransacoesPage() {
               return
             }
           } catch {
-            // Se falhar a verifica??o pr?via, prossegue com update normal
+            // Se falhar a verificação prévia, prossegue com update normal
           }
         }
 
