@@ -155,7 +155,9 @@ def listar():
     inicio_str = request.args.get("inicio")
     fim_str = request.args.get("fim")
     page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 10, type=int)
+    per_page = request.args.get("per_page", 50, type=int)
+    if not per_page or per_page <= 0:
+        per_page = 50
 
     # 2. Aplicar os filtros na query
     for campo, valor in filtros.items():

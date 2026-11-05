@@ -108,7 +108,7 @@ export function TransacoesPage() {
   })
   const [origemFiltro, setOrigemFiltro] = useState<'contas' | 'todos' | 'cartao'>('contas')
   const [page, setPage] = useState(1)
-  const [perPage] = useState(20)
+  const [perPage, setPerPage] = useState(50)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editingItem, setEditingItem] = useState<Transacao | null>(null)
   const [form, setForm] = useState<TransacaoPayload>(EMPTY_FORM)
@@ -289,7 +289,7 @@ export function TransacoesPage() {
   useEffect(() => {
     if (!token) return
     carregarListagem(page)
-  }, [token, inicio, fim, tipoFiltro, statusFiltro, categoriaFiltro, origemFiltro, page])
+  }, [token, inicio, fim, tipoFiltro, statusFiltro, categoriaFiltro, origemFiltro, page, perPage])
 
   useEffect(() => {
     const params = new URLSearchParams(searchParams)
@@ -1252,10 +1252,28 @@ export function TransacoesPage() {
           </table>
         </div>}
 
-        {editingId ? null : <footer className="mt-4 flex items-center justify-between text-sm">
-          <span className="text-[var(--color-muted)]">
-            Página {paginaAtual} de {totalPaginas}
-          </span>
+        {editingId ? null : <footer className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <div className="flex flex-wrap items-center gap-3 text-[var(--color-muted)]">
+            <span>
+              Página {paginaAtual} de {totalPaginas}
+              {listagem?.total_items !== undefined ? ` (${listagem.total_items} transações)` : ''}
+            </span>
+            <div className="flex items-center gap-1.5 text-xs">
+              <span>Por página:</span>
+              <select
+                value={perPage}
+                onChange={(e) => {
+                  setPerPage(Number(e.target.value))
+                  setPage(1)
+                }}
+                className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1 text-xs text-[var(--color-text)] focus:outline-none"
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
           <div className="inline-flex items-center gap-2">
             <button
               type="button"

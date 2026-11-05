@@ -18,7 +18,7 @@ function buildListQuery(filters: TransacaoListFilters) {
     inicio: filters.inicio,
     fim: filters.fim,
     page: String(filters.page ?? 1),
-    per_page: String(filters.per_page ?? 20),
+    per_page: String(filters.per_page ?? 50),
     sort_field: filters.sort_field ?? 'data_transacao',
     sort_order: filters.sort_order ?? 'desc',
   })
