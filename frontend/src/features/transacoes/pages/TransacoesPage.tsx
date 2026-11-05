@@ -9,6 +9,7 @@ import { FaturaCard } from '@/features/transacoes/components/FaturaCard'
 import { FaturaDrawer } from '@/features/transacoes/components/FaturaDrawer'
 import { SincronizarCartaoModal } from '@/features/transacoes/components/SincronizarCartaoModal'
 import { CopiarMesModal } from '@/features/transacoes/components/CopiarMesModal'
+import { ConfirmarRetroativoModal } from '@/features/transacoes/components/ConfirmarRetroativoModal'
 import { MetasMiniBanner } from '@/features/metas/components/MetasMiniBanner'
 import { categoriasService } from '@/features/categorias/services/categoriasService'
 import { formasPagamentoService } from '@/features/formasPagamento/services/formasPagamentoService'
@@ -71,6 +72,22 @@ export function TransacoesPage() {
   const [faturaSelecionada, setFaturaSelecionada] = useState<FaturaCartao | null>(null)
   const [syncCartaoModalOpen, setSyncCartaoModalOpen] = useState(false)
   const [copiarMesModalOpen, setCopiarMesModalOpen] = useState(false)
+  const [retroativoModalOpen, setRetroativoModalOpen] = useState(false)
+  const [retroativoDados, setRetroativoDados] = useState<{
+    estabelecimento: string
+    categoriaNome: string
+    quantidade: number
+    itens: Array<{ id: number; descricao: string; data_transacao: string | null; valor: number; categoria_atual: string }>
+    pendingPayload: TransacaoPayload | null
+    transacaoId: number | null
+  }>({
+    estabelecimento: '',
+    categoriaNome: '',
+    quantidade: 0,
+    itens: [],
+    pendingPayload: null,
+    transacaoId: null,
+  })
   const [feedbackSync, setFeedbackSync] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(false)
@@ -424,6 +441,35 @@ export function TransacoesPage() {
 
     try {
       if (editingId) {
+        const itemOriginal = listagem?.items.find((x) => x.id === editingId)
+        const categoriaAlterada = itemOriginal && itemOriginal.categoria_id !== payload.categoria_id
+
+        if (categoriaAlterada && payload.categoria_id) {
+          try {
+            const verif = await transacoesService.verificarAnterioresEstabelecimento(
+              token,
+              editingId,
+              payload.categoria_id
+            )
+            if (verif.quantidade > 0) {
+              const catNovaObj = categorias.find((c) => c.id === payload.categoria_id)
+              setRetroativoDados({
+                estabelecimento: verif.estabelecimento || payload.descricao,
+                categoriaNome: catNovaObj?.nome || 'Nova Categoria',
+                quantidade: verif.quantidade,
+                itens: verif.itens,
+                pendingPayload: payload,
+                transacaoId: editingId,
+              })
+              setRetroativoModalOpen(true)
+              setSaving(false)
+              return
+            }
+          } catch {
+            // Se falhar a verifica??o pr?via, prossegue com update normal
+          }
+        }
+
         await transacoesService.update(token, editingId, payload)
       } else {
         await transacoesService.create(token, payload)
@@ -1249,7 +1295,44 @@ export function TransacoesPage() {
       />
 
       {token ? (
-        <CopiarMesModal
+        <>
+          <ConfirmarRetroativoModal
+        open={retroativoModalOpen}
+        estabelecimento={retroativoDados.estabelecimento}
+        categoriaNome={retroativoDados.categoriaNome}
+        quantidade={retroativoDados.quantidade}
+        amostraItens={retroativoDados.itens}
+        onCancel={() => {
+          setRetroativoModalOpen(false)
+          setSaving(false)
+        }}
+        onConfirm={async (alterarAnteriores) => {
+          if (!token || !retroativoDados.transacaoId || !retroativoDados.pendingPayload) return
+          setRetroativoModalOpen(false)
+          setSaving(true)
+          try {
+            const res = await transacoesService.update(token, retroativoDados.transacaoId, {
+              ...retroativoDados.pendingPayload,
+              alterar_meses_anteriores: alterarAnteriores,
+            })
+            if (alterarAnteriores && res.anteriores_atualizadas) {
+              setFeedbackSync(
+                `Categoria atualizada nesta transa??o e em mais ${res.anteriores_atualizadas} dos meses anteriores!`
+              )
+              setTimeout(() => setFeedbackSync(null), 5000)
+            }
+            resetForm()
+            setIsFormOpen(false)
+            await Promise.all([carregarListagem(page), carregarCartaoCredito()])
+          } catch (err) {
+            setError(getErrorMessage(err, 'Erro ao atualizar categoria.'))
+          } finally {
+            setSaving(false)
+          }
+        }}
+      />
+
+      <CopiarMesModal
           isOpen={copiarMesModalOpen}
           onClose={() => setCopiarMesModalOpen(false)}
           token={token}
@@ -1269,6 +1352,7 @@ export function TransacoesPage() {
             }
           }}
         />
+        </>
       ) : null}
     </section>
   )

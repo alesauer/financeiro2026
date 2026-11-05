@@ -274,8 +274,68 @@ def listar():
 @bp_transacoes.route("/<int:id>", methods=["GET"])
 @jwt_required()
 def obter(id):
+    # Propaga??o retroativa de categoria para o mesmo estabelecimento nos meses anteriores
+    alterar_meses_anteriores = bool(data.get("alterar_meses_anteriores", False))
+    qtd_anteriores_atualizadas = 0
+    if 'categoria_id' in validado and alterar_meses_anteriores and transacao.descricao and transacao.data_transacao:
+        from services.categorization.normalizer import normalizar_descricao
+        norm_alvo = normalizar_descricao(transacao.descricao)
+        todas_anteriores = Transacao.query.filter(
+            Transacao.id != transacao.id,
+            Transacao.data_transacao < transacao.data_transacao,
+            Transacao.tipo == transacao.tipo,
+        ).all()
+        for t_ant in todas_anteriores:
+            if normalizar_descricao(t_ant.descricao) == norm_alvo:
+                t_ant.categoria_id = transacao.categoria_id
+                qtd_anteriores_atualizadas += 1
+
+    db.session.commit()
+    res = schema.dump(transacao)
+    res["anteriores_atualizadas"] = qtd_anteriores_atualizadas
+    return jsonify(res), 200
+
+
+@bp_transacoes.route("/<int:id>/anteriores_estabelecimento", methods=["GET"])
+@jwt_required()
+def verificar_anteriores_estabelecimento(id):
+    """Retorna quantidade e exemplos de transa??es anteriores do mesmo estabelecimento com categoria diferente."""
     transacao = Transacao.query.get_or_404(id)
-    return jsonify(schema.dump(transacao)), 200
+    nova_cat_id = request.args.get("nova_categoria_id", type=int)
+    if not transacao.descricao or not transacao.data_transacao:
+        return jsonify({"quantidade": 0, "estabelecimento": "", "itens": []}), 200
+
+    from services.categorization.normalizer import normalizar_descricao
+    norm_alvo = normalizar_descricao(transacao.descricao)
+
+    query = Transacao.query.filter(
+        Transacao.id != transacao.id,
+        Transacao.data_transacao < transacao.data_transacao,
+        Transacao.tipo == transacao.tipo,
+    )
+    if nova_cat_id:
+        query = query.filter(Transacao.categoria_id != nova_cat_id)
+
+    todas_anteriores = query.order_by(Transacao.data_transacao.desc()).all()
+    compativeis = [t for t in todas_anteriores if normalizar_descricao(t.descricao) == norm_alvo]
+
+    itens_amostra = []
+    for t in compativeis[:5]:
+        cat_atual = t.categoria.nome if t.categoria else "Sem categoria"
+        itens_amostra.append({
+            "id": t.id,
+            "descricao": t.descricao,
+            "data_transacao": t.data_transacao.isoformat() if t.data_transacao else None,
+            "valor": float(t.valor or 0),
+            "categoria_atual": cat_atual,
+        })
+
+    return jsonify({
+        "quantidade": len(compativeis),
+        "estabelecimento": norm_alvo or transacao.descricao,
+        "itens": itens_amostra,
+    }), 200
+
 
 @bp_transacoes.route("/<int:id>", methods=["PUT"])
 @jwt_required()

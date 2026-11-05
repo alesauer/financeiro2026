@@ -56,8 +56,28 @@ export const transacoesService = {
   create(token: string, payload: TransacaoPayload) {
     return httpClient.post<Transacao | Transacao[]>(BASE, payload, token)
   },
-  update(token: string, id: number, payload: Partial<TransacaoPayload>) {
-    return httpClient.put<Transacao>(`${BASE}/${id}`, payload, token)
+  update(
+    token: string,
+    id: number,
+    payload: Partial<TransacaoPayload> & { alterar_meses_anteriores?: boolean },
+  ) {
+    return httpClient.put<Transacao & { anteriores_atualizadas?: number }>(`${BASE}/${id}`, payload, token)
+  },
+  verificarAnterioresEstabelecimento(token: string, id: number, novaCategoriaId?: number) {
+    const search = new URLSearchParams()
+    if (novaCategoriaId) search.set('nova_categoria_id', String(novaCategoriaId))
+    const qs = search.toString() ? `?${search.toString()}` : ''
+    return httpClient.get<{
+      quantidade: number
+      estabelecimento: string
+      itens: Array<{
+        id: number
+        descricao: string
+        data_transacao: string | null
+        valor: number
+        categoria_atual: string
+      }>
+    }>(`${BASE}/${id}/anteriores_estabelecimento${qs}`, token)
   },
   remove(token: string, id: number) {
     return httpClient.del<{ message: string }>(`${BASE}/${id}`, token)
