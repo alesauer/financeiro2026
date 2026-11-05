@@ -1,6 +1,7 @@
 import json
 import logging
-from datetime import date, datetime
+import re
+from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 from app import db
 from app.models import IAConversa, IAMensagem
@@ -37,7 +38,6 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
 
     # 2. Carrega histórico recente da conversa (últimas 8 mensagens)
     historico_db = IAMensagem.query.filter_by(conversa_id=conversa.id).order_by(IAMensagem.id.asc()).all()
-    # Pega as últimas mensagens antes da resposta
     historico_mensagens = []
     for m in historico_db[-8:]:
         historico_mensagens.append({
@@ -63,7 +63,7 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
 
     if not client:
         # Fallback local determinístico inteligente caso não haja API Key
-        resposta_texto, dados_widget = _fallback_local(pergunta, hoje)
+        resposta_texto, dados_widget = _fallback_local(pergunta, hoje, motivo="Chave OPENAI_API_KEY não configurada no servidor.")
         msg_assistant = IAMensagem(
             conversa_id=conversa.id,
             role="assistant",
@@ -163,7 +163,22 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
 
     except Exception as e:
         logger.error(f"Erro na chamada OpenAI: {e}", exc_info=True)
-        resposta_final, dados_widget = _fallback_local(pergunta, hoje)
+        motivo_erro = str(e)
+        if "429" in motivo_erro or "credits" in motivo_erro.lower() or "quota" in motivo_erro.lower():
+            motivo_detalhado = (
+                "⚠️ **Aviso de Quota da OpenAI**: Sua conta da OpenAI está sem créditos ativos "
+                "(`Error 429: You have no credits remaining`).\n\n"
+                "Para liberar a conversação generativa livre completa, adicione créditos em [platform.openai.com/settings/organization/billing](https://platform.openai.com/settings/organization/billing).\n\n"
+                "**Enquanto isso, acionei o motor analítico local inteligente para consultar seus dados reais:**\n\n"
+            )
+        else:
+            motivo_detalhado = (
+                f"⚠️ *Nota: A API da OpenAI retornou uma indisponibilidade temporária ({type(e).__name__}). "
+                "Resposta processada via motor analítico local:*\n\n"
+            )
+
+        resposta_local, dados_widget = _fallback_local(pergunta, hoje)
+        resposta_final = motivo_detalhado + resposta_local
         if dados_widget:
             widgets_acumulados.append(dados_widget)
 
@@ -188,51 +203,130 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
     }
 
 
-def _fallback_local(pergunta: str, hoje: date) -> tuple[str, Optional[Dict[str, Any]]]:
-    """Fallback quando a OpenAI não está configurada ou indisponível."""
-    p = pergunta.lower()
-    ini_mes = date(hoje.year, hoje.month, 1).isoformat()
-    fim_mes = date(hoje.year, hoje.month, 28).isoformat()
+def _fallback_local(pergunta: str, hoje: date, motivo: Optional[str] = None) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Fallback quando a OpenAI não está configurada ou sem créditos."""
+    p = pergunta.lower().strip()
 
-    if "categoria" in p or "onde gastei" in p or "onde estou gastando" in p:
-        res = TOOL_FUNCTIONS["consultar_despesas_por_categoria"](inicio=ini_mes, fim=fim_mes)
-        linhas = [f"- **{c['categoria']}**: R$ {c['total']:,.2f} ({c['percentual']}%)" for c in res.get("categorias", [])[:5]]
+    # Saudações simples
+    if p in ("oi", "olá", "ola", "bom dia", "boa tarde", "boa noite", "e aí", "e ai"):
         txt = (
-            f"Aqui estão suas principais despesas por categoria no mês atual ({hoje.strftime('%m/%Y')}):\n\n"
+            f"Olá! Sou seu assistente financeiro. Como posso ajudar suas finanças hoje?\n\n"
+            "Você pode me perguntar sobre:\n"
+            "- Quanto gastou neste mês ou em meses anteriores\n"
+            "- Despesas por categoria (ex: Alimentação, Transporte)\n"
+            "- Maiores despesas individuais\n"
+            "- Situação do teto de gastos e metas\n"
+            "- Gastos recorrentes e assinaturas"
+        )
+        return txt, None
+
+    # Mês e período dinâmicos
+    ini_mes = date(hoje.year, hoje.month, 1).isoformat()
+    # Último dia do mês
+    m = hoje.month
+    y = hoje.year
+    u_dia = 28
+    if m in (1, 3, 5, 7, 8, 10, 12):
+        u_dia = 31
+    elif m in (4, 6, 9, 11):
+        u_dia = 30
+    elif (y % 4 == 0 and y % 100 != 0) or (y % 400 == 0):
+        u_dia = 29
+    fim_mes = date(y, m, u_dia).isoformat()
+
+    # Pergunta sobre mês passado
+    if "mês passado" in p or "mes passado" in p or "anterior" in p:
+        m_ant = hoje.month - 1
+        y_ant = hoje.year
+        if m_ant <= 0:
+            m_ant = 12
+            y_ant -= 1
+        ini_ant = date(y_ant, m_ant, 1).isoformat()
+        fim_ant = date(y_ant, m_ant, 28).isoformat()
+        res = TOOL_FUNCTIONS["consultar_resumo_financeiro"](inicio=ini_ant, fim=fim_ant)
+        txt = (
+            f"Resumo financeiro do **mês passado ({m_ant:02d}/{y_ant})**:\n\n"
+            f"- **Receitas:** R$ {res.get('total_receitas', 0):,.2f}\n"
+            f"- **Despesas:** R$ {res.get('total_despesas', 0):,.2f}\n"
+            f"- **Saldo apurado:** R$ {res.get('saldo_liquido', 0):,.2f}\n"
+            f"- **Quantidade de lançamentos:** {res.get('quantidade_transacoes', 0)}"
+        )
+        return txt, {"tipo": "resumo_mes_passado", "dados": res}
+
+    # Despesas por categoria
+    if "categoria" in p or "onde gastei" in p or "onde estou gastando" in p or "alimentacao" in p or "alimentação" in p:
+        res = TOOL_FUNCTIONS["consultar_despesas_por_categoria"](inicio=ini_mes, fim=fim_mes)
+        linhas = [f"- **{c['categoria']}**: R$ {c['total']:,.2f} ({c['percentual']}%)" for c in res.get("categorias", [])[:6]]
+        txt = (
+            f"Aqui estão seus gastos por categoria em **{hoje.strftime('%m/%Y')}**:\n\n"
             + "\n".join(linhas)
-            + f"\n\n**Total apurado no período:** R$ {res.get('total_geral_despesas', 0):,.2f}."
+            + f"\n\n**Total realizado no período:** R$ {res.get('total_geral_despesas', 0):,.2f}."
         )
         return txt, {"tipo": "despesas_categoria", "dados": res}
 
-    if "maiores despesas" in p or "maior gasto" in p or "mais caro" in p:
+    # Maiores despesas
+    if "maiores despesas" in p or "maior gasto" in p or "mais caro" in p or "maior despesa" in p or "compras mais altas" in p:
         res = TOOL_FUNCTIONS["consultar_maiores_despesas"](inicio=ini_mes, fim=fim_mes, limite=5)
         linhas = [f"- **{it['descricao']}** ({it['categoria']}): R$ {it['valor']:,.2f} em {it['data']}" for it in res.get("maiores_despesas", [])]
         txt = (
-            f"Aqui estão as maiores despesas registradas no mês atual ({hoje.strftime('%m/%Y')}):\n\n"
+            f"Aqui estão as 5 maiores despesas registradas em **{hoje.strftime('%m/%Y')}**:\n\n"
             + "\n".join(linhas)
         )
         return txt, {"tipo": "maiores_despesas", "dados": res}
 
-    if "meta" in p or "orçamento" in p:
+    # Metas e orçamentos
+    if "meta" in p or "orçamento" in p or "orcamento" in p or "limite" in p or "teto" in p:
         res = TOOL_FUNCTIONS["consultar_metas_orcamento"](mes=hoje.month, ano=hoje.year)
-        linhas = [f"- **{m['categoria']}**: R$ {m['realizado']:,.2f} de R$ {m['planejado']:,.2f} ({m['percentual_consumido']}%) — *{m['situacao']}*" for m in res.get("metas", [])[:5]]
-        txt = (
-            f"Situação do orçamento em {hoje.strftime('%m/%Y')}:\n"
-            f"- **Planejado total:** R$ {res.get('orcamento_total', 0):,.2f}\n"
-            f"- **Realizado:** R$ {res.get('gasto_total_metas', 0):,.2f}\n\n"
-            + "\n".join(linhas)
-        )
+        metas = res.get("metas", [])
+        if metas:
+            linhas = [f"- **{m['categoria']}**: R$ {m['realizado']:,.2f} de R$ {m['planejado']:,.2f} ({m['percentual_consumido']}%) — *{m['situacao']}*" for m in metas[:6]]
+            txt = (
+                f"Acompanhamento do orçamento para **{hoje.strftime('%m/%Y')}**:\n\n"
+                f"- **Planejado total:** R$ {res.get('orcamento_total', 0):,.2f}\n"
+                f"- **Realizado total:** R$ {res.get('gasto_total_metas', 0):,.2f}\n\n"
+                + "\n".join(linhas)
+            )
+        else:
+            txt = "Você ainda não possui metas de gastos ativas cadastradas. Acesse o menu **Metas de Gastos** no menu lateral para definir seus limites."
         return txt, {"tipo": "metas", "dados": res}
 
-    # Resumo padrão
+    # Recorrentes e assinaturas
+    if "recorrente" in p or "assinatura" in p or "fixo" in p:
+        res = TOOL_FUNCTIONS["consultar_gastos_recorrentes"]()
+        itens = res.get("itens", [])
+        if itens:
+            linhas = [f"- **{it['descricao']}** ({it['categoria']}): R$ {it['valor']:,.2f} ({it['frequencia']})" for it in itens[:8]]
+            txt = (
+                f"Foram identificados **{res.get('quantidade_recorrentes', 0)} gastos fixos / assinaturas** recorrentes:\n\n"
+                + "\n".join(linhas)
+                + f"\n\n**Total mensal estimado:** R$ {res.get('total_mensal_estimado', 0):,.2f}."
+            )
+        else:
+            txt = "Nenhuma despesa recorrente ou assinatura configurada no momento."
+        return txt, {"tipo": "recorrentes", "dados": res}
+
+    # Se for busca por termo ou estabelecimento (ex: "uber", "supermercado", "farmacia")
+    palavras = [w for w in re.split(r"\s+", p) if len(w) > 3 and w not in ("quanto", "gastei", "sobre", "qual", "quais", "como", "onde", "para")]
+    if palavras:
+        termo = palavras[0]
+        res = TOOL_FUNCTIONS["consultar_lancamentos_recentes"](termo_busca=termo, limite=5)
+        lancamentos = res.get("lancamentos", [])
+        if lancamentos:
+            linhas = [f"- **{it['descricao']}** ({it['tipo']}): R$ {it['valor']:,.2f} em {it['data']}" for it in lancamentos]
+            txt = (
+                f"Encontrei os seguintes lançamentos recentes relacionados a **'{termo}'**:\n\n"
+                + "\n".join(linhas)
+            )
+            return txt, {"tipo": "busca", "dados": res}
+
+    # Resumo geral padrão
     res = TOOL_FUNCTIONS["consultar_resumo_financeiro"](inicio=ini_mes, fim=fim_mes)
     txt = (
-        f"Resumo financeiro de **{hoje.strftime('%m/%Y')}**:\n\n"
-        f"- **Receitas:** R$ {res.get('total_receitas', 0):,.2f}\n"
-        f"- **Despesas:** R$ {res.get('total_despesas', 0):,.2f}\n"
-        f"- **Saldo do período:** R$ {res.get('saldo_liquido', 0):,.2f}\n"
-        f"- **Lançamentos registrados:** {res.get('quantidade_transacoes', 0)}\n\n"
-        "*(Modo analítico local ativo. Para conversas livres e análises avançadas, verifique sua chave OpenAI no ambiente.)*"
+        f"Consolidação financeira para o mês atual (**{hoje.strftime('%m/%Y')}**):\n\n"
+        f"- **Receitas registradas:** R$ {res.get('total_receitas', 0):,.2f}\n"
+        f"- **Despesas acumuladas:** R$ {res.get('total_despesas', 0):,.2f}\n"
+        f"- **Saldo líquido do período:** R$ {res.get('saldo_liquido', 0):,.2f}\n"
+        f"- **Total de movimentações:** {res.get('quantidade_transacoes', 0)}\n\n"
+        "*(Dica: Você pode me perguntar sobre 'maiores despesas', 'gastos por categoria', 'minhas metas' ou buscar por estabelecimentos como 'Uber' ou 'Supermercado'.)*"
     )
     return txt, {"tipo": "resumo", "dados": res}
-
