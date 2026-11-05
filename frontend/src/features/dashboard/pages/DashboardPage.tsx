@@ -1,12 +1,10 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Target } from 'lucide-react'
 
 import { PlanilhaAnual } from '@/features/dashboard/components/PlanilhaAnual'
 import type { CelulaClickPayload } from '@/features/dashboard/components/PlanilhaAnual'
 import { EvolucaoLinhasChart } from '@/features/dashboard/charts/EvolucaoLinhasChart'
 import { DestaquesSection } from '@/features/dashboard/components/DestaquesSection'
-import { MetasOrcamentoTab } from '@/features/metas/components/MetasOrcamentoTab'
 import { useMatrizAnual } from '@/features/dashboard/hooks/useMatrizAnual'
 import { exportarMatrizAnual } from '@/features/dashboard/utils/exportarPlanilha'
 import type {
@@ -23,11 +21,10 @@ const GraficosTab = lazy(() =>
   import('@/features/dashboard/components/GraficosTab').then((mod) => ({ default: mod.GraficosTab })),
 )
 
-type Aba = 'visao' | 'metas' | 'graficos' | 'planilha'
+type Aba = 'visao' | 'graficos' | 'planilha'
 
 const ABAS: { id: Aba; rotulo: string }[] = [
   { id: 'visao', rotulo: 'Visão geral' },
-  { id: 'metas', rotulo: 'Metas & Orçamento' },
   { id: 'graficos', rotulo: 'Gráficos' },
   { id: 'planilha', rotulo: 'Planilha' },
 ]
@@ -42,7 +39,7 @@ export function DashboardPage() {
 
   const [aba, setAba] = useState<Aba>(() => {
     const paramAba = searchParams.get('aba')
-    if (paramAba === 'metas' || paramAba === 'graficos' || paramAba === 'planilha') {
+    if (paramAba === 'graficos' || paramAba === 'planilha') {
       return paramAba
     }
     return 'visao'
@@ -57,7 +54,7 @@ export function DashboardPage() {
 
   useEffect(() => {
     const paramAba = searchParams.get('aba')
-    if (paramAba === 'metas' || paramAba === 'graficos' || paramAba === 'planilha' || paramAba === 'visao') {
+    if (paramAba === 'graficos' || paramAba === 'planilha' || paramAba === 'visao') {
       setAba(paramAba)
     }
   }, [searchParams])
@@ -163,17 +160,6 @@ export function DashboardPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {aba !== 'metas' ? (
-            <button
-              type="button"
-              onClick={() => selecionarAba('metas')}
-              className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-teal-200 bg-teal-50 px-3.5 py-2 text-sm font-semibold text-teal-800 hover:bg-teal-100 transition-colors cursor-pointer"
-            >
-              <Target className="h-4 w-4 text-teal-600" />
-              Metas & Orçamento
-            </button>
-          ) : null}
-
           <div className="flex items-center rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)]">
             <button
               type="button"
@@ -271,17 +257,7 @@ export function DashboardPage() {
         </div>
       ) : null}
 
-      {aba === 'metas' ? (
-        <MetasOrcamentoTab
-          ano={ano}
-          onVerTransacoesCategoria={(mesIdx, catId) =>
-            irParaTransacoes({ mes: mesIdx, tipo: 'Despesa', categoriaIdDireto: catId })
-          }
-          onVerTransacoesCartao={(mesIdx) =>
-            irParaTransacoes({ mes: mesIdx, tipo: 'Despesa', apenasCartao: true })
-          }
-        />
-      ) : loading ? (
+      {loading ? (
         <div className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-10 text-center text-sm text-[var(--color-muted)]">
           Carregando dados...
         </div>
