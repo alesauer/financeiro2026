@@ -1,123 +1,116 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import {
+  Sparkles,
+  Bot,
+  TrendingUp,
+  ShieldAlert,
+  History,
+  LayoutDashboard,
+} from 'lucide-react'
+import { useAuth } from '@/app/providers/AuthProvider'
+import { IaVisaoGeralTab } from '../components/IaVisaoGeralTab'
+import { IaAssistenteTab } from '../components/IaAssistenteTab'
+import { IaPrevisaoTab } from '../components/IaPrevisaoTab'
+import { IaAnomaliasTab } from '../components/IaAnomaliasTab'
+import { IaHistoricoTab } from '../components/IaHistoricoTab'
 
-import { iaService } from '@/features/ia/services/iaService'
-import { getErrorMessage } from '@/shared/utils/error'
+type AbaIa = 'visao' | 'assistente' | 'previsao' | 'anomalias' | 'historico'
+
+const ABAS: Array<{ id: AbaIa; label: string; icon: any }> = [
+  { id: 'visao', label: 'Visão Geral', icon: LayoutDashboard },
+  { id: 'assistente', label: 'Assistente com IA', icon: Bot },
+  { id: 'previsao', label: 'Previsão de Gastos', icon: TrendingUp },
+  { id: 'anomalias', label: 'Anomalias e Alertas', icon: ShieldAlert },
+  { id: 'historico', label: 'Histórico & Consumo', icon: History },
+]
 
 export function IaPage() {
-  const [texto, setTexto] = useState('')
-  const [resultado, setResultado] = useState<string[]>([])
-  const [erro, setErro] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+  const { token } = useAuth()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  const classificar = async () => {
-    const descricoes = texto
-      .split('\n')
-      .map((linha) => linha.trim())
-      .filter(Boolean)
-
-    if (descricoes.length === 0) {
-      setErro('Informe ao menos uma descrição (uma por linha).')
-      return
+  const [abaAtiva, setAbaAtiva] = useState<AbaIa>(() => {
+    const p = searchParams.get('aba') as AbaIa
+    if (['visao', 'assistente', 'previsao', 'anomalias', 'historico'].includes(p)) {
+      return p
     }
+    return 'visao'
+  })
 
-    setLoading(true)
-    setErro(null)
-
-    try {
-      const data = await iaService.classificarCategorias({ descricoes })
-      setResultado(data.categorias)
-      if (data.erro) setErro(data.erro)
-    } catch (err) {
-      setErro(getErrorMessage(err, 'Não foi possível classificar as descrições.'))
-    } finally {
-      setLoading(false)
+  useEffect(() => {
+    const p = searchParams.get('aba') as AbaIa
+    if (['visao', 'assistente', 'previsao', 'anomalias', 'historico'].includes(p)) {
+      setAbaAtiva(p)
     }
+  }, [searchParams])
+
+  const selecionarAba = (novaAba: AbaIa) => {
+    setAbaAtiva(novaAba)
+    const next = new URLSearchParams(searchParams)
+    if (novaAba === 'visao') {
+      next.delete('aba')
+    } else {
+      next.set('aba', novaAba)
+    }
+    setSearchParams(next, { replace: true })
   }
 
-  const linhas = texto
-    .split('\n')
-    .map((linha) => linha.trim())
-    .filter(Boolean)
-
   return (
-    <section className="space-y-6">
-      <header className="space-y-2">
-        <h2 className="text-2xl font-semibold text-[var(--color-text)]">IA · Classificação</h2>
-        <p className="text-sm text-[var(--color-muted)]">Classifique descrições em categorias existentes no sistema.</p>
+    <div className="space-y-6">
+      {/* Header do Módulo */}
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <div className="flex items-center gap-2">
+            <h2 className="text-2xl font-bold tracking-tight text-[var(--color-text)]">
+              Inteligência Artificial
+            </h2>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold text-emerald-800">
+              <Sparkles className="h-3 w-3" />
+              <span>SaaS IA</span>
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-[var(--color-muted)]">
+            Assistente conversacional, previsões preditivas e detecção automatizada de anomalias
+          </p>
+        </div>
       </header>
 
-      <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <textarea
-          rows={10}
-          value={texto}
-          onChange={(event) => setTexto(event.target.value)}
-          placeholder="Uma descrição por linha..."
-          className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-        />
-        <div className="mt-3 flex items-center gap-2">
-          <button
-            type="button"
-            onClick={classificar}
-            className="rounded-[var(--radius-sm)] bg-[var(--color-primary)] px-3 py-2 text-sm font-semibold text-white"
-          >
-            {loading ? 'Classificando...' : 'Classificar'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setTexto('')
-              setResultado([])
-              setErro(null)
-            }}
-            className="rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
-          >
-            Limpar
-          </button>
-        </div>
-        {erro ? <p className="mt-3 text-sm text-rose-600">{erro}</p> : null}
-      </article>
+      {/* Navegação de Abas */}
+      <nav
+        aria-label="Abas de Inteligência Artificial"
+        className="flex gap-1 overflow-x-auto border-b border-[var(--color-border)]"
+      >
+        {ABAS.map((aba) => {
+          const Icon = aba.icon
+          const isAtiva = abaAtiva === aba.id
+          return (
+            <button
+              key={aba.id}
+              type="button"
+              onClick={() => selecionarAba(aba.id)}
+              className={`-mb-px flex shrink-0 items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-medium transition cursor-pointer ${
+                isAtiva
+                  ? 'border-emerald-600 font-semibold text-emerald-700'
+                  : 'border-transparent text-[var(--color-muted)] hover:border-slate-300 hover:text-[var(--color-text)]'
+              }`}
+            >
+              <Icon className="h-4 w-4" />
+              <span>{aba.label}</span>
+            </button>
+          )
+        })}
+      </nav>
 
-      <article className="rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-        <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-[var(--color-muted)]">Resultado</h3>
-        {resultado.length === 0 ? (
-          <p className="text-sm text-[var(--color-muted)]">Nenhuma classificação ainda.</p>
-        ) : (
-          <>
-            <div className="mb-3 space-y-2 md:hidden">
-              {resultado.map((categoria, idx) => (
-                <article
-                  key={idx}
-                  className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
-                >
-                  <p className="text-xs text-[var(--color-muted)]">Descrição</p>
-                  <p className="text-sm font-medium text-[var(--color-text)]">{linhas[idx] ?? '-'}</p>
-                  <p className="mt-2 text-xs text-[var(--color-muted)]">Categoria sugerida</p>
-                  <p className="text-sm font-semibold text-[var(--color-text)]">{categoria}</p>
-                </article>
-              ))}
-            </div>
-
-            <div className="overflow-x-auto">
-            <table className="hidden min-w-full border-collapse text-sm md:table">
-              <thead>
-                <tr className="border-b border-[var(--color-border)] text-left">
-                  <th className="py-2 pr-3">Descrição</th>
-                  <th className="py-2 pr-3">Categoria sugerida</th>
-                </tr>
-              </thead>
-              <tbody>
-                {resultado.map((categoria, idx) => (
-                  <tr key={idx} className="border-b border-[var(--color-border)]/70">
-                    <td className="py-2 pr-3">{linhas[idx] ?? '-'}</td>
-                    <td className="py-2 pr-3">{categoria}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </>
+      {/* Conteúdo da Aba Ativa */}
+      <main>
+        {abaAtiva === 'visao' && (
+          <IaVisaoGeralTab token={token ?? undefined} onNavegarAba={(a) => selecionarAba(a as AbaIa)} />
         )}
-      </article>
-    </section>
+        {abaAtiva === 'assistente' && <IaAssistenteTab token={token ?? undefined} />}
+        {abaAtiva === 'previsao' && <IaPrevisaoTab token={token ?? undefined} />}
+        {abaAtiva === 'anomalias' && <IaAnomaliasTab token={token ?? undefined} />}
+        {abaAtiva === 'historico' && <IaHistoricoTab token={token ?? undefined} />}
+      </main>
+    </div>
   )
 }

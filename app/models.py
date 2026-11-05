@@ -603,3 +603,95 @@ class MetaAlertaEstado(db.Model):
     lido = db.Column(db.Boolean, default=False, nullable=False)
     created_at = db.Column(db.DateTime, default=db.func.now())
     lido_em = db.Column(db.DateTime, nullable=True)
+
+
+# ============================================================================
+# MÓDULO DE INTELIGÊNCIA ARTIFICIAL
+# ============================================================================
+
+class IAConversa(db.Model):
+    __tablename__ = "ia_conversas"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    titulo = db.Column(db.String(160), nullable=False, default="Nova conversa")
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    updated_at = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    mensagens = db.relationship("IAMensagem", backref="conversa", cascade="all, delete-orphan", lazy="dynamic", order_by="IAMensagem.id.asc()")
+
+    def __repr__(self):
+        return f"<IAConversa {self.id} usuario={self.usuario_id} '{self.titulo}'>"
+
+
+class IAMensagem(db.Model):
+    __tablename__ = "ia_mensagens"
+
+    id = db.Column(db.Integer, primary_key=True)
+    conversa_id = db.Column(db.Integer, db.ForeignKey("ia_conversas.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = db.Column(db.String(20), nullable=False)  # 'user', 'assistant', 'system'
+    conteudo = db.Column(db.Text, nullable=False)
+    metadados_json = db.Column(db.Text, nullable=True)  # JSON com widgets, dados e gráficos formatados
+    tokens_prompt = db.Column(db.Integer, default=0)
+    tokens_completion = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+
+    def __repr__(self):
+        return f"<IAMensagem {self.id} conversa={self.conversa_id} role={self.role}>"
+
+
+class IAAlertaAnomalia(db.Model):
+    __tablename__ = "ia_alertas_anomalias"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    tipo_anomalia = db.Column(db.String(60), nullable=False, index=True)  # gasto_acima_media, possivel_duplicado, desvio_categoria, ritmo_excessivo
+    gravidade = db.Column(db.String(20), nullable=False, default="atencao")  # 'info', 'atencao', 'critico'
+    titulo = db.Column(db.String(200), nullable=False)
+    descricao = db.Column(db.Text, nullable=False)
+    valor_envolvido = db.Column(db.Numeric(12, 2), nullable=True)
+    transacao_id = db.Column(db.Integer, db.ForeignKey("transacoes.id", ondelete="SET NULL"), nullable=True, index=True)
+    categoria_id = db.Column(db.Integer, db.ForeignKey("categorias.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = db.Column(db.String(20), default="pendente", nullable=False)  # 'pendente', 'lido', 'resolvido', 'ignorado'
+    chave_deduplicacao = db.Column(db.String(180), unique=True, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    atualizado_em = db.Column(db.DateTime, default=db.func.now(), onupdate=db.func.now())
+
+    transacao = db.relationship("Transacao", lazy=True)
+    categoria = db.relationship("Categoria", lazy=True)
+
+    def __repr__(self):
+        return f"<IAAlertaAnomalia {self.id} tipo={self.tipo_anomalia} gravidade={self.gravidade}>"
+
+
+class IAAnaliseHistorico(db.Model):
+    __tablename__ = "ia_analises_historico"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    tipo_analise = db.Column(db.String(60), nullable=False, index=True)  # 'previsao', 'anomalias', 'saude_financeira', 'resumo_mensal'
+    periodo_referencia = db.Column(db.String(30), nullable=True)
+    titulo = db.Column(db.String(160), nullable=False)
+    resultado_json = db.Column(db.Text, nullable=True)
+    recomendacoes_json = db.Column(db.Text, nullable=True)
+    origem = db.Column(db.String(20), default="manual", nullable=False)  # 'manual', 'automatica'
+    created_at = db.Column(db.DateTime, default=db.func.now())
+
+    def __repr__(self):
+        return f"<IAAnaliseHistorico {self.id} tipo={self.tipo_analise} '{self.titulo}'>"
+
+
+class IAConsumoLog(db.Model):
+    __tablename__ = "ia_consumo_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("usuarios.id", ondelete="CASCADE"), nullable=False, index=True)
+    funcionalidade = db.Column(db.String(60), nullable=False, index=True)
+    modelo = db.Column(db.String(60), nullable=False)
+    tokens_prompt = db.Column(db.Integer, default=0, nullable=False)
+    tokens_completion = db.Column(db.Integer, default=0, nullable=False)
+    custo_estimado_usd = db.Column(db.Numeric(10, 6), default=0.0, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+
+    def __repr__(self):
+        return f"<IAConsumoLog {self.id} func={self.funcionalidade} tokens={self.tokens_prompt + self.tokens_completion}>"
