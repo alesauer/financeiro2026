@@ -12,7 +12,6 @@ import {
   Menu,
   PieChart,
   Plus,
-  PlusCircle,
   Settings,
   Tags,
   Target,
@@ -162,15 +161,6 @@ export function PrivateLayout() {
                 onClick={handleNavigate}
               >
                 Minhas Metas
-              </NavItem>
-              <NavItem
-                to="/metas/nova"
-                icon={<PlusCircle className="h-3.5 w-3.5" />}
-                collapsed={isSidebarCollapsed}
-                nested
-                onClick={handleNavigate}
-              >
-                Nova Meta
               </NavItem>
               <NavItem
                 to="/metas/analises"
