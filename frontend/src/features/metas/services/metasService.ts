@@ -1,4 +1,13 @@
 import { httpClient } from '@/shared/api/httpClient'
+import type {
+  AlertasMetasResponse,
+  AnalisesMetasResponse,
+  ConfiguracaoMetas,
+  CriarEditarMetaPayload,
+  DetalheMetaResponse,
+  MetaEnriquecida,
+  PainelMetasResponse,
+} from '@/features/metas/types/metas'
 
 export type StatusMetaDespesa = 'ok' | 'atencao' | 'estourado'
 export type StatusMetaInvestimento = 'atingida' | 'em_andamento' | 'abaixo'
@@ -165,17 +174,96 @@ export interface SalvarMetasLotePayload {
 const BASE = '/api/metas'
 
 export const metasService = {
+  painel(
+    token: string,
+    params: { mes: number; ano: number; situacao?: string; q?: string },
+  ) {
+    const search = new URLSearchParams({
+      mes: String(params.mes),
+      ano: String(params.ano),
+    })
+    if (params.situacao && params.situacao !== 'todas') {
+      search.set('situacao', params.situacao)
+    }
+    if (params.q?.trim()) {
+      search.set('q', params.q.trim())
+    }
+    return httpClient.get<PainelMetasResponse>(`${BASE}/painel?${search.toString()}`, token)
+  },
+
+  obter(token: string, id: number, mes?: number, ano?: number) {
+    const search = new URLSearchParams()
+    if (mes) search.set('mes', String(mes))
+    if (ano) search.set('ano', String(ano))
+    const qs = search.toString() ? `?${search.toString()}` : ''
+    return httpClient.get<MetaEnriquecida>(`${BASE}/${id}${qs}`, token)
+  },
+
+  criar(token: string, payload: CriarEditarMetaPayload) {
+    return httpClient.post<MetaEnriquecida>(BASE, payload, token)
+  },
+
+  atualizar(token: string, id: number, payload: Partial<CriarEditarMetaPayload>) {
+    return httpClient.put<MetaEnriquecida>(`${BASE}/${id}`, payload, token)
+  },
+
+  remover(token: string, id: number) {
+    return httpClient.del<{ message: string }>(`${BASE}/${id}`, token)
+  },
+
+  detalhe(token: string, id: number, mes: number, ano: number) {
+    return httpClient.get<DetalheMetaResponse>(
+      `${BASE}/${id}/detalhe?mes=${mes}&ano=${ano}`,
+      token,
+    )
+  },
+
+  analises(token: string, mes: number, ano: number) {
+    return httpClient.get<AnalisesMetasResponse>(
+      `${BASE}/analises?mes=${mes}&ano=${ano}`,
+      token,
+    )
+  },
+
+  alertas(token: string, mes: number, ano: number) {
+    return httpClient.get<AlertasMetasResponse>(
+      `${BASE}/alertas?mes=${mes}&ano=${ano}`,
+      token,
+    )
+  },
+
+  marcarAlertaLido(
+    token: string,
+    payload: {
+      chave?: string
+      chaves?: string[]
+      lido?: boolean
+      meta_id?: number
+      tipo?: string
+      titulo?: string
+      mensagem?: string
+    },
+  ) {
+    return httpClient.post<{ message: string; atualizados: number }>(
+      `${BASE}/alertas/ler`,
+      payload,
+      token,
+    )
+  },
+
+  salvarConfigAlertas(token: string, payload: Partial<ConfiguracaoMetas>) {
+    return httpClient.put<ConfiguracaoMetas>(`${BASE}/alertas/config`, payload, token)
+  },
+
   resumo(token: string, mes: number, ano: number) {
     return httpClient.get<ResumoMetasResponse>(`${BASE}/resumo?mes=${mes}&ano=${ano}`, token)
   },
+
   salvarLote(token: string, payload: SalvarMetasLotePayload) {
     return httpClient.post<{ message: string; salvas: number; removidas: number }>(
       `${BASE}/salvar_lote`,
       payload,
       token,
     )
-  },
-  remover(token: string, id: number) {
-    return httpClient.del<{ message: string }>(`${BASE}/${id}`, token)
   },
 }

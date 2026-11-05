@@ -21,6 +21,13 @@ import { TransacoesPage } from '@/features/transacoes/pages/TransacoesPage'
 import { UsuariosPage } from '@/features/usuarios/pages/UsuariosPage'
 import { ViagensPage } from '@/features/viagens/pages/ViagensPage'
 
+import { MetasVisaoGeralPage } from '@/features/metas/pages/MetasVisaoGeralPage'
+import { MinhasMetasPage } from '@/features/metas/pages/MinhasMetasPage'
+import { MetaFormPage } from '@/features/metas/pages/MetaFormPage'
+import { MetaDetalhePage } from '@/features/metas/pages/MetaDetalhePage'
+import { MetasAnalisesPage } from '@/features/metas/pages/MetasAnalisesPage'
+import { MetasAlertasPage } from '@/features/metas/pages/MetasAlertasPage'
+
 export function AppRouter() {
   return (
     <BrowserRouter>
@@ -36,6 +43,16 @@ export function AppRouter() {
             <Route path="/formas-pagamento" element={<FormasPagamentoPage />} />
             <Route path="/transacoes" element={<TransacoesPage />} />
             <Route path="/usuarios" element={<UsuariosPage />} />
+
+            {/* Módulo Metas de Gastos (6 Telas) */}
+            <Route path="/metas" element={<MetasVisaoGeralPage />} />
+            <Route path="/metas/lista" element={<MinhasMetasPage />} />
+            <Route path="/metas/nova" element={<MetaFormPage />} />
+            <Route path="/metas/:id" element={<MetaDetalhePage />} />
+            <Route path="/metas/:id/editar" element={<MetaFormPage />} />
+            <Route path="/metas/analises" element={<MetasAnalisesPage />} />
+            <Route path="/metas/alertas" element={<MetasAlertasPage />} />
+
             <Route path="/lembretes" element={<LembretesPage />} />
             <Route path="/milhas" element={<MilhasPage />} />
             <Route path="/investimentos" element={<InvestimentosPage />} />

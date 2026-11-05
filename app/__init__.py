@@ -98,6 +98,27 @@ def _garantir_schema_banco():
         # 1. Cria tabelas declaradas que ainda não existam
         db.create_all()
 
+        # 1b. Garantir novas colunas na tabela metas_orcamento
+        insp = inspect(db.engine)
+        tables = set(insp.get_table_names())
+        if "metas_orcamento" in tables:
+            cols_metas = {c["name"] for c in insp.get_columns("metas_orcamento")}
+            novas_cols = [
+                ("nome", "VARCHAR(120)"),
+                ("periodicidade", "VARCHAR(30) DEFAULT 'Mensal'"),
+                ("data_inicio", "DATE"),
+                ("data_fim", "DATE"),
+                ("repetir_automaticamente", "BOOLEAN DEFAULT 1"),
+                ("alertas_percentuais", "VARCHAR(120) DEFAULT '50,75,90,100'"),
+            ]
+            for col_name, col_def in novas_cols:
+                if col_name not in cols_metas:
+                    try:
+                        db.session.execute(text(f"ALTER TABLE metas_orcamento ADD COLUMN {col_name} {col_def}"))
+                        db.session.commit()
+                    except Exception:
+                        db.session.rollback()
+
         # 2. Se categorias_alias existe, garante que as colunas 'origem' e 'confianca' existam
         if "categorias_alias" in tables:
             cols = {c["name"] for c in insp.get_columns("categorias_alias")}

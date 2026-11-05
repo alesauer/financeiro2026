@@ -7,15 +7,19 @@ import {
   FileText,
   Home,
   Landmark,
+  ListChecks,
   LogOut,
   Menu,
+  PieChart,
   Plus,
+  PlusCircle,
   Settings,
   Tags,
+  Target,
   User,
   Wallet,
 } from 'lucide-react'
-import { useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 
 import { useAuth } from '@/app/providers/AuthProvider'
@@ -27,10 +31,18 @@ export function PrivateLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const isConfigRouteActive = CONFIG_PATHS.some((path) => location.pathname.startsWith(path))
+  const isMetasRouteActive = location.pathname.startsWith('/metas')
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false)
   const [isConfigOpen, setIsConfigOpen] = useState<boolean>(false)
+  const [isMetasOpen, setIsMetasOpen] = useState<boolean>(() => location.pathname.startsWith('/metas'))
+
+  useEffect(() => {
+    if (location.pathname.startsWith('/metas')) {
+      setIsMetasOpen(true)
+    }
+  }, [location.pathname])
 
   const displayName = user?.nome ?? user?.email ?? 'Usuário'
   const userInitial = displayName.trim().charAt(0).toUpperCase() || 'U'
@@ -91,6 +103,96 @@ export function PrivateLayout() {
           >
             Transações
           </NavItem>
+
+          {/* Grupo: Metas de Gastos */}
+          <div>
+            <button
+              type="button"
+              onClick={() => {
+                if (isSidebarCollapsed) {
+                  navigate('/metas')
+                  handleNavigate()
+                  return
+                }
+                setIsMetasOpen((prev) => !prev)
+              }}
+              aria-expanded={isMetasOpen}
+              aria-controls="sidebar-metas-submenu"
+              className={`flex w-full items-center justify-between rounded-[var(--radius-sm)] px-2.5 py-2 text-sm transition cursor-pointer ${
+                isSidebarCollapsed ? 'justify-start lg:justify-center' : ''
+              } ${
+                isMetasRouteActive
+                  ? 'bg-emerald-600 font-semibold text-white shadow-2xs'
+                  : 'text-[var(--color-muted)] hover:bg-slate-100 hover:text-[var(--color-text)]'
+              }`}
+              title="Metas de Gastos"
+            >
+              <span className="flex items-center gap-2">
+                <Target className="h-4 w-4 shrink-0" />
+                <span className={isSidebarCollapsed ? 'inline lg:hidden' : 'inline'}>Metas de Gastos</span>
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={`h-4 w-4 shrink-0 transition-transform duration-200 ${
+                  isSidebarCollapsed ? 'inline lg:hidden' : 'inline'
+                } ${isMetasOpen ? 'rotate-0' : '-rotate-90'}`}
+              />
+            </button>
+
+            <div
+              id="sidebar-metas-submenu"
+              hidden={!isMetasOpen}
+              className="mt-1 space-y-0.5"
+            >
+              <NavItem
+                to="/metas"
+                end
+                icon={<PieChart className="h-3.5 w-3.5" />}
+                collapsed={isSidebarCollapsed}
+                nested
+                onClick={handleNavigate}
+              >
+                Visão Geral
+              </NavItem>
+              <NavItem
+                to="/metas/lista"
+                icon={<ListChecks className="h-3.5 w-3.5" />}
+                collapsed={isSidebarCollapsed}
+                nested
+                onClick={handleNavigate}
+              >
+                Minhas Metas
+              </NavItem>
+              <NavItem
+                to="/metas/nova"
+                icon={<PlusCircle className="h-3.5 w-3.5" />}
+                collapsed={isSidebarCollapsed}
+                nested
+                onClick={handleNavigate}
+              >
+                Nova Meta
+              </NavItem>
+              <NavItem
+                to="/metas/analises"
+                icon={<BarChart3 className="h-3.5 w-3.5" />}
+                collapsed={isSidebarCollapsed}
+                nested
+                onClick={handleNavigate}
+              >
+                Análises
+              </NavItem>
+              <NavItem
+                to="/metas/alertas"
+                icon={<Bell className="h-3.5 w-3.5" />}
+                collapsed={isSidebarCollapsed}
+                nested
+                onClick={handleNavigate}
+              >
+                Alertas
+              </NavItem>
+            </div>
+          </div>
+
           <NavItem
             to="/relatorios"
             icon={<BarChart3 className="h-4 w-4" />}
@@ -267,7 +369,7 @@ export function PrivateLayout() {
       <nav aria-label="Menu móvel" className="fixed bottom-0 left-0 right-0 z-40 flex h-16 border-t border-[var(--color-border)] bg-[var(--color-surface)] lg:hidden shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
         <BottomTabItem to="/" icon={<Home className="h-5 w-5" />} label="Início" />
         <BottomTabItem to="/transacoes" icon={<Wallet className="h-5 w-5" />} label="Transações" />
-        <BottomTabItem to="/ia" icon={<Bot className="h-5 w-5" />} label="IA" />
+        <BottomTabItem to="/metas" icon={<Target className="h-5 w-5" />} label="Metas" />
         <button
           type="button"
           onClick={() => setIsMobileSidebarOpen(true)}
@@ -287,6 +389,7 @@ function NavItem({
   icon,
   collapsed,
   nested,
+  end,
   onClick,
 }: {
   to: string
@@ -294,15 +397,16 @@ function NavItem({
   icon: ReactNode
   collapsed: boolean
   nested?: boolean
+  end?: boolean
   onClick?: () => void
 }) {
   return (
     <NavLink
       to={to}
-      end={to === '/'}
+      end={end ?? to === '/'}
       onClick={onClick}
       className={({ isActive }) =>
-        `flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-sm transition ${nested ? 'pl-4' : ''} ${
+        `flex items-center gap-2 rounded-[var(--radius-sm)] px-2.5 py-2 text-sm transition ${nested ? 'pl-5' : ''} ${
           collapsed ? 'justify-start px-2.5 lg:justify-center' : ''
         } ${
           isActive

@@ -565,13 +565,18 @@ class MetaOrcamento(db.Model):
     __tablename__ = "metas_orcamento"
 
     id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.String(120), nullable=True)
     # escopo: 'global_despesa' | 'global_investimento' | 'categoria' | 'cartao'
-    escopo = db.Column(db.String(30), nullable=False, index=True)
+    escopo = db.Column(db.String(30), nullable=False, index=True, default="categoria")
     categoria_id = db.Column(db.Integer, db.ForeignKey("categorias.id", ondelete="CASCADE"), nullable=True, index=True)
     forma_pagamento_id = db.Column(db.Integer, db.ForeignKey("formas_pagamento.id", ondelete="CASCADE"), nullable=True, index=True)
     valor_limite = db.Column(db.Numeric(12, 2), nullable=False)
-    # Quando mes e ano sao NULL, vale como meta recorrente padrao para todos os meses.
-    # Quando preenchidos, sobrescrevem (override) apenas aquele mes/ano especifico.
+    periodicidade = db.Column(db.String(30), default="Mensal", nullable=False)
+    data_inicio = db.Column(db.Date, nullable=True)
+    data_fim = db.Column(db.Date, nullable=True)
+    repetir_automaticamente = db.Column(db.Boolean, default=True, nullable=False)
+    alertas_percentuais = db.Column(db.String(120), default="50,75,90,100", nullable=True)
+    # Quando mes e ano sao NULL (ou repetir_automaticamente=True), vale como meta recorrente padrao.
     mes = db.Column(db.Integer, nullable=True, index=True)
     ano = db.Column(db.Integer, nullable=True, index=True)
     ativo = db.Column(db.Boolean, default=True, nullable=False)
@@ -583,4 +588,18 @@ class MetaOrcamento(db.Model):
 
     def __repr__(self):
         periodo = f"{self.mes:02d}/{self.ano}" if (self.mes and self.ano) else "Padrao"
-        return f"<MetaOrcamento {self.escopo} cat={self.categoria_id} fp={self.forma_pagamento_id} R${self.valor_limite} [{periodo}]>"
+        return f"<MetaOrcamento {self.nome or self.escopo} cat={self.categoria_id} R${self.valor_limite} [{periodo}]>"
+
+
+class MetaAlertaEstado(db.Model):
+    __tablename__ = "metas_alertas_estado"
+
+    id = db.Column(db.Integer, primary_key=True)
+    chave_alerta = db.Column(db.String(160), unique=True, nullable=False, index=True)
+    meta_id = db.Column(db.Integer, db.ForeignKey("metas_orcamento.id", ondelete="CASCADE"), nullable=True)
+    tipo_alerta = db.Column(db.String(50), nullable=False)
+    titulo = db.Column(db.String(160), nullable=False)
+    mensagem = db.Column(db.Text, nullable=False)
+    lido = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=db.func.now())
+    lido_em = db.Column(db.DateTime, nullable=True)

@@ -149,3 +149,4 @@ export function MetasMiniBanner({ token, mesIso, refreshTrigger }: MetasMiniBann
     </>
   )
 }
+
