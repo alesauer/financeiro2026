@@ -9,6 +9,7 @@ services:
       SECRET_KEY: docker-secret-key
       JWT_SECRET_KEY: docker-jwt-secret-key
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       BRAPI_API_TOKEN: ${BRAPI_API_TOKEN:-}
       PLUGGY_CLIENT_ID: ${PLUGGY_CLIENT_ID:-}
       PLUGGY_CLIENT_SECRET: ${PLUGGY_CLIENT_SECRET:-}
@@ -18,10 +19,10 @@ services:
       MAILGUN_FROM: ""
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
-      NO_PROXY: localhost,127.0.0.1,backend,frontend,api.openai.com
+      NO_PROXY: localhost,127.0.0.1,backend,frontend,api.openai.com,api.deepseek.com
       http_proxy: ${HTTP_PROXY:-}
       https_proxy: ${HTTPS_PROXY:-}
-      no_proxy: localhost,127.0.0.1,backend,frontend,api.openai.com
+      no_proxy: localhost,127.0.0.1,backend,frontend,api.openai.com,api.deepseek.com
     ports:
       - "5001:5000"
     volumes:

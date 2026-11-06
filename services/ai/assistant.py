@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional
 from app import db
 from app.models import IAConversa, IAMensagem
-from services.ai.client import get_openai_client, registrar_consumo
+from services.ai.client import get_ai_client, get_openai_client, registrar_consumo
 from services.ai.tools import OPENAI_TOOLS, TOOL_FUNCTIONS
 
 logger = logging.getLogger(__name__)
@@ -59,11 +59,13 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
         "6. Quando apropriado, apresente listas limpas com marcadores ou pequenas tabelas markdown para facilitar a leitura."
     )
 
-    client = get_openai_client()
+    client, modelo, provedor = get_ai_client()
 
     if not client:
         # Fallback local determinístico inteligente caso não haja API Key
-        resposta_texto, dados_widget = _fallback_local(pergunta, hoje, motivo="Chave OPENAI_API_KEY não configurada no servidor.")
+        resposta_texto, dados_widget = _fallback_local(
+            pergunta, hoje, motivo=f"Chave da API do provedor {provedor.upper()} não configurada no servidor."
+        )
         msg_assistant = IAMensagem(
             conversa_id=conversa.id,
             role="assistant",
@@ -83,18 +85,17 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
             "created_at": msg_assistant.created_at.isoformat()
         }
 
-    # Execução com OpenAI e Function Calling
-    mensagens_openai = [{"role": "system", "content": system_prompt}] + historico_mensagens
-    modelo = "gpt-4o-mini"
+    # Execução com o provedor configurado (DeepSeek ou OpenAI) e Function Calling
+    mensagens_ai = [{"role": "system", "content": system_prompt}] + historico_mensagens
     total_prompt_tokens = 0
     total_completion_tokens = 0
     widgets_acumulados = []
 
     try:
-        # Primeira chamada à OpenAI
+        # Primeira chamada à API do modelo de IA
         response = client.chat.completions.create(
             model=modelo,
-            messages=mensagens_openai,
+            messages=mensagens_ai,
             tools=OPENAI_TOOLS,
             tool_choice="auto",
             temperature=0.2,
@@ -109,7 +110,7 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
 
         # Se o modelo decidiu chamar ferramentas:
         if msg_escolha.tool_calls:
-            mensagens_openai.append(msg_escolha)
+            mensagens_ai.append(msg_escolha)
 
             for tool_call in msg_escolha.tool_calls:
                 func_name = tool_call.function.name
@@ -130,16 +131,16 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
                     "resultado": resultado_tool
                 })
 
-                mensagens_openai.append({
+                mensagens_ai.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "content": json.dumps(resultado_tool, ensure_ascii=False)
                 })
 
-            # Segunda chamada à OpenAI para sintetizar a resposta com os dados retornados
+            # Segunda chamada à IA para sintetizar a resposta com os dados retornados
             segunda_resposta = client.chat.completions.create(
                 model=modelo,
-                messages=mensagens_openai,
+                messages=mensagens_ai,
                 temperature=0.3,
                 max_tokens=700
             )
@@ -162,18 +163,18 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
         )
 
     except Exception as e:
-        logger.error(f"Erro na chamada OpenAI: {e}", exc_info=True)
+        logger.error(f"Erro na chamada da IA ({provedor} / {modelo}): {e}", exc_info=True)
         motivo_erro = str(e)
         if "429" in motivo_erro or "credits" in motivo_erro.lower() or "quota" in motivo_erro.lower():
             motivo_detalhado = (
-                "⚠️ **Aviso de Quota da OpenAI**: Sua conta da OpenAI está sem créditos ativos "
-                "(`Error 429: You have no credits remaining`).\n\n"
-                "Para liberar a conversação generativa livre completa, adicione créditos em [platform.openai.com/settings/organization/billing](https://platform.openai.com/settings/organization/billing).\n\n"
+                f"⚠️ **Aviso de Quota do provedor {provedor.upper()}**: Sua conta está sem créditos ativos "
+                f"(`{motivo_erro}`).\n\n"
+                "Para configurar ou alternar de modelo (ex: DeepSeek ou OpenAI), acesse **Configurações > Outros > Inteligência Artificial (IA)**.\n\n"
                 "**Enquanto isso, acionei o motor analítico local inteligente para consultar seus dados reais:**\n\n"
             )
         else:
             motivo_detalhado = (
-                f"⚠️ *Nota: A API da OpenAI retornou uma indisponibilidade temporária ({type(e).__name__}). "
+                f"⚠️ *Nota: A API ({provedor.upper()} - {modelo}) retornou uma indisponibilidade temporária ({type(e).__name__}). "
                 "Resposta processada via motor analítico local:*\n\n"
             )
 

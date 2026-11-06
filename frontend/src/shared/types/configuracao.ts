@@ -34,3 +34,24 @@ export type LimparDadosResponse = {
   mensagem: string
   detalhes?: Record<string, number>
 }
+
+export interface IAConfig {
+  provedor_ativo: 'deepseek' | 'openai'
+  deepseek_api_key: string
+  deepseek_modelo: string
+  openai_api_key: string
+  openai_modelo: string
+}
+
+export interface IATestarPayload {
+  provedor: 'deepseek' | 'openai'
+  api_key?: string
+  modelo?: string
+}
+
+export interface IATestarResponse {
+  sucesso: boolean
+  mensagem: string
+  resposta?: string
+  tempo_ms?: number
+}

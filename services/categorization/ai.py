@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from app.utils.texto import normalizar_texto
+from services.ai.client import get_ai_client
 
 logger = logging.getLogger(__name__)
 
@@ -39,19 +40,12 @@ def classificar_com_ia(
         for _ in descricoes
     ]
 
-    global _invalid_api_key
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or api_key == _invalid_api_key:
-        logger.debug("OPENAI_API_KEY não configurada ou inválida. Pulando etapa de IA.")
+    client, modelo_detectado, provedor = get_ai_client()
+    if not client:
+        logger.debug("Nenhum cliente de IA configurado ou disponível. Pulando etapa de IA.")
         return fallback_resultado
 
-    try:
-        import openai
-    except ImportError:
-        logger.warning("Pacote openai não instalado. Pulando etapa de IA.")
-        return fallback_resultado
-
-    modelo_utilizado = model or os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    modelo_utilizado = model or modelo_detectado
     cat_str = ", ".join(categorias_validas) if categorias_validas else "Outros"
 
     # Mapeamento case-insensitive e sem acentos para validação estrita
@@ -80,14 +74,13 @@ def classificar_com_ia(
         prompt_usuario = f"Itens para classificar:\n{json.dumps(payload, ensure_ascii=False)}"
 
         try:
-            client = openai.OpenAI(api_key=api_key, max_retries=0)
             response = client.chat.completions.create(
                 model=modelo_utilizado,
                 messages=[
                     {"role": "system", "content": prompt_sistema},
                     {"role": "user", "content": prompt_usuario},
                 ],
-                response_format={"type": "json_object"} if "gpt-4" in modelo_utilizado or "gpt-3.5" in modelo_utilizado else None,
+                response_format={"type": "json_object"} if ("gpt" in modelo_utilizado or "deepseek" in modelo_utilizado) else None,
                 temperature=0.1,
                 timeout=15.0
             )

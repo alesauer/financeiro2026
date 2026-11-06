@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 from sqlalchemy import func
 from app import db
 from app.models import Transacao, Categoria, MetaOrcamento
-from services.ai.client import get_openai_client, registrar_consumo
+from services.ai.client import get_ai_client, get_openai_client, registrar_consumo
 
 logger = logging.getLogger(__name__)
 
@@ -204,8 +204,8 @@ def calcular_previsao_gastos(mes: Optional[int] = None, ano: Optional[int] = Non
         else:
             explicacao += f"Seus gastos estão dentro do teto orçamentário previsto de R$ {orcamento_total:,.2f}."
 
-    # Tenta enriquecer com OpenAI se disponível
-    client = get_openai_client()
+    # Tenta enriquecer com IA se disponível (DeepSeek ou OpenAI)
+    client, modelo_ia, provedor_ia = get_ai_client()
     if client and usuario_id:
         try:
             prompt = (
@@ -220,7 +220,7 @@ def calcular_previsao_gastos(mes: Optional[int] = None, ano: Optional[int] = Non
                 "Seja direto e prático com conselhos acionáveis."
             )
             resp = client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=modelo_ia,
                 messages=[
                     {"role": "system", "content": "Você é um consultor financeiro analítico e objetivo."},
                     {"role": "user", "content": prompt}
@@ -235,7 +235,7 @@ def calcular_previsao_gastos(mes: Optional[int] = None, ano: Optional[int] = Non
                     registrar_consumo(
                         usuario_id=usuario_id,
                         funcionalidade="previsao_gastos",
-                        modelo="gpt-4o-mini",
+                        modelo=modelo_ia,
                         prompt_tokens=resp.usage.prompt_tokens,
                         completion_tokens=resp.usage.completion_tokens
                     )

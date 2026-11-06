@@ -2,6 +2,9 @@ import { httpClient } from '@/shared/api/httpClient'
 import type {
   AlertasConfig,
   EmailsAlertaResponse,
+  IAConfig,
+  IATestarPayload,
+  IATestarResponse,
   LimparDadosPayload,
   LimparDadosResponse,
   SobreSistemaConfig,
@@ -48,5 +51,15 @@ export const configuracoesService = {
       { forma_pagamento_id: formaPagamentoId },
       token,
     )
+  },
+
+  getIAConfig(token: string) {
+    return httpClient.get<IAConfig>(`${BASE}/ia-config`, token)
+  },
+  saveIAConfig(token: string, payload: IAConfig) {
+    return httpClient.put<IAConfig>(`${BASE}/ia-config`, payload, token)
+  },
+  testarIA(token: string, payload: IATestarPayload) {
+    return httpClient.post<IATestarResponse>(`${BASE}/ia-testar`, payload, token)
   },
 }

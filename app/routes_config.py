@@ -4,7 +4,17 @@ from app import db
 from app.models import Configuracao, Usuario
 from app.schemas import EmailsAlertaSchema, EmailItemSchema, AlertasConfigSchema, SobreSistemaConfigSchema
 import json
+import logging
+import time
 from datetime import datetime
+from services.ai.client import (
+    get_ia_config,
+    salvar_ia_config,
+    ensure_no_proxy,
+    DEEPSEEK_BASE_URL,
+)
+
+logger = logging.getLogger(__name__)
 
 bp_config = Blueprint("config", __name__)
 
@@ -378,3 +388,102 @@ def exportar_backup_json():
 
     return jsonify(export_data), 200
 
+
+
+# ==============================================================================
+# CONFIGURAÇÕES E TESTE DE IA (DEEPSEEK & OPENAI)
+# ==============================================================================
+
+@bp_config.route("/ia-config", methods=["GET"])
+@jwt_required()
+def get_ia_config_route():
+    cfg = get_ia_config()
+    return jsonify(cfg), 200
+
+
+@bp_config.route("/ia-config", methods=["PUT"])
+@jwt_required()
+def put_ia_config_route():
+    payload = request.get_json(silent=True) or {}
+    cfg = get_ia_config()
+
+    if "provedor_ativo" in payload and payload["provedor_ativo"]:
+        cfg["provedor_ativo"] = str(payload["provedor_ativo"]).lower().strip()
+    if "deepseek_api_key" in payload and payload["deepseek_api_key"] is not None:
+        cfg["deepseek_api_key"] = str(payload["deepseek_api_key"]).strip()
+    if "deepseek_modelo" in payload and payload["deepseek_modelo"]:
+        cfg["deepseek_modelo"] = str(payload["deepseek_modelo"]).strip()
+    if "openai_api_key" in payload and payload["openai_api_key"] is not None:
+        cfg["openai_api_key"] = str(payload["openai_api_key"]).strip()
+    if "openai_modelo" in payload and payload["openai_modelo"]:
+        cfg["openai_modelo"] = str(payload["openai_modelo"]).strip()
+
+    salvar_ia_config(cfg)
+    return jsonify(cfg), 200
+
+
+@bp_config.route("/ia-testar", methods=["POST"])
+@jwt_required()
+def testar_ia_route():
+    import openai
+    ensure_no_proxy()
+    payload = request.get_json(silent=True) or {}
+    provedor = str(payload.get("provedor") or "deepseek").lower().strip()
+    api_key = payload.get("api_key")
+    modelo = payload.get("modelo")
+
+    cfg = get_ia_config()
+    if not api_key:
+        if provedor == "deepseek":
+            api_key = cfg.get("deepseek_api_key")
+        else:
+            api_key = cfg.get("openai_api_key")
+
+    if not api_key:
+        return jsonify({
+            "sucesso": False,
+            "mensagem": f"Nenhuma chave de API fornecida para o provedor {provedor.upper()}."
+        }), 400
+
+    if not modelo:
+        modelo = "deepseek-chat" if provedor == "deepseek" else "gpt-4o-mini"
+
+    inicio = time.time()
+    try:
+        if provedor == "deepseek":
+            client = openai.OpenAI(
+                api_key=api_key,
+                base_url=DEEPSEEK_BASE_URL,
+                max_retries=1,
+                timeout=20.0
+            )
+        else:
+            client = openai.OpenAI(
+                api_key=api_key,
+                max_retries=1,
+                timeout=20.0
+            )
+
+        resp = client.chat.completions.create(
+            model=modelo,
+            messages=[{"role": "user", "content": "Olá! Responda apenas: Conexão bem-sucedida!"}],
+            max_tokens=25,
+            temperature=0.1
+        )
+        tempo_ms = int((time.time() - inicio) * 1000)
+        texto_resp = resp.choices[0].message.content or "OK"
+        return jsonify({
+            "sucesso": True,
+            "mensagem": f"Conexão com {provedor.upper()} ({modelo}) realizada com sucesso!",
+            "resposta": texto_resp.strip(),
+            "tempo_ms": tempo_ms
+        }), 200
+    except Exception as e:
+        tempo_ms = int((time.time() - inicio) * 1000)
+        err_msg = str(e)
+        logger.error(f"Erro ao testar {provedor}: {e}")
+        return jsonify({
+            "sucesso": False,
+            "mensagem": f"Falha na conexão com {provedor.upper()}: {err_msg}",
+            "tempo_ms": tempo_ms
+        }), 200

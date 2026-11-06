@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import {
   AlertTriangle,
   Bell,
+  Bot,
   CheckCircle2,
   Database,
   Download,
@@ -29,8 +30,9 @@ import type {
 import type { FormaPagamento } from '@/shared/types/formaPagamento'
 import { getErrorMessage } from '@/shared/utils/error'
 import { OpenFinanceTab } from '../components/OpenFinanceTab'
+import { IATab } from '../components/IATab'
 
-type TabType = 'dados' | 'alertas' | 'backup' | 'recalculos' | 'openfinance' | 'sobre'
+type TabType = 'dados' | 'alertas' | 'backup' | 'recalculos' | 'openfinance' | 'ia' | 'sobre'
 
 export function ConfiguracoesPage() {
   const { token, user } = useAuth()
@@ -413,6 +415,19 @@ export function ConfiguracoesPage() {
 
         <button
           type="button"
+          onClick={() => setActiveTab('ia')}
+          className={`inline-flex items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 transition ${
+            activeTab === 'ia'
+              ? 'bg-[var(--color-primary)] text-white shadow-xs'
+              : 'text-[var(--color-muted)] hover:bg-[var(--color-bg)] hover:text-[var(--color-text)]'
+          }`}
+        >
+          <Bot className="h-4 w-4 text-sky-400" />
+          Inteligência Artificial (IA)
+        </button>
+
+        <button
+          type="button"
           onClick={() => setActiveTab('sobre')}
           className={`inline-flex items-center gap-2 rounded-[var(--radius-sm)] px-3 py-2 transition ${
             activeTab === 'sobre'
@@ -791,6 +806,13 @@ export function ConfiguracoesPage() {
           {/* ========================================================================= */}
           {activeTab === 'openfinance' && (
             <OpenFinanceTab token={token} />
+          )}
+
+          {/* ========================================================================= */}
+          {/* ABA 6: INTELIGÊNCIA ARTIFICIAL (IA) */}
+          {/* ========================================================================= */}
+          {activeTab === 'ia' && (
+            <IATab token={token} />
           )}
 
           {/* ========================================================================= */}
