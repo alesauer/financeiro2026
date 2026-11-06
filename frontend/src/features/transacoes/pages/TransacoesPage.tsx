@@ -1165,7 +1165,7 @@ export function TransacoesPage() {
                 className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className={`text-sm text-[var(--color-text)] ${item.tipo === 'Receita' ? 'font-bold' : 'font-normal'}`}>{item.descricao}</p>
+                  <p className={`text-sm text-[var(--color-text)] ${item.tipo === 'Receita' ? 'font-semibold' : 'font-normal'}`}>{item.descricao}</p>
                   <p className="text-sm font-semibold">{formatCurrency(getValorEfetivo(item))}</p>
                 </div>
                 <div className="mt-1 space-y-0.5 text-xs text-[var(--color-muted)]">
@@ -1240,7 +1240,7 @@ export function TransacoesPage() {
                     <td className="py-2 pr-3">{item.data_transacao}</td>
                     <td className="py-2 pr-3">
                       <div className="flex items-center gap-2">
-                        <span className={item.tipo === 'Receita' ? 'font-bold text-[var(--color-text)]' : ''}>{item.descricao}</span>
+                        <span className={item.tipo === 'Receita' ? 'font-semibold text-[var(--color-text)]' : ''}>{item.descricao}</span>
                         {item.forma_pagamento_nome && (
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                             item.forma_pagamento_cartao
