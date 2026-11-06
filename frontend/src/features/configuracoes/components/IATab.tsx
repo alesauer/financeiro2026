@@ -481,3 +481,4 @@ export function IATab({ token }: Props) {
     </div>
   )
 }
+

@@ -63,13 +63,19 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
 
     if not client:
         # Fallback local determinístico inteligente caso não haja API Key
-        resposta_texto, dados_widget = _fallback_local(
-            pergunta, hoje, motivo=f"Chave da API do provedor {provedor.upper()} não configurada no servidor."
+        motivo_aviso = (
+            f"⚠️ **Aviso: Assistente operando em modo local (IA generativa desativada)**\n\n"
+            f"A chave de API do provedor **{provedor.upper()}** ainda não foi configurada neste servidor.\n\n"
+            f"Para ativar o Assistente com IA real (DeepSeek ou OpenAI), acesse **Configurações → Outros → Inteligência Artificial (IA)**, "
+            f"insira a sua chave de API e clique em **Salvar Configurações de IA**.\n\n"
+            f"---\n\n"
         )
+        resposta_texto, dados_widget = _fallback_local(pergunta, hoje)
+        resposta_final = motivo_aviso + resposta_texto
         msg_assistant = IAMensagem(
             conversa_id=conversa.id,
             role="assistant",
-            conteudo=resposta_texto,
+            conteudo=resposta_final,
             metadados_json=json.dumps(dados_widget, ensure_ascii=False) if dados_widget else None,
             tokens_prompt=0,
             tokens_completion=0
@@ -80,7 +86,7 @@ def processar_pergunta_assistente(conversa_id: int, usuario_id: int, pergunta: s
         return {
             "id": msg_assistant.id,
             "role": "assistant",
-            "conteudo": resposta_texto,
+            "conteudo": resposta_final,
             "metadados": dados_widget,
             "created_at": msg_assistant.created_at.isoformat()
         }
@@ -306,19 +312,27 @@ def _fallback_local(pergunta: str, hoje: date, motivo: Optional[str] = None) -> 
             txt = "Nenhuma despesa recorrente ou assinatura configurada no momento."
         return txt, {"tipo": "recorrentes", "dados": res}
 
-    # Se for busca por termo ou estabelecimento (ex: "uber", "supermercado", "farmacia")
-    palavras = [w for w in re.split(r"\s+", p) if len(w) > 3 and w not in ("quanto", "gastei", "sobre", "qual", "quais", "como", "onde", "para")]
+    # Se for busca por termo ou estabelecimento (ex: "uber", "supermercado", "bicicleta", etc.)
+    stopwords = {
+        "quanto", "gastei", "sobre", "qual", "quais", "como", "onde", "para", "comprei",
+        "comprado", "compras", "compra", "algum", "alguma", "alguns", "algumas", "tinha",
+        "paguei", "valor", "teve", "houve", "tem", "existe", "neste", "desse", "disso"
+    }
+    palavras = [w for w in re.split(r"[^\w]+", p) if len(w) >= 3 and w not in stopwords]
     if palavras:
         termo = palavras[0]
-        res = TOOL_FUNCTIONS["consultar_lancamentos_recentes"](termo_busca=termo, limite=5)
+        res = TOOL_FUNCTIONS["consultar_lancamentos_recentes"](termo_busca=termo, limite=10)
         lancamentos = res.get("lancamentos", [])
         if lancamentos:
             linhas = [f"- **{it['descricao']}** ({it['tipo']}): R$ {it['valor']:,.2f} em {it['data']}" for it in lancamentos]
             txt = (
-                f"Encontrei os seguintes lançamentos recentes relacionados a **'{termo}'**:\n\n"
+                f"Encontrei os seguintes lançamentos relacionados a **'{termo}'**:\n\n"
                 + "\n".join(linhas)
             )
             return txt, {"tipo": "busca", "dados": res}
+        else:
+            txt = f"Não encontrei nenhuma compra ou lançamento financeiro relacionado a **'{termo}'** nos registros."
+            return txt, {"tipo": "busca", "dados": {"termo": termo, "lancamentos": []}}
 
     # Resumo geral padrão
     res = TOOL_FUNCTIONS["consultar_resumo_financeiro"](inicio=ini_mes, fim=fim_mes)
