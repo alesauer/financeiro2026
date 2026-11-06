@@ -321,15 +321,21 @@ export function TransacoesPage() {
   const resetForm = () => {
     setEditingId(null)
     setEditingItem(null)
+    setError(null)
+    const tipoPadrao: Categoria['tipo'] =
+      tipoFiltro && TIPOS.includes(tipoFiltro as any) ? (tipoFiltro as Categoria['tipo']) : 'Despesa'
+    const primeiraCat = categorias.find((item) => item.tipo === tipoPadrao)?.id ?? 0
     setForm((prev) => ({
       ...EMPTY_FORM,
-      categoria_id: categorias.find((item) => item.tipo === EMPTY_FORM.tipo)?.id ?? 0,
+      tipo: tipoPadrao,
+      categoria_id: primeiraCat,
       forma_pagamento_id: formas[0]?.id ?? prev.forma_pagamento_id,
       data_transacao: isoToday(),
     }))
   }
 
   const abrirNovoFormulario = () => {
+    setError(null)
     resetForm()
     setIsFormOpen(true)
   }
@@ -480,13 +486,38 @@ export function TransacoesPage() {
         }
 
         await transacoesService.update(token, editingId, payload)
+        setFeedbackSync(`Transação "${payload.descricao}" atualizada com sucesso!`)
       } else {
         await transacoesService.create(token, payload)
+        setFeedbackSync(`Transação "${payload.descricao}" (${payload.tipo}) adicionada com sucesso!`)
+
+        // Se o usuário adicionou um tipo diferente do filtro ativo (ex.: adicionou Receita com filtro Despesa ativo),
+        // limpamos o filtro para que o novo lançamento apareça imediatamente na tela.
+        if (tipoFiltro && tipoFiltro !== payload.tipo) {
+          setTipoFiltro('')
+        }
+        if (categoriaFiltro) {
+          const catObj = categorias.find((c) => c.id === categoriaFiltro)
+          if (catObj && catObj.tipo !== payload.tipo) {
+            setCategoriaFiltro('')
+          }
+        }
+
+        // Se a data do lançamento pertencer a outro mês, ajusta o navegador para o mês correspondente
+        const mesLancamento = payload.data_transacao.slice(0, 7)
+        if (mesLancamento && /^\d{4}-\d{2}$/.test(mesLancamento) && mesLancamento !== mesFiltro) {
+          const [y, m] = mesLancamento.split('-').map(Number)
+          const ultimoDia = new Date(y, m, 0).getDate()
+          setInicio(`${mesLancamento}-01`)
+          setFim(`${mesLancamento}-${String(ultimoDia).padStart(2, '0')}`)
+          setMesFiltro(mesLancamento)
+        }
       }
 
+      setTimeout(() => setFeedbackSync(null), 6000)
       resetForm()
       setIsFormOpen(false)
-      await Promise.all([carregarListagem(page), carregarCartaoCredito()])
+      await Promise.all([carregarListagem(1), carregarCartaoCredito()])
     } catch (err) {
       setError(getErrorMessage(err, 'Não foi possível salvar transação.'))
     } finally {
@@ -724,11 +755,12 @@ export function TransacoesPage() {
                     value={form.tipo}
                     onChange={(event) => {
                       const tipo = event.target.value as Categoria['tipo']
+                      setError(null)
                       setForm((prev) => {
                         const categoriaAtual = categorias.find((item) => item.id === prev.categoria_id)
-                        // Mantém a categoria apenas quando ela pertence ao novo tipo.
                         const compativel = categoriaAtual?.tipo === tipo
-                        return { ...prev, tipo, categoria_id: compativel ? prev.categoria_id : 0 }
+                        const primeiraValida = categorias.find((item) => item.tipo === tipo)?.id ?? 0
+                        return { ...prev, tipo, categoria_id: compativel ? prev.categoria_id : primeiraValida }
                       })
                     }}
                     className="w-full rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
@@ -938,6 +970,13 @@ export function TransacoesPage() {
                   className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-border)] px-3 py-2 text-sm"
                 />
               </Field>
+
+              {error ? (
+                <div className="rounded-[var(--radius-sm)] border border-rose-200 bg-rose-50 p-2.5 text-xs font-semibold text-rose-700 flex items-center gap-2">
+                  <span>⚠️</span>
+                  <span>{error}</span>
+                </div>
+              ) : null}
 
               <div className="flex items-center gap-2 pt-2">
                 <button
