@@ -451,7 +451,11 @@ class OpenFinanceSyncService:
                     if tx_existente.tipo != tipo_transacao:
                         tx_existente.tipo = tipo_transacao
                     if tx_existente.valor != amount:
-                        tx_existente.valor = amount
+                        # Não sobrescreve o valor se foi ajustado manualmente pelo usuário
+                        if not (tx_existente.observacoes and "[ajuste_manual]" in tx_existente.observacoes):
+                            tx_existente.valor = amount
+                            if tx_existente.parcelado:
+                                tx_existente.valor_parcela = amount
                     duplicadas_ignoradas += 1
                     continue
 
@@ -924,7 +928,11 @@ class OpenFinanceSyncService:
                 if tx_existente.tipo != tipo_transacao:
                     tx_existente.tipo = tipo_transacao
                 if tx_existente.valor != amount:
-                    tx_existente.valor = amount
+                    # Não sobrescreve o valor se foi ajustado manualmente pelo usuário
+                    if not (tx_existente.observacoes and "[ajuste_manual]" in tx_existente.observacoes):
+                        tx_existente.valor = amount
+                        if tx_existente.parcelado:
+                            tx_existente.valor_parcela = amount
                 duplicadas_ignoradas += 1
                 continue
 
