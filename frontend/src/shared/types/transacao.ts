@@ -27,6 +27,8 @@ export type Transacao = {
   parcelamento_id?: string | null
   observacoes: string | null
   competencia_fatura?: string | null
+  logo_url?: string | null
+  estabelecimento_nome?: string | null
 }
 
 export type TransacaoPayload = {

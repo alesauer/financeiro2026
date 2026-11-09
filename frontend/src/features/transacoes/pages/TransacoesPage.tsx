@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CalendarPlus, RefreshCw } from 'lucide-react'
 
+import { MerchantAvatar } from '@/shared/components/MerchantAvatar'
 import { useAuth } from '@/app/providers/AuthProvider'
 import { MonthNavigator } from '@/features/transacoes/components/MonthNavigator'
 import { FaturaCard } from '@/features/transacoes/components/FaturaCard'
@@ -1165,8 +1166,17 @@ export function TransacoesPage() {
                 className="rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
               >
                 <div className="flex items-start justify-between gap-2">
-                  <p className={`text-sm text-[var(--color-text)] ${item.tipo === 'Receita' ? 'font-semibold' : 'font-normal'}`}>{item.descricao}</p>
-                  <p className="text-sm font-semibold">{formatCurrency(getValorEfetivo(item))}</p>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <MerchantAvatar
+                      descricao={item.descricao}
+                      estabelecimentoNome={item.estabelecimento_nome}
+                      logoUrl={item.logo_url}
+                      categoriaNome={item.categoria_nome}
+                      size="sm"
+                    />
+                    <p className={`text-sm text-[var(--color-text)] truncate ${item.tipo === 'Receita' ? 'font-semibold' : 'font-normal'}`}>{item.descricao}</p>
+                  </div>
+                  <p className="text-sm font-semibold flex-shrink-0">{formatCurrency(getValorEfetivo(item))}</p>
                 </div>
                 <div className="mt-1 space-y-0.5 text-xs text-[var(--color-muted)]">
                   <p>Data: {item.data_transacao}</p>
@@ -1239,17 +1249,26 @@ export function TransacoesPage() {
                   <tr key={item.id} className="border-b border-[var(--color-border)]/70">
                     <td className="py-2 pr-3">{item.data_transacao}</td>
                     <td className="py-2 pr-3">
-                      <div className="flex items-center gap-2">
-                        <span className={item.tipo === 'Receita' ? 'font-semibold text-[var(--color-text)]' : ''}>{item.descricao}</span>
-                        {item.forma_pagamento_nome && (
-                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
-                            item.forma_pagamento_cartao
-                              ? 'bg-purple-50 text-purple-700 border-purple-200'
-                              : 'bg-slate-50 text-slate-600 border-slate-200'
-                          }`}>
-                            {item.forma_pagamento_nome}
-                          </span>
-                        )}
+                      <div className="flex items-center gap-2.5">
+                        <MerchantAvatar
+                          descricao={item.descricao}
+                          estabelecimentoNome={item.estabelecimento_nome}
+                          logoUrl={item.logo_url}
+                          categoriaNome={item.categoria_nome}
+                          size="sm"
+                        />
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={item.tipo === 'Receita' ? 'font-semibold text-[var(--color-text)]' : ''}>{item.descricao}</span>
+                          {item.forma_pagamento_nome && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                              item.forma_pagamento_cartao
+                                ? 'bg-purple-50 text-purple-700 border-purple-200'
+                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                            }`}>
+                              {item.forma_pagamento_nome}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td className={`py-2 pr-3 font-medium ${getTipoClassName(item.tipo)}`}>{item.tipo}</td>

@@ -3,6 +3,7 @@ from datetime import date
 from marshmallow import Schema, fields, validates, validates_schema, ValidationError, pre_load, EXCLUDE
 
 from app.utils.texto import normalizar_texto
+from services.merchants.resolver import obter_info_estabelecimento
 
 
 # ======================
@@ -38,6 +39,8 @@ class TransacaoSchema(Schema):
     valor = fields.Decimal(required=True, as_string=True)
     # Nova modelagem: forma_pagamento_id (FK)
     forma_pagamento_id = fields.Int(required=True)
+    logo_url = fields.Method("get_logo_url", dump_only=True)
+    estabelecimento_nome = fields.Method("get_estabelecimento_nome", dump_only=True)
     # Campo extra: nome da categoria
     categoria_nome = fields.Method("get_categoria_nome", dump_only=True)
     # Campos extras: nome e flag de cartão da forma de pagamento
@@ -59,6 +62,18 @@ class TransacaoSchema(Schema):
         if hasattr(obj, "forma_pagamento") and obj.forma_pagamento:
             return bool(getattr(obj.forma_pagamento, "cartao_credito", False))
         return False
+
+    def get_logo_url(self, obj):
+        desc = getattr(obj, "descricao", None)
+        if desc:
+            return obter_info_estabelecimento(desc).get("logo_url")
+        return None
+
+    def get_estabelecimento_nome(self, obj):
+        desc = getattr(obj, "descricao", None)
+        if desc:
+            return obter_info_estabelecimento(desc).get("nome")
+        return None
 
     # --- Campos com default ---
     data_transacao = fields.Date(load_default=date.today)

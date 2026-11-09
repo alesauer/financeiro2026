@@ -16,6 +16,7 @@ import {
 import type { FaturaCartao, Transacao } from '@/shared/types/transacao'
 import { formatCurrency } from '@/shared/utils/date'
 import { BankCardIcon } from '@/shared/components/BankCardIcon'
+import { MerchantAvatar } from '@/shared/components/MerchantAvatar'
 
 interface FaturaDrawerProps {
   isOpen: boolean
@@ -352,11 +353,20 @@ export function FaturaDrawer({
                           onChange={() => handleToggleSelect(item.id)}
                           className="rounded border-[var(--color-border)] text-[var(--color-primary)] focus:ring-[var(--color-primary)] h-3.5 w-3.5 shrink-0"
                         />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-semibold text-sm text-[var(--color-text)] truncate">
-                              {item.descricao}
-                            </span>
+                        <div className="min-w-0 flex-1 flex items-start gap-2.5">
+                          <MerchantAvatar
+                            descricao={item.descricao}
+                            estabelecimentoNome={item.estabelecimento_nome}
+                            logoUrl={item.logo_url}
+                            categoriaNome={item.categoria_nome}
+                            size="md"
+                            className="mt-0.5"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-sm text-[var(--color-text)] truncate">
+                                {item.descricao}
+                              </span>
                             {isEstorno && (
                               <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
                                 <ArrowDownRight className="h-2.5 w-2.5" /> Estorno
@@ -388,8 +398,9 @@ export function FaturaDrawer({
                           </div>
                         </div>
                       </div>
+                    </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-3 shrink-0">
                         <div className="text-right">
                           <p className={`text-sm font-bold ${isEstorno ? 'text-emerald-700' : 'text-[var(--color-text)]'}`}>
                             {isEstorno ? `- ${formatCurrency(Math.abs(valor))}` : formatCurrency(valor)}
