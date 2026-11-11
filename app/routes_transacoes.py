@@ -882,7 +882,7 @@ def listar_cartao_credito():
         )
         .order_by(
             Transacao.forma_pagamento_id.asc(),
-            Transacao.data_transacao.desc(),
+            Transacao.data_transacao.asc(),
             Transacao.id.asc(),
         )
     )
@@ -1127,6 +1127,8 @@ def listar_cartao_credito():
         fatura["categorias_resumo"] = categorias_resumo
         del fatura["categorias_contagem"]
 
+        # Ordenar itens da fatura pela data da transação ascendente
+        fatura["items"].sort(key=lambda t: (t.data_transacao or date.min, t.id or 0))
         # Dump dos itens
         fatura["transacoes"] = schemas.dump(fatura["items"])
         del fatura["items"]
@@ -1138,6 +1140,7 @@ def listar_cartao_credito():
     # Ordenar faturas por data de vencimento e nome do cartão
     faturas_lista.sort(key=lambda f: (f["data_vencimento"] or "", f["forma_pagamento_nome"] or ""))
 
+    transacoes_filtradas.sort(key=lambda t: (t.data_transacao or date.min, t.id or 0))
     payload_transacoes = schemas.dump(transacoes_filtradas)
 
     return jsonify({

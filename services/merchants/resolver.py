@@ -98,3 +98,4 @@ def resolver_logo_estabelecimento(descricao_raw: str | None) -> Optional[str]:
     """Retorna apenas a URL do logo ou None."""
     info = obter_info_estabelecimento(descricao_raw)
     return info.get("logo_url")
+

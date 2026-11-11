@@ -12,6 +12,7 @@ import {
   Tag,
   ArrowDownRight,
   ShieldCheck,
+  ArrowUpDown,
 } from 'lucide-react'
 import type { FaturaCartao, Transacao } from '@/shared/types/transacao'
 import { formatCurrency } from '@/shared/utils/date'
@@ -41,6 +42,7 @@ export function FaturaDrawer({
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('')
   const [selectedIds, setSelectedIds] = useState<number[]>([])
   const [loadingAcao, setLoadingAcao] = useState(false)
+  const [ordemData, setOrdemData] = useState<'asc' | 'desc'>('asc')
 
   // Fechar com tecla ESC
   useEffect(() => {
@@ -59,6 +61,7 @@ export function FaturaDrawer({
       setBusca('')
       setCategoriaFiltro('')
       setSelectedIds([])
+      setOrdemData('asc')
     }
   }, [isOpen, fatura?.key])
 
@@ -80,8 +83,16 @@ export function FaturaDrawer({
       list = list.filter((t) => (t.categoria_nome || 'Outros') === categoriaFiltro)
     }
 
-    return list
-  }, [fatura?.transacoes, busca, categoriaFiltro])
+    // Ordenação ascendente por padrão (da primeira compra até a última compra do ciclo)
+    return [...list].sort((a, b) => {
+      const dtA = a.data_transacao || ''
+      const dtB = b.data_transacao || ''
+      if (dtA !== dtB) {
+        return ordemData === 'asc' ? dtA.localeCompare(dtB) : dtB.localeCompare(dtA)
+      }
+      return ordemData === 'asc' ? a.id - b.id : b.id - a.id
+    })
+  }, [fatura?.transacoes, busca, categoriaFiltro, ordemData])
 
   if (!isOpen || !fatura) return null
 
@@ -265,15 +276,27 @@ export function FaturaDrawer({
 
           {/* Barra de Busca e Ações em Lote */}
           <div className="px-6 py-3 border-b border-[var(--color-border)] flex items-center justify-between gap-3 bg-[var(--color-bg)]/20">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted)]" />
-              <input
-                type="text"
-                placeholder="Filtrar lançamentos da fatura..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                className="w-full h-8 pl-8 pr-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-text)] placeholder-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)]"
-              />
+            <div className="flex items-center gap-2 flex-1 max-w-md">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted)]" />
+                <input
+                  type="text"
+                  placeholder="Filtrar lançamentos da fatura..."
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  className="w-full h-8 pl-8 pr-3 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] text-xs text-[var(--color-text)] placeholder-[var(--color-muted)] focus:outline-none focus:border-[var(--color-primary)]"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setOrdemData((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                title={ordemData === 'asc' ? 'Ordenação ascendente (1ª à última compra do ciclo). Clique para inverter.' : 'Ordenação descendente (última compra primeiro). Clique para inverter.'}
+                className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[var(--radius-sm)] border border-[var(--color-border)] bg-[var(--color-surface)] text-xs font-medium text-[var(--color-text)] hover:bg-[var(--color-bg)] transition shrink-0"
+              >
+                <ArrowUpDown className="h-3.5 w-3.5 text-[var(--color-muted)]" />
+                <span>{ordemData === 'asc' ? '1ª → Última' : 'Última → 1ª'}</span>
+              </button>
             </div>
 
             <div className="flex items-center gap-2">
