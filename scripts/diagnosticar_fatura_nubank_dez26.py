@@ -219,7 +219,8 @@ def main():
         if compras_para_mover:
             for tx in compras_para_mover:
                 tx.competencia_fatura = date(2027, 1, 1)
-                print(f"  [OK] Transação ID {tx.id} ({tx.descricao[:30]}) movida para Jan/2027.")
+                tx.observacoes = (tx.observacoes or "") + " [ajuste_manual: movido para fatura seguinte]"
+                print(f"  [OK] Transação ID {tx.id} ({tx.descricao[:30]}) movida para Jan/2027 com tag [ajuste_manual].")
 
         # 4. Garantir ContaMap para OpenFinance se não houver
         if not conta_map:

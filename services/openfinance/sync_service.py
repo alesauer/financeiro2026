@@ -444,7 +444,8 @@ class OpenFinanceSyncService:
                 # 3. Deduplicação por identificador_externo
                 tx_existente = Transacao.query.filter_by(identificador_externo=tx_id).first()
                 if tx_existente:
-                    if competencia_fatura_calculada and tx_existente.competencia_fatura != competencia_fatura_calculada:
+                    tem_ajuste_manual = bool(tx_existente.observacoes and "[ajuste_manual]" in tx_existente.observacoes)
+                    if not tem_ajuste_manual and competencia_fatura_calculada and tx_existente.competencia_fatura != competencia_fatura_calculada:
                         tx_existente.competencia_fatura = competencia_fatura_calculada
                     if tx_existente.data_transacao != data_tx:
                         tx_existente.data_transacao = data_tx
@@ -452,7 +453,7 @@ class OpenFinanceSyncService:
                         tx_existente.tipo = tipo_transacao
                     if tx_existente.valor != amount:
                         # Não sobrescreve o valor se foi ajustado manualmente pelo usuário
-                        if not (tx_existente.observacoes and "[ajuste_manual]" in tx_existente.observacoes):
+                        if not tem_ajuste_manual:
                             tx_existente.valor = amount
                             if tx_existente.parcelado:
                                 tx_existente.valor_parcela = amount
@@ -612,6 +613,11 @@ class OpenFinanceSyncService:
 
                 # Se o usuário sincronizou um mês específico, sincroniza apenas a fatura daquele mês (ou que já tenha lançamentos)
                 fatura_obj = OpenFinanceFatura.query.filter_by(pluggy_bill_id=bill_id).first()
+                if not fatura_obj:
+                    fatura_obj = OpenFinanceFatura.query.filter_by(conta_map_id=conta_map.id, competencia=competencia).first()
+                    if fatura_obj:
+                        fatura_obj.pluggy_bill_id = bill_id
+
                 if not fatura_obj:
                     if alvo_comp and competencia != alvo_comp and competencia not in competencias_com_tx:
                         continue
@@ -921,7 +927,8 @@ class OpenFinanceSyncService:
             # Deduplicação por identificador_externo
             tx_existente = Transacao.query.filter_by(identificador_externo=tx_id).first()
             if tx_existente:
-                if competencia_fatura_calculada and tx_existente.competencia_fatura != competencia_fatura_calculada:
+                tem_ajuste_manual = bool(tx_existente.observacoes and "[ajuste_manual]" in tx_existente.observacoes)
+                if not tem_ajuste_manual and competencia_fatura_calculada and tx_existente.competencia_fatura != competencia_fatura_calculada:
                     tx_existente.competencia_fatura = competencia_fatura_calculada
                 if tx_existente.data_transacao != data_tx:
                     tx_existente.data_transacao = data_tx
@@ -929,7 +936,7 @@ class OpenFinanceSyncService:
                     tx_existente.tipo = tipo_transacao
                 if tx_existente.valor != amount:
                     # Não sobrescreve o valor se foi ajustado manualmente pelo usuário
-                    if not (tx_existente.observacoes and "[ajuste_manual]" in tx_existente.observacoes):
+                    if not tem_ajuste_manual:
                         tx_existente.valor = amount
                         if tx_existente.parcelado:
                             tx_existente.valor_parcela = amount
